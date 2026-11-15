@@ -3,20 +3,23 @@
 //! Set `VIV_MODEL` plus a provider key to chat for real (see
 //! `vivianne_providers::env`), or `VIV_DEMO=1` for an offline canned reply.
 
+mod agent_setup;
+mod app;
 mod chat;
 mod demo;
+mod home;
+mod rail;
+mod settings;
 mod theme;
 
 use std::sync::Arc;
 
+use gpui_kit::component::TitleBar;
 use gpui_kit::prelude::*;
-use gpui_kit::{Bounds, Focusable, TitlebarOptions, WindowBounds, WindowOptions, px, size};
+use gpui_kit::{Bounds, WindowBounds, WindowOptions, px, size};
 use tokio::runtime::Runtime;
-use vivianne_providers::{Provider, env};
-use vivianne_runtime::{Agent, CODING_SYSTEM_PROMPT};
-use vivianne_tools::Toolbox;
 
-use chat::{ChatSession, ChatView};
+use app::AppView;
 
 fn main() {
     // The agent and its HTTP calls need tokio; the UI runs on GPUI's own executor.
@@ -27,27 +30,26 @@ fn main() {
             std::process::exit(1);
         }
     };
-    let (session, model) = match build_session(runtime) {
-        Ok((session, model)) => (Ok(session), model),
-        Err(problem) => (Err(setup_hint(&problem)), "not configured".to_owned()),
+    let workspace = match std::env::current_dir() {
+        Ok(dir) => dir,
+        Err(error) => {
+            eprintln!("vivianne: cannot read the current folder: {error}");
+            std::process::exit(1);
+        }
     };
 
-    gpui_kit::application().run(move |cx| {
+    // Kit's icon set (Lucide) is looked up by path, so the app must register it.
+    let assets = gpui_kit::assets::Assets::new("");
+    gpui_kit::application().with_assets(assets).run(move |cx| {
         gpui_kit::init(cx);
         theme::apply(cx);
-        let bounds = Bounds::centered(None, size(px(1000.0), px(560.0)), cx);
+        let bounds = Bounds::centered(None, size(px(1100.0), px(680.0)), cx);
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
-            titlebar: Some(TitlebarOptions {
-                title: Some("Vivianne".into()),
-                ..Default::default()
-            }),
-            ..Default::default()
+            ..TitleBar::window_options()
         };
         let opened = gpui_kit::open_window(options, cx, |window, cx| {
-            let chat = cx.new(|cx| ChatView::new(session, model, window, cx));
-            window.focus(&chat.focus_handle(cx), cx);
-            chat
+            cx.new(|cx| AppView::new(runtime, workspace, window, cx))
         });
         if let Err(error) = opened {
             eprintln!("vivianne: cannot open the window: {error}");
@@ -56,26 +58,4 @@ fn main() {
         }
         cx.activate(true);
     });
-}
-
-fn build_session(runtime: Arc<Runtime>) -> Result<(ChatSession, String), String> {
-    let (provider, model): (Arc<dyn Provider>, String) = if std::env::var_os("VIV_DEMO").is_some() {
-        (Arc::new(demo::Demo), "demo".to_owned())
-    } else {
-        (env::provider()?, env::model()?)
-    };
-    let workdir = std::env::current_dir().map_err(|e| e.to_string())?;
-    let agent = Agent::new(
-        provider,
-        &model,
-        Some(CODING_SYSTEM_PROMPT.to_owned()),
-        Toolbox::coding(&workdir),
-    );
-    Ok((ChatSession::new(agent, runtime), model))
-}
-
-fn setup_hint(problem: &str) -> String {
-    format!(
-        "Not set up: {problem}. Set VIV_MODEL and a provider key, or VIV_DEMO=1 to try it offline."
-    )
 }

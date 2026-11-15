@@ -120,24 +120,34 @@ impl ChatView {
         cx.notify();
     }
 
-    fn header(&self) -> impl IntoElement {
+    /// Tab title: the first thing the user said, shortened.
+    #[must_use]
+    pub fn title(&self) -> String {
+        let first = self.items.iter().find_map(|item| match item {
+            Item::User(text) => Some(text.as_str()),
+            _ => None,
+        });
+        match first {
+            None => NEW_THREAD_TITLE.to_owned(),
+            Some(text) => shorten(text, TITLE_MAX_CHARS),
+        }
+    }
+
+    #[must_use]
+    pub fn is_running(&self) -> bool {
+        self.running
+    }
+
+    /// Small status line under the composer.
+    fn status_line(&self) -> impl IntoElement {
         let status = if self.running { "Working" } else { "Ready" };
         div()
-            .w_full()
+            .pb(px(10.0))
             .flex()
-            .items_center()
-            .justify_between()
-            .px(px(theme::SIDE_PAD))
-            .py(px(10.0))
-            .border_b_1()
-            .border_color(color(theme::BORDER))
-            .child(div().text_size(px(15.0)).child("Vivianne"))
-            .child(
-                div()
-                    .text_size(px(12.0))
-                    .text_color(color(theme::MUTED))
-                    .child(format!("{}  ·  {status}", self.model)),
-            )
+            .justify_center()
+            .text_size(px(11.0))
+            .text_color(color(theme::MUTED))
+            .child(format!("{}  ·  {status}", self.model))
     }
 
     fn transcript(&self) -> impl IntoElement {
@@ -210,8 +220,41 @@ impl Render for ChatView {
             .bg(color(theme::BG))
             .text_color(color(theme::TEXT))
             .text_size(px(14.0))
-            .child(self.header())
             .child(self.transcript())
             .child(self.composer(cx))
+            .child(self.status_line())
+    }
+}
+
+const NEW_THREAD_TITLE: &str = "New thread";
+const TITLE_MAX_CHARS: usize = 28;
+
+/// Cut `text` to `max` characters on one line, adding an ellipsis when shortened.
+fn shorten(text: &str, max: usize) -> String {
+    let one_line = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if one_line.chars().count() <= max {
+        return one_line;
+    }
+    let cut: String = one_line.chars().take(max).collect();
+    format!("{}…", cut.trim_end())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shorten;
+
+    #[test]
+    fn short_text_is_kept_whole() {
+        assert_eq!(shorten("fix the bug", 28), "fix the bug");
+    }
+
+    #[test]
+    fn newlines_collapse_to_one_line() {
+        assert_eq!(shorten("fix\n  the\nbug", 28), "fix the bug");
+    }
+
+    #[test]
+    fn long_text_is_cut_with_an_ellipsis_on_characters_not_bytes() {
+        assert_eq!(shorten("ééééé ééééé", 7), "ééééé é…");
     }
 }
