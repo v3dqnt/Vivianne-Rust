@@ -39,6 +39,27 @@ should. One earlier run of `echo ... && ver` did not show the `ver` output; not 
 Drawing the grid is plain text drawing, which (a) shows is fast enough. Input, resize, colours and
 scrollback are not exercised yet.
 
+## (d) GPUI Kit: PASS, recommended for adoption
+
+`gpui-kit` 0.9.1 (Apache-2.0, built on `gpui-component`, by Longbridge). Isolated crate
+`crates/spike-kit`; it depends on its own GPUI snapshot, `gpui-pre` 0.3.12 (zed `d2a4fb6`), not the
+`gpui` 0.2.2 the shell uses, so the two cannot share a binary.
+
+- Builds on Windows first try (cold build 9 min, same `fxc.exe` note applies).
+- `TextView::markdown`: bold, inline code, bullets, fenced code with a language label, tables all render.
+- `Textarea` + `TextareaState::auto_grow(1, 6)`: typing, spaces, newline, shift+arrow selection with
+  highlight, caret, focus ring, auto-grow all work. This replaces our append-only composer.
+- Also ships chat parts we would otherwise write: `Message`, `MessageGroup`, `Bubble`, `MessageScroller`,
+  plus `Tabs`, `Dialog`, `Sheet`, `Notification`, `List`/`VirtualList`, `Dock`, theme tokens.
+
+Not yet checked: dark theme and custom tokens (default is light), `Enter` to send with `Shift+Enter` for
+newline (Enter inserts a newline by default), text selection inside rendered markdown, streaming markdown
+cost, whether the shell's overlay and terminal glue work on the `gpui-pre` snapshot, and a Fluent or glass
+look (Kit has none; we would build it through its tokens).
+
+Cost of adopting: move the shell from `gpui` 0.2.2 to Kit's snapshot (API drift is likely small but real),
+update ADR 0016, and CI builds one GPUI instead of two once the spike crate is removed.
+
 ## Build note
 
 GPUI release builds on Windows need `fxc.exe` (Windows SDK). If the build says "Failed to find fxc.exe", set

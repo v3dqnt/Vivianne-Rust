@@ -1,0 +1,19 @@
+[package]
+name = "vivianne-spike-kit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "spike_kit"
+path = "src/main.rs"
+
+[dependencies]
+# Throwaway spike. GPUI Kit brings its own GPUI snapshot (gpui-pre), so this
+# crate must not share a binary with the shell's `gpui` 0.2.2.
+gpui-kit = "0.9.1"
+
+[lints]
+workspace = true
