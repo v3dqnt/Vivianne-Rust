@@ -4,11 +4,13 @@ mod items;
 mod session;
 mod transcript;
 
+use gpui_kit::component::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, Context, Entity, FocusHandle, Focusable, ScrollHandle, Subscription, Window, div, px,
+    App, Context, Entity, FocusHandle, Focusable, FontWeight, ScrollHandle, Subscription, Window,
+    div, px,
 };
 
 use crate::theme::{self, color};
@@ -31,16 +33,26 @@ pub struct ChatView {
     /// `Err` holds what is wrong with the setup, shown as the composer hint.
     session: Result<Session, String>,
     model: String,
+    /// Name of the project folder, shown on the empty screen.
+    project: String,
     running: bool,
     /// Frames left in which to keep the transcript scrolled to the bottom.
     pin_frames: u8,
     _enter_to_send: Subscription,
 }
 
+/// Starting points shown before the first message. Picking one fills the composer.
+const SUGGESTIONS: [&str; 3] = [
+    "Summarise this project",
+    "Find and fix a bug",
+    "Write tests for a module",
+];
+
 impl ChatView {
     pub fn new(
         session: Result<Session, String>,
         model: String,
+        project: String,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -65,6 +77,7 @@ impl ChatView {
             scroll: ScrollHandle::new(),
             session,
             model,
+            project,
             running: false,
             pin_frames: 0,
             _enter_to_send: enter_to_send,
@@ -150,6 +163,59 @@ impl ChatView {
             .child(format!("{}  ·  {status}", self.model))
     }
 
+    /// The screen before the first message: a question and a few starting points.
+    fn empty_state(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .flex_1()
+            .min_h_0()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .px(px(theme::SIDE_PAD))
+            .child(
+                div()
+                    .w_full()
+                    .max_w(px(theme::COLUMN_MAX))
+                    .flex()
+                    .flex_col()
+                    .gap(px(6.0))
+                    .child(
+                        div()
+                            .text_size(px(26.0))
+                            .font_weight(FontWeight::MEDIUM)
+                            .child("What are we working on?"),
+                    )
+                    .child(div().text_color(color(theme::MUTED)).child(format!(
+                        "Working in {}. Ask a question, or have the agent change something.",
+                        self.project
+                    )))
+                    .child(div().h(px(14.0)))
+                    .children(SUGGESTIONS.iter().enumerate().map(|(index, text)| {
+                        div()
+                            .id(("suggestion", index))
+                            .px(px(14.0))
+                            .py(px(10.0))
+                            .rounded(px(theme::RADIUS_SURFACE))
+                            .border_1()
+                            .border_color(color(theme::BORDER))
+                            .cursor_pointer()
+                            .text_size(px(13.0))
+                            .hover(|row| row.bg(color(theme::SURFACE)))
+                            .on_click(cx.listener(move |chat, _event, window, cx| {
+                                chat.prefill(SUGGESTIONS[index], window, cx);
+                            }))
+                            .child(*text)
+                    })),
+            )
+    }
+
+    fn prefill(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.input
+            .update(cx, |input, cx| input.set_value(text, window, cx));
+        window.focus(&self.input.read(cx).focus_handle(cx), cx);
+    }
+
     fn transcript(&self) -> impl IntoElement {
         let column = div()
             .w_full()
@@ -180,7 +246,7 @@ impl ChatView {
     fn composer(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let send = Button::new("send")
             .primary()
-            .label("Send")
+            .icon(IconName::ArrowUp)
             .on_click(cx.listener(|chat, _event, window, cx| chat.send(window, cx)));
         div()
             .px(px(theme::SIDE_PAD))
@@ -220,7 +286,11 @@ impl Render for ChatView {
             .bg(color(theme::BG))
             .text_color(color(theme::TEXT))
             .text_size(px(14.0))
-            .child(self.transcript())
+            .child(if self.items.is_empty() {
+                self.empty_state(cx).into_any_element()
+            } else {
+                self.transcript().into_any_element()
+            })
             .child(self.composer(cx))
             .child(self.status_line())
     }

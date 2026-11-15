@@ -74,7 +74,11 @@ impl AppView {
             Ok((session, model)) => (Ok(session), model),
             Err(problem) => (Err(problem), "not configured".to_owned()),
         };
-        let chat = cx.new(|cx| ChatView::new(session, model, window, cx));
+        let project = self.workspace.file_name().map_or_else(
+            || self.workspace.display().to_string(),
+            |name| name.to_string_lossy().into_owned(),
+        );
+        let chat = cx.new(|cx| ChatView::new(session, model, project, window, cx));
         // Redraw the tab title and status whenever the chat changes.
         cx.observe(&chat, |_app, _chat, cx| cx.notify()).detach();
         self.threads.push(Thread { chat });
