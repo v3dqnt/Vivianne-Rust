@@ -27,6 +27,10 @@ global hotkeys rebuilt natively.
 
 **0016 GPUI versioning.** Pin one exact version (it tracks Zed's repo), upgrade deliberately every few
 months, keep all GPUI code in the `shell` crate.
+Updated 2026-11-15: the shell depends on `gpui-kit` 0.9.1 (Apache-2.0, built on `gpui-component`), pinned
+with `=`. Kit brings its own GPUI snapshot (`gpui-pre` 0.3.12), so there is no separate `gpui` dependency.
+We use Kit's text input, markdown view and button, and push our design tokens into its theme
+(`shell/src/theme.rs`). Upgrade Kit and its snapshot together, never separately.
 
 **0017 Repo standards.** Small crates, no file over about 600 lines (CI gate), strict clippy in CI,
 one ADR per big choice, `cargo test` gates every phase. Old app is kept until parity, then deleted.

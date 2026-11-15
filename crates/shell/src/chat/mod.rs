@@ -1,64 +1,91 @@
 //! The chat screen: header, transcript, composer.
 
-mod composer;
-mod fences;
 mod items;
 mod session;
 mod transcript;
 
-use gpui::{
-    Context, FocusHandle, Focusable, KeyDownEvent, ScrollHandle, Window, div, prelude::*, px,
+use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    App, Context, Entity, FocusHandle, Focusable, ScrollHandle, Subscription, Window, div, px,
 };
 
 use crate::theme::{self, color};
-use composer::Composer;
 use items::{Item, apply};
 use session::{Finished, Run, Session};
 
 pub use session::Session as ChatSession;
 
+const PLACEHOLDER: &str = "Message Vivianne…";
+/// The composer grows with its text up to this many rows.
+const COMPOSER_MAX_ROWS: usize = 8;
+/// Content is measured one frame after it changes, so keep scrolling to the
+/// bottom for a few frames after every update.
+const PIN_FRAMES: u8 = 10;
+
 pub struct ChatView {
     items: Vec<Item>,
-    composer: Composer,
-    focus: FocusHandle,
+    input: Entity<TextareaState>,
     scroll: ScrollHandle,
-    /// `Err` holds what is wrong with the setup, shown in place of the placeholder.
+    /// `Err` holds what is wrong with the setup, shown as the composer hint.
     session: Result<Session, String>,
     model: String,
     running: bool,
     /// Frames left in which to keep the transcript scrolled to the bottom.
     pin_frames: u8,
+    _enter_to_send: Subscription,
 }
 
-const PIN_FRAMES: u8 = 10;
-
 impl ChatView {
-    pub fn new(session: Result<Session, String>, model: String, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        session: Result<Session, String>,
+        model: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let hint = match &session {
+            Ok(_) => PLACEHOLDER.to_owned(),
+            Err(problem) => problem.clone(),
+        };
+        let input = cx.new(|cx| {
+            TextareaState::new(window, cx)
+                .auto_grow(1, COMPOSER_MAX_ROWS)
+                .submit_on_enter(true)
+                .placeholder(hint)
+        });
+        let enter_to_send = cx.subscribe_in(&input, window, |chat, _input, event, window, cx| {
+            if let InputEvent::PressEnter { .. } = event {
+                chat.send(window, cx);
+            }
+        });
         Self {
             items: Vec::new(),
-            composer: Composer::default(),
-            focus: cx.focus_handle(),
+            input,
             scroll: ScrollHandle::new(),
             session,
             model,
             running: false,
             pin_frames: 0,
+            _enter_to_send: enter_to_send,
         }
     }
 
-    fn send(&mut self, cx: &mut Context<Self>) {
+    fn send(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.running {
             return;
         }
         let Ok(session) = self.session.as_mut() else {
             return;
         };
-        let Some(text) = self.composer.take() else {
+        let text = self.input.read(cx).value().trim().to_owned();
+        if text.is_empty() {
             return;
-        };
+        }
         let Some(run) = session.send(text.clone()) else {
             return;
         };
+        self.input.update(cx, |input, cx| input.clean(window, cx));
         self.items.push(Item::User(text));
         self.running = true;
         self.pin_frames = PIN_FRAMES;
@@ -93,30 +120,6 @@ impl ChatView {
         cx.notify();
     }
 
-    fn on_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
-        let key = &event.keystroke;
-        let mods = key.modifiers;
-        match key.key.as_str() {
-            "enter" if mods.shift => self.composer.insert("\n"),
-            "enter" => return self.send(cx),
-            "space" => self.composer.insert(" "),
-            "backspace" => self.composer.backspace(),
-            "v" if mods.control || mods.platform => {
-                if let Some(text) = cx.read_from_clipboard().and_then(|clip| clip.text()) {
-                    self.composer.insert(&text);
-                }
-            }
-            _ => {
-                // AltGr arrives as ctrl+alt, so plain ctrl alone is the only blocker.
-                let command = mods.platform || (mods.control && !mods.alt);
-                if let (Some(typed), false) = (&key.key_char, command) {
-                    self.composer.insert(typed);
-                }
-            }
-        }
-        cx.notify();
-    }
-
     fn header(&self) -> impl IntoElement {
         let status = if self.running { "Working" } else { "Ready" };
         div()
@@ -144,7 +147,12 @@ impl ChatView {
             .flex()
             .flex_col()
             .gap(px(theme::GAP))
-            .children(self.items.iter().map(transcript::render_item));
+            .children(
+                self.items
+                    .iter()
+                    .enumerate()
+                    .map(|(index, item)| transcript::render_item(index, item)),
+            );
         div()
             .id("transcript")
             .flex_1()
@@ -159,33 +167,11 @@ impl ChatView {
             .child(column)
     }
 
-    fn composer_box(&self, focused: bool, cx: &mut Context<Self>) -> impl IntoElement {
-        let (shown, shown_color) = match (self.composer.text(), &self.session) {
-            ("", Ok(_)) => ("Message Vivianne…".to_owned(), theme::MUTED),
-            ("", Err(problem)) => (problem.clone(), theme::DANGER),
-            (text, _) => (
-                format!("{text}{}", if focused { "▏" } else { "" }),
-                theme::TEXT,
-            ),
-        };
-        let input = div()
-            .id("composer")
-            .track_focus(&self.focus)
-            .on_key_down(cx.listener(|chat, event, _window, cx| chat.on_key(event, cx)))
-            .flex_1()
-            .max_h(px(220.0))
-            .overflow_hidden()
-            .text_color(color(shown_color))
-            .child(shown);
-        let send = div()
-            .id("send")
-            .cursor_pointer()
-            .px(px(12.0))
-            .py(px(6.0))
-            .rounded(px(theme::RADIUS_CONTROL))
-            .bg(color(theme::ACCENT))
-            .on_click(cx.listener(|chat, _event, _window, cx| chat.send(cx)))
-            .child("Send");
+    fn composer(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let send = Button::new("send")
+            .primary()
+            .label("Send")
+            .on_click(cx.listener(|chat, _event, window, cx| chat.send(window, cx)));
         div()
             .px(px(theme::SIDE_PAD))
             .pb(px(16.0))
@@ -198,33 +184,25 @@ impl ChatView {
                     .flex()
                     .items_end()
                     .gap(px(10.0))
-                    .p(px(12.0))
-                    .rounded(px(theme::RADIUS_SURFACE))
-                    .border_1()
-                    .border_color(color(theme::BORDER))
-                    .bg(color(theme::SURFACE))
-                    .child(input)
+                    .child(div().flex_1().child(Textarea::new(&self.input)))
                     .child(send),
             )
     }
 }
 
 impl Focusable for ChatView {
-    fn focus_handle(&self, _cx: &gpui::App) -> FocusHandle {
-        self.focus.clone()
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.input.read(cx).focus_handle(cx)
     }
 }
 
 impl Render for ChatView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Content is measured one frame after it changes, so keep scrolling to the
-        // bottom for a few frames after every update.
         if self.pin_frames > 0 {
             self.pin_frames -= 1;
             self.scroll.scroll_to_bottom();
             window.request_animation_frame();
         }
-        let focused = self.focus.is_focused(window);
         div()
             .size_full()
             .flex()
@@ -234,6 +212,6 @@ impl Render for ChatView {
             .text_size(px(14.0))
             .child(self.header())
             .child(self.transcript())
-            .child(self.composer_box(focused, cx))
+            .child(self.composer(cx))
     }
 }

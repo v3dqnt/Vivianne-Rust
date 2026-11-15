@@ -39,7 +39,11 @@ should. One earlier run of `echo ... && ver` did not show the `ver` output; not 
 Drawing the grid is plain text drawing, which (a) shows is fast enough. Input, resize, colours and
 scrollback are not exercised yet.
 
-## (d) GPUI Kit: PASS, recommended for adoption
+## (d) GPUI Kit: PASS, adopted (see ADR 0016)
+
+Adopted 2026-11-15: the shell now runs on Kit. Spikes (b) and (c) were re-run on Kit's snapshot and
+still pass. The (a) transcript spike was removed; the real chat view replaced it. The sections below are
+the original spike notes.
 
 `gpui-kit` 0.9.1 (Apache-2.0, built on `gpui-component`, by Longbridge). Isolated crate
 `crates/spike-kit`; it depends on its own GPUI snapshot, `gpui-pre` 0.3.12 (zed `d2a4fb6`), not the

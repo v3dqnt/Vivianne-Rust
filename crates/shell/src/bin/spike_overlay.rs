@@ -7,9 +7,10 @@
 use std::ffi::c_void;
 use std::time::Duration;
 
-use gpui::{
-    App, Application, Bounds, Context, Window, WindowBackgroundAppearance, WindowBounds,
-    WindowKind, WindowOptions, div, prelude::*, px, rgba, size,
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    Bounds, Context, Window, WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions,
+    div, px, rgba, size,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use windows::Win32::Foundation::{HWND, POINT, RECT};
@@ -78,7 +79,7 @@ fn apply_and_check(hwnd: HWND) -> String {
 }
 
 fn main() {
-    Application::new().run(|cx: &mut App| {
+    gpui_kit::application().run(|cx| {
         let bounds = Bounds::centered(None, size(px(400.0), px(400.0)), cx);
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -105,7 +106,7 @@ fn main() {
             println!("{report}");
             // Leave it up a few seconds so it can be looked at.
             cx.background_executor().timer(Duration::from_secs(4)).await;
-            cx.update(|cx| cx.quit()).ok();
+            cx.update(|cx| cx.quit());
         })
         .detach();
     });

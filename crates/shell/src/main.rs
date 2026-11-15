@@ -9,10 +9,8 @@ mod theme;
 
 use std::sync::Arc;
 
-use gpui::{
-    App, Application, Bounds, Focusable, TitlebarOptions, WindowBounds, WindowOptions, prelude::*,
-    px, size,
-};
+use gpui_kit::prelude::*;
+use gpui_kit::{Bounds, Focusable, TitlebarOptions, WindowBounds, WindowOptions, px, size};
 use tokio::runtime::Runtime;
 use vivianne_providers::{Provider, env};
 use vivianne_runtime::{Agent, CODING_SYSTEM_PROMPT};
@@ -34,7 +32,9 @@ fn main() {
         Err(problem) => (Err(setup_hint(&problem)), "not configured".to_owned()),
     };
 
-    Application::new().run(move |cx: &mut App| {
+    gpui_kit::application().run(move |cx| {
+        gpui_kit::init(cx);
+        theme::apply(cx);
         let bounds = Bounds::centered(None, size(px(1000.0), px(560.0)), cx);
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -44,9 +44,9 @@ fn main() {
             }),
             ..Default::default()
         };
-        let opened = cx.open_window(options, |window, cx| {
-            let chat = cx.new(|cx| ChatView::new(session, model, cx));
-            window.focus(&chat.focus_handle(cx));
+        let opened = gpui_kit::open_window(options, cx, |window, cx| {
+            let chat = cx.new(|cx| ChatView::new(session, model, window, cx));
+            window.focus(&chat.focus_handle(cx), cx);
             chat
         });
         if let Err(error) = opened {

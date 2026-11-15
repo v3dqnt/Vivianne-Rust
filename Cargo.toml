@@ -1,4 +1,4 @@
-[workspace]
+﻿[workspace]
 resolver = "2"
 members = [
     "crates/core",
@@ -9,7 +9,6 @@ members = [
     "crates/app-api",
     "crates/cli",
     "crates/shell",
-    "crates/spike-kit",
 ]
 
 [workspace.package]
