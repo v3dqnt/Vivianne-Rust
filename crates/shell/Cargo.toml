@@ -1,0 +1,21 @@
+[package]
+name = "vivianne-shell"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "vivianne"
+path = "src/main.rs"
+
+[dependencies]
+vivianne-core.workspace = true
+vivianne-runtime.workspace = true
+vivianne-plugins.workspace = true
+vivianne-app-api.workspace = true
+# gpui is added in the Phase 1 spike, pinned to one exact version (ADR 0016).
+
+[lints]
+workspace = true

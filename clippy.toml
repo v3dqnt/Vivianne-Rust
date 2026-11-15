@@ -1,0 +1,4 @@
+doc-valid-idents = ["OpenAI", "GPUI", "SQLite", ".."]
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+too-many-lines-threshold = 120

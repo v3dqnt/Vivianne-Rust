@@ -1,0 +1,29 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.96.0
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+      - name: every folder has a README.md
+        shell: bash
+        run: |
+          missing=$(find . -type d -not -path './.git' -not -path './.git/*' -not -path './target*' \
+            -exec test ! -f '{}/README.md' \; -print)
+          if [ -n "$missing" ]; then echo "$missing"; exit 1; fi
+      - name: file size gate (600 lines)
+        shell: bash
+        run: |
+          bad=$(find crates -name '*.rs' -exec awk 'END{if(NR>600)print FILENAME": "NR}' {} \;)
+          if [ -n "$bad" ]; then echo "$bad"; exit 1; fi
