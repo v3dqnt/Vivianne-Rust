@@ -25,9 +25,10 @@ pub const TEXT: u32 = 0xe7e8ea;
 pub const MUTED: u32 = 0x8e94a0;
 /// The one accent.
 pub const ACCENT: u32 = 0x4a82e6;
-const ACCENT_HOVER: u32 = 0x6a98ec;
+pub const ACCENT_HOVER: u32 = 0x6a98ec;
 const ACCENT_ACTIVE: u32 = 0x3b6dc7;
-const ON_ACCENT: u32 = 0xffffff;
+/// Text and icons on the accent.
+pub const ON_ACCENT: u32 = 0xffffff;
 pub const OK: u32 = 0x3fb56b;
 pub const DANGER: u32 = 0xe5534b;
 
@@ -35,6 +36,9 @@ pub const DANGER: u32 = 0xe5534b;
 pub const RADIUS_CONTROL: f32 = 6.0;
 /// Cards, bubbles, code blocks.
 pub const RADIUS_SURFACE: f32 = 10.0;
+/// The composer, the main thing you touch: rounder than a card, not a pill.
+/// GPUI has no corner smoothing, so this is a plain circular arc.
+pub const RADIUS_COMPOSER: f32 = 16.0;
 
 /// Gap between transcript rows.
 pub const GAP: f32 = 14.0;

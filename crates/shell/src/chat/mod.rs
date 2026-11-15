@@ -1,34 +1,34 @@
-//! The chat screen: header, transcript, composer.
+//! The chat screen: transcript (or the empty state), composer, status line.
 
+mod composer;
 mod items;
 mod session;
 mod transcript;
 
-use gpui_kit::component::IconName;
-use gpui_kit::component::button::{Button, ButtonVariants};
-use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
+use std::path::PathBuf;
+
+use gpui_kit::component::input::InputEvent;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, Context, Entity, FocusHandle, Focusable, FontWeight, ScrollHandle, Subscription, Window,
-    div, px,
+    App, Context, FocusHandle, Focusable, FontWeight, PathPromptOptions, ScrollHandle,
+    Subscription, Window, div, px,
 };
 
 use crate::theme::{self, color};
+use composer::{Composer, Thinking, compose_message, display_message};
 use items::{Item, apply};
 use session::{Finished, Run, Session};
 
 pub use session::Session as ChatSession;
 
 const PLACEHOLDER: &str = "Message Vivianne…";
-/// The composer grows with its text up to this many rows.
-const COMPOSER_MAX_ROWS: usize = 8;
 /// Content is measured one frame after it changes, so keep scrolling to the
 /// bottom for a few frames after every update.
 const PIN_FRAMES: u8 = 10;
 
 pub struct ChatView {
     items: Vec<Item>,
-    input: Entity<TextareaState>,
+    composer: Composer,
     scroll: ScrollHandle,
     /// `Err` holds what is wrong with the setup, shown as the composer hint.
     session: Result<Session, String>,
@@ -38,7 +38,7 @@ pub struct ChatView {
     running: bool,
     /// Frames left in which to keep the transcript scrolled to the bottom.
     pin_frames: u8,
-    _enter_to_send: Subscription,
+    _input_events: Subscription,
 }
 
 /// Starting points shown before the first message. Picking one fills the composer.
@@ -60,27 +60,29 @@ impl ChatView {
             Ok(_) => PLACEHOLDER.to_owned(),
             Err(problem) => problem.clone(),
         };
-        let input = cx.new(|cx| {
-            TextareaState::new(window, cx)
-                .auto_grow(1, COMPOSER_MAX_ROWS)
-                .submit_on_enter(true)
-                .placeholder(hint)
-        });
-        let enter_to_send = cx.subscribe_in(&input, window, |chat, _input, event, window, cx| {
-            if let InputEvent::PressEnter { .. } = event {
-                chat.send(window, cx);
-            }
-        });
+        let composer = Composer::new(hint, window, cx);
+        let input_events = cx.subscribe_in(
+            &composer.input,
+            window,
+            |chat, _input, event, window, cx| {
+                match event {
+                    InputEvent::PressEnter { .. } => chat.send(window, cx),
+                    // The send button's enabled state follows the text.
+                    InputEvent::Change => cx.notify(),
+                    _ => {}
+                }
+            },
+        );
         Self {
             items: Vec::new(),
-            input,
+            composer,
             scroll: ScrollHandle::new(),
             session,
             model,
             project,
             running: false,
             pin_frames: 0,
-            _enter_to_send: enter_to_send,
+            _input_events: input_events,
         }
     }
 
@@ -91,15 +93,19 @@ impl ChatView {
         let Ok(session) = self.session.as_mut() else {
             return;
         };
-        let text = self.input.read(cx).value().trim().to_owned();
-        if text.is_empty() {
+        let text = self.composer.input.read(cx).value().to_string();
+        let files = &self.composer.attachments;
+        if text.trim().is_empty() && files.is_empty() {
             return;
         }
-        let Some(run) = session.send(text.clone()) else {
+        let Some(run) = session.send(compose_message(&text, files)) else {
             return;
         };
-        self.input.update(cx, |input, cx| input.clean(window, cx));
-        self.items.push(Item::User(text));
+        self.items.push(Item::User(display_message(&text, files)));
+        self.composer.attachments.clear();
+        self.composer
+            .input
+            .update(cx, |input, cx| input.clean(window, cx));
         self.running = true;
         self.pin_frames = PIN_FRAMES;
         let Run { mut events, done } = run;
@@ -130,6 +136,54 @@ impl ChatView {
         {
             self.items.push(Item::Notice(format!("Error: {error}")));
         }
+        cx.notify();
+    }
+
+    /// Stop the run in progress.
+    fn cancel(&mut self, cx: &mut Context<Self>) {
+        if !self.running {
+            return;
+        }
+        if let Ok(session) = self.session.as_mut() {
+            session.cancel();
+        }
+        self.running = false;
+        self.pin_frames = PIN_FRAMES;
+        self.items.push(Item::Notice("Stopped.".to_owned()));
+        cx.notify();
+    }
+
+    /// Open the system file picker and attach what is chosen.
+    fn pick_files(cx: &mut Context<Self>) {
+        let chosen = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: true,
+            prompt: Some("Attach".into()),
+        });
+        cx.spawn(async move |this, cx| {
+            if let Ok(Ok(Some(paths))) = chosen.await {
+                this.update(cx, |chat, cx| chat.attach_paths(&paths, cx))
+                    .ok();
+            }
+        })
+        .detach();
+    }
+
+    fn attach_paths(&mut self, paths: &[PathBuf], cx: &mut Context<Self>) {
+        self.composer.attach(paths);
+        cx.notify();
+    }
+
+    fn remove_attachment(&mut self, index: usize, cx: &mut Context<Self>) {
+        if index < self.composer.attachments.len() {
+            self.composer.attachments.remove(index);
+            cx.notify();
+        }
+    }
+
+    fn set_thinking(&mut self, level: Thinking, cx: &mut Context<Self>) {
+        self.composer.thinking = level;
         cx.notify();
     }
 
@@ -211,9 +265,10 @@ impl ChatView {
     }
 
     fn prefill(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
-        self.input
+        self.composer
+            .input
             .update(cx, |input, cx| input.set_value(text, window, cx));
-        window.focus(&self.input.read(cx).focus_handle(cx), cx);
+        window.focus(&self.composer.input.read(cx).focus_handle(cx), cx);
     }
 
     fn transcript(&self) -> impl IntoElement {
@@ -242,33 +297,11 @@ impl ChatView {
             .items_center()
             .child(column)
     }
-
-    fn composer(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let send = Button::new("send")
-            .primary()
-            .icon(IconName::ArrowUp)
-            .on_click(cx.listener(|chat, _event, window, cx| chat.send(window, cx)));
-        div()
-            .px(px(theme::SIDE_PAD))
-            .pb(px(16.0))
-            .flex()
-            .justify_center()
-            .child(
-                div()
-                    .w_full()
-                    .max_w(px(theme::COLUMN_MAX))
-                    .flex()
-                    .items_end()
-                    .gap(px(10.0))
-                    .child(div().flex_1().child(Textarea::new(&self.input)))
-                    .child(send),
-            )
-    }
 }
 
 impl Focusable for ChatView {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
-        self.input.read(cx).focus_handle(cx)
+        self.composer.input.read(cx).focus_handle(cx)
     }
 }
 
@@ -291,7 +324,7 @@ impl Render for ChatView {
             } else {
                 self.transcript().into_any_element()
             })
-            .child(self.composer(cx))
+            .child(composer::render(self, window, cx))
             .child(self.status_line())
     }
 }
