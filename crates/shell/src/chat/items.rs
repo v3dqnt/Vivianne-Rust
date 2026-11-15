@@ -1,17 +1,19 @@
 //! What the transcript shows, and how agent events change it. No GPUI here,
 //! so all of this is unit tested.
 
+use serde_json::Value;
 use vivianne_runtime::AgentEvent;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ToolItem {
     pub id: String,
     pub name: String,
-    /// The arguments, shown on one line.
-    pub summary: String,
+    pub args: Value,
     /// `None` while the tool is still running.
     pub output: Option<String>,
     pub is_error: bool,
+    /// What the tool reported beyond its text (the original tools' `details`).
+    pub details: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -32,14 +34,16 @@ pub fn apply(items: &mut Vec<Item>, event: &AgentEvent) {
         AgentEvent::ToolStart { id, name, args } => items.push(Item::Tool(ToolItem {
             id: id.clone(),
             name: name.clone(),
-            summary: args.to_string(),
+            args: args.clone(),
             output: None,
             is_error: false,
+            details: None,
         })),
         AgentEvent::ToolEnd {
             id,
             output,
             is_error,
+            details,
             ..
         } => {
             let running = items.iter_mut().rev().find_map(|item| match item {
@@ -49,6 +53,7 @@ pub fn apply(items: &mut Vec<Item>, event: &AgentEvent) {
             if let Some(tool) = running {
                 tool.output = Some(output.clone());
                 tool.is_error = *is_error;
+                tool.details.clone_from(details);
             }
         }
         AgentEvent::StepLimit => {
@@ -67,17 +72,18 @@ mod tests {
     fn tool_start(id: &str) -> AgentEvent {
         AgentEvent::ToolStart {
             id: id.into(),
-            name: "shell".into(),
-            args: json!({"command": "ls"}),
+            name: "grep".into(),
+            args: json!({"pattern": "x"}),
         }
     }
 
     fn tool_end(id: &str, output: &str, is_error: bool) -> AgentEvent {
         AgentEvent::ToolEnd {
             id: id.into(),
-            name: "shell".into(),
+            name: "grep".into(),
             output: output.into(),
             is_error,
+            details: Some(json!({"matches": 1})),
         }
     }
 
@@ -103,7 +109,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_end_fills_in_the_matching_tool() {
+    fn tool_end_fills_in_the_matching_tool_with_its_details() {
         let mut items = Vec::new();
         apply(&mut items, &tool_start("1"));
         apply(&mut items, &tool_start("2"));
@@ -118,7 +124,9 @@ mod tests {
             (first.output.as_deref(), first.is_error),
             (Some("boom"), true)
         );
+        assert_eq!(first.details, Some(json!({"matches": 1})));
         assert_eq!(second.output, None);
+        assert_eq!(first.args["pattern"], "x");
     }
 
     #[test]

@@ -6,7 +6,7 @@ use futures::StreamExt;
 use tokio::sync::mpsc::UnboundedSender;
 use vivianne_core::{Message, ToolCall};
 use vivianne_providers::{ChatEvent, ChatRequest, Provider, ProviderError, ToolSpec};
-use vivianne_tools::Toolbox;
+use vivianne_tools::{ToolResult, Toolbox};
 
 use crate::AgentEvent;
 
@@ -112,13 +112,19 @@ impl Agent {
                 args: call.args.clone(),
             },
         );
-        let result = match self.tools.get(&call.name) {
-            Some(tool) => tool.call(&call.args).await.map_err(|e| e.to_string()),
-            None => Err(format!("unknown tool `{}`", call.name)),
-        };
-        let (output, is_error) = match result {
-            Ok(output) => (output, false),
-            Err(message) => (format!("error: {message}"), true),
+        let result = self
+            .tools
+            .execute(&call.name, &call.args)
+            .await
+            .unwrap_or_else(|| ToolResult {
+                content: format!("unknown tool `{}`", call.name),
+                is_error: true,
+                details: None,
+            });
+        let output = if result.is_error {
+            format!("error: {}", result.content)
+        } else {
+            result.content
         };
         send(
             events,
@@ -126,7 +132,8 @@ impl Agent {
                 id: call.id.clone(),
                 name: call.name.clone(),
                 output: output.clone(),
-                is_error,
+                is_error: result.is_error,
+                details: result.details,
             },
         );
         Message::tool_result(&call.id, output)
@@ -139,11 +146,12 @@ impl Agent {
             messages: history.to_vec(),
             tools: self
                 .tools
-                .iter()
-                .map(|t| ToolSpec {
-                    name: t.name().to_owned(),
-                    description: t.description().to_owned(),
-                    parameters: t.parameters(),
+                .definitions()
+                .into_iter()
+                .map(|d| ToolSpec {
+                    name: d.name,
+                    description: d.description,
+                    parameters: d.parameters,
                 })
                 .collect(),
         }
@@ -165,7 +173,7 @@ mod tests {
     use tokio::sync::mpsc::unbounded_channel;
     use vivianne_core::Role;
     use vivianne_providers::EventStream;
-    use vivianne_tools::{Tool, ToolError};
+    use vivianne_tools::Tool;
 
     use super::*;
 
@@ -208,14 +216,12 @@ mod tests {
         fn name(&self) -> &'static str {
             "echo"
         }
-        fn description(&self) -> &'static str {
-            "echo"
-        }
-        fn parameters(&self) -> Value {
-            json!({"type": "object"})
-        }
-        async fn call(&self, args: &Value) -> Result<String, ToolError> {
-            Ok(args["say"].as_str().unwrap_or_default().to_owned())
+        async fn execute(&self, args: &Value, _cwd: &str) -> ToolResult {
+            ToolResult {
+                content: args["say"].as_str().unwrap_or_default().to_owned(),
+                is_error: false,
+                details: None,
+            }
         }
     }
 
@@ -228,7 +234,7 @@ mod tests {
     }
 
     fn agent(provider: Arc<Scripted>) -> Agent {
-        let mut tools = Toolbox::default();
+        let mut tools = Toolbox::new(std::path::Path::new("."));
         tools.add(Echo);
         Agent::new(provider, "m", None, tools)
     }

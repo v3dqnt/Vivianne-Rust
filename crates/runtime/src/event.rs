@@ -14,6 +14,8 @@ pub enum AgentEvent {
         name: String,
         output: String,
         is_error: bool,
+        /// What the tool tells the UI beyond its text (the original tools' `details`).
+        details: Option<serde_json::Value>,
     },
     /// The step ceiling was hit before the model finished.
     StepLimit,

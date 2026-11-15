@@ -1,4 +1,6 @@
-//! Run a shell command in the workspace with a timeout.
+#![allow(clippy::pedantic, missing_debug_implementations)] // stand-in: mirrors the original signatures
+//! Stand-in `shell`: run a command in the project folder with a timeout.
+//! Replaced by the original `bash` and `powershell` tools later.
 
 use std::process::Stdio;
 use std::time::Duration;
@@ -7,7 +9,8 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use tokio::process::Command;
 
-use crate::{Tool, ToolError, Workspace, string_arg};
+use crate::simple::{SimpleOutput, SimpleTool, ToolError, string_arg};
+use crate::workspace::Workspace;
 
 const DEFAULT_TIMEOUT_SECS: u64 = 120;
 const MAX_TIMEOUT_SECS: u64 = 600;
@@ -26,31 +29,12 @@ impl Shell {
 }
 
 #[async_trait]
-impl Tool for Shell {
-    fn name(&self) -> &'static str {
+impl SimpleTool for Shell {
+    fn name(&self) -> &str {
         "shell"
     }
 
-    fn description(&self) -> &'static str {
-        if cfg!(windows) {
-            "Run a PowerShell command in the project folder. Returns exit code and output."
-        } else {
-            "Run a sh command in the project folder. Returns exit code and output."
-        }
-    }
-
-    fn parameters(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "command": {"type": "string"},
-                "timeout_secs": {"type": "integer", "description": "default 120, max 600"}
-            },
-            "required": ["command"]
-        })
-    }
-
-    async fn call(&self, args: &Value) -> Result<String, ToolError> {
+    async fn call(&self, args: &Value) -> Result<SimpleOutput, ToolError> {
         let command = string_arg(args, "command")?;
         let secs = args["timeout_secs"]
             .as_u64()
@@ -67,11 +51,11 @@ impl Tool for Shell {
             .map_err(|e| ToolError::Failed(e.to_string()))?;
         let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
         text.push_str(&String::from_utf8_lossy(&output.stderr));
-        Ok(format!(
-            "exit {}\n{}",
-            output.status.code().unwrap_or(-1),
-            truncate(text)
-        ))
+        let exit_code = output.status.code();
+        Ok(SimpleOutput {
+            text: format!("exit {}\n{}", exit_code.unwrap_or(-1), truncate(text)),
+            details: Some(json!({"command": command, "exit_code": exit_code})),
+        })
     }
 }
 
@@ -102,6 +86,7 @@ fn truncate(mut text: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::builtin::Tool;
 
     fn shell() -> Shell {
         Shell::new(Workspace::new(&std::env::temp_dir()))
@@ -109,20 +94,16 @@ mod tests {
 
     #[tokio::test]
     async fn runs_a_command_and_reports_exit_code() {
-        let out = shell()
-            .call(&json!({"command": "echo hello"}))
-            .await
-            .unwrap();
-        assert!(out.starts_with("exit 0"), "{out}");
-        assert!(out.contains("hello"), "{out}");
+        let out = shell().execute(&json!({"command": "echo hello"}), "").await;
+        assert!(!out.is_error);
+        assert!(out.content.starts_with("exit 0"), "{}", out.content);
+        assert!(out.content.contains("hello"), "{}", out.content);
+        assert_eq!(out.details.unwrap()["exit_code"], 0);
     }
 
     #[tokio::test]
-    async fn missing_command_is_a_bad_args_error() {
-        assert!(matches!(
-            shell().call(&json!({})).await,
-            Err(ToolError::BadArgs(_))
-        ));
+    async fn missing_command_is_an_error_result() {
+        assert!(shell().execute(&json!({}), "").await.is_error);
     }
 
     #[test]

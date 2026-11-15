@@ -3,8 +3,10 @@
 mod composer;
 mod items;
 mod session;
+mod toolcalls;
 mod transcript;
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use gpui_kit::component::input::InputEvent;
@@ -36,6 +38,8 @@ pub struct ChatView {
     /// Name of the project folder, shown on the empty screen.
     project: String,
     running: bool,
+    /// Tool calls the user has folded shut, by id.
+    folded_tools: HashSet<String>,
     /// Frames left in which to keep the transcript scrolled to the bottom.
     pin_frames: u8,
     _input_events: Subscription,
@@ -81,6 +85,7 @@ impl ChatView {
             model,
             project,
             running: false,
+            folded_tools: HashSet::new(),
             pin_frames: 0,
             _input_events: input_events,
         }
@@ -182,6 +187,14 @@ impl ChatView {
         }
     }
 
+    /// Fold or unfold one tool call's output.
+    fn toggle_tool(&mut self, id: &str, cx: &mut Context<Self>) {
+        if !self.folded_tools.remove(id) {
+            self.folded_tools.insert(id.to_owned());
+        }
+        cx.notify();
+    }
+
     fn set_thinking(&mut self, level: Thinking, cx: &mut Context<Self>) {
         self.composer.thinking = level;
         cx.notify();
@@ -271,19 +284,17 @@ impl ChatView {
         window.focus(&self.composer.input.read(cx).focus_handle(cx), cx);
     }
 
-    fn transcript(&self) -> impl IntoElement {
-        let column = div()
-            .w_full()
-            .max_w(px(theme::COLUMN_MAX))
-            .flex()
-            .flex_col()
-            .gap(px(theme::GAP))
-            .children(
-                self.items
-                    .iter()
-                    .enumerate()
-                    .map(|(index, item)| transcript::render_item(index, item)),
-            );
+    fn transcript(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let column =
+            div()
+                .w_full()
+                .max_w(px(theme::COLUMN_MAX))
+                .flex()
+                .flex_col()
+                .gap(px(theme::GAP))
+                .children(self.items.iter().enumerate().map(|(index, item)| {
+                    transcript::render_item(index, item, &self.folded_tools, cx)
+                }));
         div()
             .id("transcript")
             .flex_1()
@@ -322,7 +333,7 @@ impl Render for ChatView {
             .child(if self.items.is_empty() {
                 self.empty_state(cx).into_any_element()
             } else {
-                self.transcript().into_any_element()
+                self.transcript(cx).into_any_element()
             })
             .child(composer::render(self, window, cx))
             .child(self.status_line())

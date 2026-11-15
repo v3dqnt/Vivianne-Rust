@@ -1,39 +1,47 @@
-//! Agent tools. Each tool describes itself (name, description, JSON schema)
-//! and runs from JSON arguments. Desktop control (`dip`) and the browser arrive later.
+//! Agent tools. The read-and-search tools (`read`, `ls`, `grep`, `glob`,
+//! `code_search`, `repo_clone`, `repo_overview`, `diagnostics`, `lsp`) are Vivianne's originals,
+//! copied as they were (see the README here). `shell`, `write` and `edit` are
+//! simple stand-ins until their originals are copied too.
+//!
+//! A tool is `name` + `execute(args, cwd) -> ToolResult`; the model-facing
+//! definitions live in `schemas`, exactly as in the original app.
 
-mod files;
+// The copied modules are marked `rustfmt::skip` so formatting never touches them.
+#[rustfmt::skip]
+pub mod builtin;
+#[rustfmt::skip]
+pub mod code;
+#[rustfmt::skip]
+pub mod files;
+#[rustfmt::skip]
+mod lsp;
+#[rustfmt::skip]
+mod lsp_nav;
+mod ocr;
+pub mod schemas;
+
+mod files_simple;
 mod shell;
+mod simple;
 mod workspace;
 
 use std::path::Path;
 
-use async_trait::async_trait;
 use serde_json::Value;
 
-pub use files::{EditFile, ReadFile, WriteFile};
-pub use shell::Shell;
-pub use workspace::Workspace;
+pub use builtin::{Tool, ToolResult};
 
-#[derive(Debug, thiserror::Error)]
-pub enum ToolError {
-    #[error("bad arguments: {0}")]
-    BadArgs(String),
-    #[error("{0}")]
-    Failed(String),
+/// A tool as the model sees it.
+#[derive(Debug, Clone)]
+pub struct ToolDef {
+    pub name: String,
+    pub description: String,
+    pub parameters: Value,
 }
 
-#[async_trait]
-pub trait Tool: Send + Sync {
-    fn name(&self) -> &str;
-    fn description(&self) -> &str;
-    /// JSON Schema of the arguments.
-    fn parameters(&self) -> Value;
-    async fn call(&self, args: &Value) -> Result<String, ToolError>;
-}
-
-/// The set of tools one agent may use.
-#[derive(Default)]
+/// The set of tools one agent may use, and the folder they work in.
 pub struct Toolbox {
+    cwd: String,
     tools: Vec<Box<dyn Tool>>,
 }
 
@@ -46,15 +54,33 @@ impl std::fmt::Debug for Toolbox {
 }
 
 impl Toolbox {
-    /// Shell plus file read/write/edit, all confined to `root`.
+    /// An empty box working in `cwd`.
+    #[must_use]
+    pub fn new(cwd: &Path) -> Self {
+        Self {
+            cwd: cwd.to_string_lossy().into_owned(),
+            tools: Vec::new(),
+        }
+    }
+
+    /// The coding tools, working in `root`.
     #[must_use]
     pub fn coding(root: &Path) -> Self {
-        let ws = Workspace::new(root);
-        let mut toolbox = Self::default();
-        toolbox.add(Shell::new(ws.clone()));
-        toolbox.add(ReadFile::new(ws.clone()));
-        toolbox.add(WriteFile::new(ws.clone()));
-        toolbox.add(EditFile::new(ws));
+        let mut toolbox = Self::new(root);
+        let cwd = toolbox.cwd.clone();
+        let workspace = workspace::Workspace::new(root);
+        toolbox.add(builtin::ReadTool::new(cwd.clone()));
+        toolbox.add(builtin::LsTool::new(cwd.clone()));
+        toolbox.add(builtin::GrepTool::new(cwd.clone()));
+        toolbox.add(builtin::CodeSearchTool::new(cwd.clone()));
+        toolbox.add(builtin::GlobTool::new(cwd.clone()));
+        toolbox.add(code::repo_tools::RepoCloneTool::new());
+        toolbox.add(code::repo_tools::RepoOverviewTool::new(cwd.clone()));
+        toolbox.add(builtin::DiagnosticsTool::new(cwd.clone()));
+        toolbox.add(lsp_nav::LspTool::new(cwd));
+        toolbox.add(shell::Shell::new(workspace.clone()));
+        toolbox.add(files_simple::WriteFile::new(workspace.clone()));
+        toolbox.add(files_simple::EditFile::new(workspace));
         toolbox
     }
 
@@ -62,18 +88,71 @@ impl Toolbox {
         self.tools.push(Box::new(tool));
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &dyn Tool> {
-        self.tools.iter().map(AsRef::as_ref)
-    }
-
     #[must_use]
     pub fn get(&self, name: &str) -> Option<&dyn Tool> {
-        self.iter().find(|t| t.name() == name)
+        self.tools
+            .iter()
+            .find(|t| t.name() == name)
+            .map(AsRef::as_ref)
+    }
+
+    /// Run the named tool, or `None` if there is no such tool.
+    pub async fn execute(&self, name: &str, args: &Value) -> Option<ToolResult> {
+        let tool = self.get(name)?;
+        Some(tool.execute(args, &self.cwd).await)
+    }
+
+    /// The definitions of the tools in this box, in the order they were added.
+    #[must_use]
+    pub fn definitions(&self) -> Vec<ToolDef> {
+        let originals = schemas::definitions();
+        let own = simple::definitions();
+        self.tools
+            .iter()
+            .filter_map(|tool| {
+                let found = originals
+                    .iter()
+                    .chain(own.iter())
+                    .find(|d| d["name"] == tool.name())?;
+                Some(ToolDef {
+                    name: tool.name().to_owned(),
+                    description: found["description"].as_str().unwrap_or_default().to_owned(),
+                    parameters: found["parameters"].clone(),
+                })
+            })
+            .collect()
     }
 }
 
-pub(crate) fn string_arg<'a>(args: &'a Value, key: &str) -> Result<&'a str, ToolError> {
-    args[key]
-        .as_str()
-        .ok_or_else(|| ToolError::BadArgs(format!("`{key}` must be a string")))
+// The copied code refers to the original app's module paths. These re-exports
+// and the small stand-ins below make those paths resolve without editing it.
+pub mod agent {
+    pub mod orchestration;
+    pub mod thread_msgs;
+
+    pub mod tools {
+        pub use crate::{builtin, code, files};
+
+        pub mod desktop {
+            pub(crate) use crate::ocr;
+        }
+
+        pub mod exec;
+    }
+
+    pub mod system {
+        pub mod paths;
+    }
+
+    pub mod runtime {
+        pub mod commands;
+        #[rustfmt::skip]
+        pub mod streaming;
+    }
 }
+
+pub mod ai;
+pub mod mods;
+#[rustfmt::skip]
+pub mod proc;
+mod tauri;

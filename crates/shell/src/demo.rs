@@ -10,9 +10,8 @@ use serde_json::json;
 use vivianne_core::{Role, ToolCall};
 use vivianne_providers::{ChatEvent, ChatRequest, EventStream, Provider, ProviderError};
 
-const OPENING: &str = "I'll check the project folder first.\n\n```sh\nls\n```\n\nRunning it now.";
-const CLOSING: &str = "Done. The folder lists the workspace crates, docs and config files. \
-Nothing needed changing.";
+const OPENING: &str = "I'll look around the project first.";
+const CLOSING: &str = "That is the lay of the land: a Rust workspace with a native shell, an agent runtime and the tools.";
 const PIECE_CHARS: usize = 6;
 const PIECE_DELAY: Duration = Duration::from_millis(25);
 
@@ -32,11 +31,26 @@ impl Provider for Demo {
             .is_some_and(|m| m.role == Role::Tool);
         let mut events = pieces(if after_tool { CLOSING } else { OPENING });
         if !after_tool {
-            events.push(ChatEvent::ToolCall(ToolCall {
-                id: "demo-1".to_owned(),
-                name: "shell".to_owned(),
-                args: json!({"command": "ls"}),
-            }));
+            let tour = [
+                ("read", json!({"path": "Cargo.toml", "limit": 30})),
+                ("ls", json!({"path": "crates", "depth": 2})),
+                ("grep", json!({"pattern": "fn main", "path": "crates"})),
+                ("glob", json!({"pattern": "*.toml"})),
+                (
+                    "code_search",
+                    json!({"query": "agent loop that runs tools"}),
+                ),
+                ("repo_overview", json!({"path": ".", "depth": 2})),
+                ("diagnostics", json!({"path": "Cargo.toml"})),
+                ("lsp", json!({"operation": "status"})),
+            ];
+            for (index, (name, args)) in tour.into_iter().enumerate() {
+                events.push(ChatEvent::ToolCall(ToolCall {
+                    id: format!("demo-{index}"),
+                    name: name.to_owned(),
+                    args,
+                }));
+            }
         }
         events.push(ChatEvent::Done);
         let paced = stream::iter(events).then(|event| async move {
