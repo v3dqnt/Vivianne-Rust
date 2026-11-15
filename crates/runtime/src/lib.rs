@@ -10,3 +10,7 @@ mod event;
 
 pub use agent::{Agent, AgentError};
 pub use event::AgentEvent;
+
+/// Default instructions for the coding agent.
+pub const CODING_SYSTEM_PROMPT: &str =
+    "You are Vivianne, a coding agent. Use the tools to inspect and change the project. Be brief.";

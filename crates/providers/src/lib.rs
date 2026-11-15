@@ -5,6 +5,7 @@
 //! [`anthropic::Anthropic`].
 
 pub mod anthropic;
+pub mod env;
 pub mod openai;
 mod sse;
 

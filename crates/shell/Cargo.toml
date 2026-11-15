@@ -24,9 +24,13 @@ path = "src/bin/spike_terminal.rs"
 
 [dependencies]
 vivianne-core.workspace = true
+vivianne-providers.workspace = true
 vivianne-runtime.workspace = true
-vivianne-plugins.workspace = true
-vivianne-app-api.workspace = true
+vivianne-tools.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
 # One exact version, upgraded deliberately (ADR 0016).
 gpui = "=0.2.2"
 raw-window-handle = "0.6"

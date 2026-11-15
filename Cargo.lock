@@ -6249,12 +6249,16 @@ name = "vivianne-shell"
 version = "0.0.1"
 dependencies = [
  "alacritty_terminal",
+ "async-trait",
+ "futures",
  "gpui",
  "raw-window-handle",
- "vivianne-app-api",
+ "serde_json",
+ "tokio",
  "vivianne-core",
- "vivianne-plugins",
+ "vivianne-providers",
  "vivianne-runtime",
+ "vivianne-tools",
  "windows 0.61.3",
 ]
 

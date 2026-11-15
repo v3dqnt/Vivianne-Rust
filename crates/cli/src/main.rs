@@ -1,23 +1,14 @@
 //! Headless chat through the runtime: `viv [prompt]`.
-//! Proves the backend works with no UI. Configuration is by environment:
-//!
-//! - `VIV_MODEL` (required)
-//! - `VIV_PROVIDER`: `anthropic` (default when `ANTHROPIC_API_KEY` is set) or `openai`
-//! - `ANTHROPIC_API_KEY`; `OPENAI_API_KEY` (optional for local servers), `OPENAI_BASE_URL`
+//! Proves the backend works with no UI. Configuration is by environment,
+//! see `vivianne_providers::env`.
 
 use std::io::{BufRead, Write};
-use std::sync::Arc;
 
 use tokio::sync::mpsc::unbounded_channel;
 use vivianne_core::{Message, Role};
-use vivianne_providers::Provider;
-use vivianne_providers::anthropic::Anthropic;
-use vivianne_providers::openai::OpenAiCompatible;
-use vivianne_runtime::{Agent, AgentEvent};
+use vivianne_providers::env;
+use vivianne_runtime::{Agent, AgentEvent, CODING_SYSTEM_PROMPT};
 use vivianne_tools::Toolbox;
-
-const SYSTEM: &str =
-    "You are Vivianne, a coding agent. Use the tools to inspect and change the project. Be brief.";
 
 #[tokio::main]
 async fn main() {
@@ -28,12 +19,12 @@ async fn main() {
 }
 
 async fn run() -> Result<(), String> {
-    let model = std::env::var("VIV_MODEL").map_err(|_| "set VIV_MODEL")?;
+    let model = env::model()?;
     let workdir = std::env::current_dir().map_err(|e| e.to_string())?;
     let agent = Agent::new(
-        provider()?,
+        env::provider()?,
         &model,
-        Some(SYSTEM.to_owned()),
+        Some(CODING_SYSTEM_PROMPT.to_owned()),
         Toolbox::coding(&workdir),
     );
     let mut history = Vec::new();
@@ -49,33 +40,6 @@ async fn run() -> Result<(), String> {
         }
     }
     Ok(())
-}
-
-fn provider() -> Result<Arc<dyn Provider>, String> {
-    let anthropic_key = std::env::var("ANTHROPIC_API_KEY").ok();
-    let wanted = std::env::var("VIV_PROVIDER").unwrap_or_else(|_| {
-        if anthropic_key.is_some() {
-            "anthropic"
-        } else {
-            "openai"
-        }
-        .to_owned()
-    });
-    match wanted.as_str() {
-        "anthropic" => Ok(Arc::new(Anthropic::new(
-            anthropic_key.ok_or("set ANTHROPIC_API_KEY")?,
-        ))),
-        "openai" => {
-            let base = std::env::var("OPENAI_BASE_URL")
-                .unwrap_or_else(|_| "https://api.openai.com/v1".to_owned());
-            Ok(Arc::new(OpenAiCompatible::new(
-                "openai",
-                &base,
-                std::env::var("OPENAI_API_KEY").ok(),
-            )))
-        }
-        other => Err(format!("unknown VIV_PROVIDER `{other}`")),
-    }
 }
 
 async fn ask(agent: &Agent, history: &mut Vec<Message>, prompt: String) -> Result<(), String> {
