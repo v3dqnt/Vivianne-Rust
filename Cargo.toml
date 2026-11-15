@@ -36,7 +36,8 @@ vivianne-plugins = { path = "crates/plugins" }
 vivianne-app-api = { path = "crates/app-api" }
 
 [workspace.lints.rust]
-unsafe_code = "forbid"
+# deny, not forbid: only the shell's Windows glue may opt in with #[allow(unsafe_code)].
+unsafe_code = "deny"
 missing_debug_implementations = "warn"
 
 [workspace.lints.clippy]

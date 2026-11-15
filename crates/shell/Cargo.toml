@@ -10,12 +10,31 @@ rust-version.workspace = true
 name = "vivianne"
 path = "src/main.rs"
 
+[[bin]]
+name = "spike_transcript"
+path = "src/bin/spike_transcript.rs"
+
+[[bin]]
+name = "spike_overlay"
+path = "src/bin/spike_overlay.rs"
+
+[[bin]]
+name = "spike_terminal"
+path = "src/bin/spike_terminal.rs"
+
 [dependencies]
 vivianne-core.workspace = true
 vivianne-runtime.workspace = true
 vivianne-plugins.workspace = true
 vivianne-app-api.workspace = true
-# gpui is added in the Phase 1 spike, pinned to one exact version (ADR 0016).
+# One exact version, upgraded deliberately (ADR 0016).
+gpui = "=0.2.2"
+raw-window-handle = "0.6"
+alacritty_terminal = "0.25"
+
+[target.'cfg(windows)'.dependencies]
+# Same version gpui uses, so nothing extra compiles.
+windows = { version = "0.61.3", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 
 [lints]
 workspace = true
