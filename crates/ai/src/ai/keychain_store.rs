@@ -49,6 +49,12 @@ impl KeychainCredentialStore {
         map.entry(provider_id.to_string()).or_insert_with(|| Arc::new(Mutex::new(()))).clone()
     }
 
+    /// Read one provider's credential without an async runtime (the app's startup reads keys before one is
+    /// running).
+    pub fn read_blocking(provider_id: &str) -> Result<Option<Credential>, String> {
+        Self::read_sync(provider_id)
+    }
+
     fn read_sync(provider_id: &str) -> Result<Option<Credential>, String> {
         let entry = keyring::Entry::new(SERVICE, provider_id).map_err(|e| format!("keyring entry error: {e}"))?;
         match entry.get_password() {

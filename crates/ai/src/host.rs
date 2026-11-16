@@ -4,7 +4,7 @@
 //! memory). The new app keeps them behind this small module so the copied layer has one seam to
 //! the host instead of many.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex, PoisonError};
 
@@ -15,6 +15,7 @@ use tokio::io::AsyncWriteExt;
 
 use crate::ai::auth::{wait_for_state, Credential};
 use crate::ai::env_api_keys::get_env_api_key;
+use crate::ai::keychain_store::KeychainCredentialStore;
 use crate::events::Events;
 use crate::paths::viv_home;
 
@@ -62,10 +63,16 @@ fn settings_path() -> Result<PathBuf, String> {
 }
 
 /// `~/.viv/agent/settings.json`, or an empty object when it is missing or unreadable.
-pub async fn read_settings_json() -> Value {
+#[must_use]
+pub fn settings_blocking() -> Value {
     let Ok(path) = settings_path() else { return json!({}) };
-    let Ok(text) = tokio::fs::read_to_string(path).await else { return json!({}) };
+    let Ok(text) = std::fs::read_to_string(path) else { return json!({}) };
     serde_json::from_str(&text).unwrap_or_else(|_| json!({}))
+}
+
+/// [`settings_blocking`] for async callers.
+pub async fn read_settings_json() -> Value {
+    tokio::task::spawn_blocking(settings_blocking).await.unwrap_or_else(|_| json!({}))
 }
 
 /// Replace `~/.viv/agent/settings.json`.
@@ -85,6 +92,25 @@ fn key_of(credential: Credential) -> Option<String> {
         Credential::ApiKey(key) => key.key,
         Credential::OAuth(oauth) => Some(oauth.access_token),
     }
+}
+
+fn key_in(credential: Credential) -> Option<String> {
+    key_of(credential).filter(|key| !key.trim().is_empty())
+}
+
+/// A key the old Vivianne saved for `provider`: the OS keychain (entry `vivianne`/`provider`) first, then
+/// `~/.viv/agent/auth.json`. Reads without an async runtime.
+#[must_use]
+pub fn stored_api_key(provider: &str) -> Option<String> {
+    let from_keychain = KeychainCredentialStore::read_blocking(provider).ok().flatten().and_then(key_in);
+    from_keychain.or_else(|| key_from_auth_file(provider))
+}
+
+fn key_from_auth_file(provider: &str) -> Option<String> {
+    let path = viv_home().ok()?.join("agent").join("auth.json");
+    let text = std::fs::read_to_string(path).ok()?;
+    let mut credentials: HashMap<String, Credential> = serde_json::from_str(&text).ok()?;
+    credentials.remove(provider).and_then(key_in)
 }
 
 /// The key for `provider`: the stored credential first, then the environment.
@@ -230,6 +256,26 @@ pub mod download {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ai::auth::ApiKeyCredential;
+
+    fn api_key(key: Option<&str>) -> Credential {
+        Credential::ApiKey(ApiKeyCredential { kind: "api_key".into(), key: key.map(str::to_owned), env: None })
+    }
+
+    #[test]
+    fn a_blank_stored_key_is_no_key() {
+        assert_eq!(key_in(api_key(Some("sk-1"))).as_deref(), Some("sk-1"));
+        assert_eq!(key_in(api_key(Some("  "))), None);
+        assert_eq!(key_in(api_key(None)), None);
+    }
+
+    #[test]
+    fn the_old_apps_auth_file_format_parses() {
+        let file = r#"{"openai": {"type": "api_key", "key": "sk-1"}, "x": {"type": "o_auth", "accessToken": "t", "refreshToken": null, "expires": 1}}"#;
+        let parsed: HashMap<String, Credential> = serde_json::from_str(file).unwrap();
+        assert_eq!(parsed.get("openai").cloned().and_then(key_in).as_deref(), Some("sk-1"));
+        assert_eq!(parsed.get("x").cloned().and_then(key_in).as_deref(), Some("t"));
+    }
 
     #[test]
     fn background_work_keeps_the_given_model() {
