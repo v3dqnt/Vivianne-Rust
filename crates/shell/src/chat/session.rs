@@ -43,6 +43,11 @@ impl Session {
         }
     }
 
+    /// Answer from now on with `agent` (another model); the conversation so far is kept.
+    pub fn switch_agent(&mut self, agent: Agent) {
+        self.agent = Arc::new(agent);
+    }
+
     /// Start answering `text`. `None` if a run is already going.
     pub fn send(&mut self, text: String, thinking: Thinking) -> Option<Run> {
         let mut history = self.history.take()?;

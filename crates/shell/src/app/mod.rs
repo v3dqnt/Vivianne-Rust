@@ -8,16 +8,14 @@ use std::sync::Arc;
 use gpui_kit::prelude::*;
 use gpui_kit::{Context, Entity, Focusable, Subscription, Window, div, px};
 use tokio::runtime::Runtime;
+use vivianne_providers::env::Selection;
 
 use crate::agent_setup;
-use crate::chat::ChatView;
+use crate::chat::{ChatHost, ChatView};
 use crate::home::{HomeEvent, HomeView, ThreadRow};
 use crate::rail::Rail;
 use crate::theme::{self, color};
 
-/// Width of the rail beside a chat.
-const RAIL_WIDTH: f32 = 340.0;
-const RAIL_GAP: f32 = 12.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Page {
@@ -70,15 +68,16 @@ impl AppView {
     }
 
     fn new_thread(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let (session, model) = match agent_setup::new_session(&self.runtime, &self.workspace) {
-            Ok((session, model)) => (Ok(session), model),
-            Err(problem) => (Err(problem), "not configured".to_owned()),
+        let (session, selection) = match agent_setup::new_session(&self.runtime, &self.workspace) {
+            Ok((session, selection)) => (Ok(session), selection),
+            Err(problem) => (Err(problem), Selection { provider: String::new(), model: "not configured".to_owned() }),
         };
         let project = self.workspace.file_name().map_or_else(
             || self.workspace.display().to_string(),
             |name| name.to_string_lossy().into_owned(),
         );
-        let chat = cx.new(|cx| ChatView::new(session, model, project, window, cx));
+        let host = ChatHost { runtime: self.runtime.clone(), workspace: self.workspace.clone() };
+        let chat = cx.new(|cx| ChatView::new(session, selection, project, host, window, cx));
         // Redraw the tab title and status whenever the chat changes.
         cx.observe(&chat, |_app, _chat, cx| cx.notify()).detach();
         self.threads.push(Thread { chat });
@@ -153,10 +152,10 @@ impl AppView {
                 if self.rail_open {
                     row = row.child(
                         div()
-                            .w(px(RAIL_WIDTH))
+                            .w(px(crate::rail::WIDTH))
                             .flex_none()
-                            .pr(px(RAIL_GAP))
-                            .pb(px(RAIL_GAP))
+                            .pr(px(crate::rail::GAP))
+                            .pb(px(crate::rail::GAP))
                             .child(self.rail.clone()),
                     );
                 }

@@ -1,16 +1,27 @@
 //! The project rail on the right of a chat: Overview, Files, Preview, Terminal.
 
 mod files;
+mod git;
+mod terminal;
 
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::tab::{Tab, TabBar};
-use gpui_kit::component::{Icon, IconName};
+use gpui_kit::component::text::TextView;
+use gpui_kit::component::{Icon, IconName, Sizable as _};
 use gpui_kit::prelude::*;
-use gpui_kit::{Context, Window, div, px};
+use gpui_kit::{ClipboardItem, Context, Entity, SharedString, Window, div, img, px};
 
+use self::files::Content;
+use self::git::{ChangeKind, Snapshot};
+use self::terminal::TerminalView;
 use crate::theme::{self, color};
+
+/// Width of the rail, and the gap between it and the chat.
+pub const WIDTH: f32 = 420.0;
+pub const GAP: f32 = 12.0;
 
 /// Longest preview shown, so a big file cannot stall the UI.
 const PREVIEW_MAX_LINES: usize = 400;
@@ -33,7 +44,7 @@ const TABS: [(RailTab, &str); 4] = [
 
 struct Preview {
     path: PathBuf,
-    body: Result<String, String>,
+    content: Content,
 }
 
 pub struct Rail {
@@ -41,20 +52,20 @@ pub struct Rail {
     tab: RailTab,
     expanded: HashSet<PathBuf>,
     preview: Option<Preview>,
-    branch: Option<String>,
+    git: Snapshot,
+    /// Started the first time the tab is opened, so no shell runs until it is wanted.
+    terminal: Option<Entity<TerminalView>>,
 }
 
 impl Rail {
     #[must_use]
     pub fn new(root: PathBuf) -> Self {
-        let branch = git_branch(&root);
-        Self {
-            root,
-            tab: RailTab::Overview,
-            expanded: HashSet::new(),
-            preview: None,
-            branch,
-        }
+        let git = Snapshot::read(&root);
+        Self { root, tab: RailTab::Overview, expanded: HashSet::new(), preview: None, git, terminal: None }
+    }
+
+    fn refresh(&mut self) {
+        self.git = Snapshot::read(&self.root);
     }
 
     fn open_row(&mut self, path: PathBuf, is_dir: bool) {
@@ -64,29 +75,44 @@ impl Rail {
             }
             return;
         }
-        let body = files::read_preview(&path);
-        self.preview = Some(Preview { path, body });
+        self.open_file(path);
+    }
+
+    fn open_file(&mut self, path: PathBuf) {
+        let content = files::classify(&path);
+        self.preview = Some(Preview { path, content });
         self.tab = RailTab::Preview;
     }
 
+    fn show_tab(&mut self, tab: RailTab, window: &mut Window, cx: &mut Context<Self>) {
+        self.tab = tab;
+        match tab {
+            RailTab::Overview | RailTab::Files => self.refresh(),
+            RailTab::Terminal => {
+                let root = self.root.clone();
+                let terminal = self.terminal.get_or_insert_with(|| cx.new(|cx| TerminalView::new(&root, cx)));
+                let handle = terminal.read(cx).focus_handle().clone();
+                window.focus(&handle, cx);
+            }
+            RailTab::Preview => {}
+        }
+        cx.notify();
+    }
+
     fn tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let selected = TABS
-            .iter()
-            .position(|(tab, _)| *tab == self.tab)
-            .unwrap_or(0);
+        let selected = TABS.iter().position(|(tab, _)| *tab == self.tab).unwrap_or(0);
         TabBar::new("rail-tabs")
             .underline()
             .selected_index(selected)
-            .on_click(cx.listener(|rail, index: &usize, _window, cx| {
+            .on_click(cx.listener(|rail, index: &usize, window, cx| {
                 if let Some((tab, _)) = TABS.get(*index) {
-                    rail.tab = *tab;
-                    cx.notify();
+                    rail.show_tab(*tab, window, cx);
                 }
             }))
             .children(TABS.iter().map(|(_, label)| Tab::new().label(*label)))
     }
 
-    fn overview(&self) -> impl IntoElement {
+    fn overview(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let folder = self.root.file_name().map_or_else(
             || self.root.display().to_string(),
             |name| name.to_string_lossy().into_owned(),
@@ -95,106 +121,145 @@ impl Rail {
             .flex()
             .flex_col()
             .gap(px(16.0))
-            .child(section(
-                "Project",
-                [
-                    div().child(folder).into_any_element(),
-                    muted(self.root.display().to_string()).into_any_element(),
-                ],
-            ))
-            .child(section(
-                "Version control",
-                [match &self.branch {
-                    Some(branch) => div().child(format!("Branch: {branch}")).into_any_element(),
-                    None => muted("Not a git repository").into_any_element(),
-                }],
-            ))
-            .child(section(
-                "Context",
-                [muted("Usage appears once the agent has run.").into_any_element()],
-            ))
+            .child(section("Project", [div().child(folder).into_any_element(), muted(self.root.display().to_string()).into_any_element()]))
+            .child(self.version_control(cx))
+    }
+
+    fn version_control(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let Some(branch) = &self.git.branch else {
+            return section("Version control", [muted("Not a git repository").into_any_element()]).into_any_element();
+        };
+        let mut lines = vec![div().child(format!("Branch: {branch}")).into_any_element()];
+        if let Some(commit) = &self.git.last_commit {
+            lines.push(muted(format!("Last commit: {commit}")).into_any_element());
+        }
+        let count = self.git.changes.len();
+        lines.push(if count == 0 {
+            muted("No changes").into_any_element()
+        } else {
+            muted(format!("{count} changed {}", if count == 1 { "file" } else { "files" })).into_any_element()
+        });
+        let rows = self.git.changes.iter().enumerate().map(|(index, change)| {
+            let path = self.git.top.as_ref().map_or_else(|| PathBuf::from(&change.path), |top| top.join(&change.path));
+            div()
+                .id(("change", index))
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .py(px(2.0))
+                .rounded(px(theme::RADIUS_CONTROL))
+                .cursor_pointer()
+                .hover(|style| style.bg(color(theme::SURFACE)))
+                .on_click(cx.listener(move |rail, _event, _window, cx| {
+                    rail.open_file(path.clone());
+                    cx.notify();
+                }))
+                .child(change_mark(change.kind))
+                .child(div().min_w_0().overflow_hidden().child(change.path.clone()))
+        });
+        let refresh = Button::new("refresh-git").label("Refresh").ghost().small().on_click(cx.listener(|rail, _event, _window, cx| {
+            rail.refresh();
+            cx.notify();
+        }));
+        section("Version control", lines).child(div().flex().flex_col().children(rows)).child(refresh).into_any_element()
     }
 
     fn files(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let marks = self.git.by_path();
         let rows = files::visible_rows(&self.root, &self.expanded);
-        div()
-            .flex()
-            .flex_col()
-            .children(rows.into_iter().enumerate().map(|(index, row)| {
-                let icon = match (row.is_dir, row.expanded) {
-                    (true, true) => IconName::FolderOpen,
-                    (true, false) => IconName::Folder,
-                    (false, _) => IconName::File,
-                };
-                let path = row.path.clone();
-                div()
-                    .id(("file-row", index))
-                    .flex()
-                    .items_center()
-                    .gap(px(6.0))
-                    .pl(px(
-                        f32::from(u8::try_from(row.depth).unwrap_or(u8::MAX)) * INDENT_PX
-                    ))
-                    .py(px(3.0))
-                    .rounded(px(theme::RADIUS_CONTROL))
-                    .cursor_pointer()
-                    .hover(|style| style.bg(color(theme::SURFACE)))
-                    .on_click(cx.listener(move |rail, _event, _window, cx| {
-                        rail.open_row(path.clone(), row.is_dir);
-                        cx.notify();
-                    }))
-                    .child(Icon::new(icon).size_4().text_color(color(theme::MUTED)))
-                    .child(div().child(row.name))
-            }))
+        div().flex().flex_col().children(rows.into_iter().enumerate().map(|(index, row)| {
+            let icon = match (row.is_dir, row.expanded) {
+                (true, true) => IconName::FolderOpen,
+                (true, false) => IconName::Folder,
+                (false, _) => IconName::File,
+            };
+            let path = row.path.clone();
+            let mark = marks.get(&row.path).map(|kind| change_mark(*kind));
+            div()
+                .id(("file-row", index))
+                .flex()
+                .items_center()
+                .gap(px(6.0))
+                .pl(px(f32::from(u8::try_from(row.depth).unwrap_or(u8::MAX)) * INDENT_PX))
+                .py(px(3.0))
+                .rounded(px(theme::RADIUS_CONTROL))
+                .cursor_pointer()
+                .hover(|style| style.bg(color(theme::SURFACE)))
+                .on_click(cx.listener(move |rail, _event, _window, cx| {
+                    rail.open_row(path.clone(), row.is_dir);
+                    cx.notify();
+                }))
+                .child(Icon::new(icon).size_4().text_color(color(theme::MUTED)))
+                .child(div().flex_1().min_w_0().overflow_hidden().child(row.name))
+                .children(mark)
+        }))
     }
 
-    fn preview(&self) -> impl IntoElement {
+    fn preview(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(preview) = &self.preview else {
             return muted("Open a file from Files to preview it here.").into_any_element();
         };
-        let name = preview
-            .path
-            .file_name()
-            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
-        let body = match &preview.body {
-            Ok(text) => text
-                .lines()
-                .take(PREVIEW_MAX_LINES)
-                .collect::<Vec<_>>()
-                .join("\n"),
-            Err(why) => why.clone(),
-        };
+        let name = preview.path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        let copy_path = preview.path.display().to_string();
+        let copy = Button::new("copy-path").label("Copy path").ghost().small().on_click(cx.listener(move |_rail, _event, _window, cx| {
+            cx.write_to_clipboard(ClipboardItem::new_string(copy_path.clone()));
+        }));
         div()
             .flex()
             .flex_col()
             .gap(px(8.0))
-            .child(div().child(name))
-            .child(
-                div()
-                    .id("preview-body")
-                    .max_h(px(520.0))
-                    .overflow_y_scroll()
-                    .p(px(10.0))
-                    .rounded(px(theme::RADIUS_SURFACE))
-                    .border_1()
-                    .border_color(color(theme::BORDER))
-                    .bg(color(theme::CODE_BG))
-                    .font_family(theme::MONO)
-                    .text_size(px(12.0))
-                    .child(body),
-            )
+            .child(div().flex().items_center().justify_between().child(div().child(name)).child(copy))
+            .child(preview_body(preview))
             .into_any_element()
+    }
+}
+
+/// The file itself: numbered lines for code, rendered markdown, or the image.
+fn preview_body(preview: &Preview) -> gpui_kit::AnyElement {
+    let frame = || {
+        div()
+            .id("preview-body")
+            .max_h(px(560.0))
+            .overflow_y_scroll()
+            .p(px(10.0))
+            .rounded(px(theme::RADIUS_SURFACE))
+            .border_1()
+            .border_color(color(theme::BORDER))
+            .bg(color(theme::CODE_BG))
+    };
+    match &preview.content {
+        Content::Text(text) => {
+            let shown: Vec<&str> = text.lines().take(PREVIEW_MAX_LINES).collect();
+            let numbers = (1..=shown.len()).map(|n| n.to_string()).collect::<Vec<_>>().join("\n");
+            let code = div().flex_1().min_w_0().child(shown.join("\n"));
+            let note = (text.lines().count() > PREVIEW_MAX_LINES).then(|| muted(format!("Showing the first {PREVIEW_MAX_LINES} lines.")));
+            frame()
+                .font_family(theme::MONO)
+                .text_size(px(12.0))
+                .child(div().flex().gap(px(12.0)).child(div().text_color(color(theme::MUTED)).child(numbers)).child(code))
+                .children(note)
+                .into_any_element()
+        }
+        Content::Markdown(text) => frame()
+            .child(TextView::markdown(SharedString::from(format!("preview-{}", preview.path.display())), text.clone()).selectable(true))
+            .into_any_element(),
+        Content::Image => frame().child(img(preview.path.clone()).max_w_full()).into_any_element(),
+        Content::Unavailable(why) => muted(why.clone()).into_any_element(),
     }
 }
 
 impl Render for Rail {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let content = match self.tab {
-            RailTab::Overview => self.overview().into_any_element(),
+            RailTab::Overview => self.overview(cx).into_any_element(),
             RailTab::Files => self.files(cx).into_any_element(),
-            RailTab::Preview => self.preview().into_any_element(),
-            RailTab::Terminal => muted("The terminal view is not built yet.").into_any_element(),
+            RailTab::Preview => self.preview(cx).into_any_element(),
+            RailTab::Terminal => match &self.terminal {
+                Some(terminal) => terminal.clone().into_any_element(),
+                None => muted("Opening the terminal…").into_any_element(),
+            },
         };
+        let terminal_tab = self.tab == RailTab::Terminal;
         div()
             .size_full()
             .flex()
@@ -209,7 +274,7 @@ impl Render for Rail {
                     .id("rail-content")
                     .flex_1()
                     .min_h_0()
-                    .overflow_y_scroll()
+                    .when(!terminal_tab, gpui_kit::StatefulInteractiveElement::overflow_y_scroll)
                     .p(px(12.0))
                     .text_size(px(13.0))
                     .child(content),
@@ -217,33 +282,19 @@ impl Render for Rail {
     }
 }
 
-fn section<const N: usize>(title: &str, lines: [gpui_kit::AnyElement; N]) -> impl IntoElement {
-    div()
-        .flex()
-        .flex_col()
-        .gap(px(4.0))
-        .child(
-            div()
-                .text_size(px(11.0))
-                .text_color(color(theme::MUTED))
-                .child(title.to_uppercase()),
-        )
-        .children(lines)
+fn change_mark(kind: ChangeKind) -> impl IntoElement {
+    let hex = match kind {
+        ChangeKind::Added | ChangeKind::Untracked => theme::OK,
+        ChangeKind::Deleted => theme::DANGER,
+        ChangeKind::Modified | ChangeKind::Renamed => theme::ACCENT,
+    };
+    div().w(px(14.0)).flex_none().text_size(px(11.0)).text_color(color(hex)).child(kind.letter())
 }
 
-fn muted(text: impl Into<gpui_kit::SharedString>) -> gpui_kit::Div {
+fn section(title: &str, lines: impl IntoIterator<Item = gpui_kit::AnyElement>) -> gpui_kit::Div {
+    div().flex().flex_col().gap(px(4.0)).child(div().text_size(px(11.0)).text_color(color(theme::MUTED)).child(title.to_uppercase())).children(lines)
+}
+
+fn muted(text: impl Into<SharedString>) -> gpui_kit::Div {
     div().text_color(color(theme::MUTED)).child(text.into())
-}
-
-/// Current branch of the git repository at `dir`, if it is one.
-fn git_branch(dir: &Path) -> Option<String> {
-    let out = std::process::Command::new("git")
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .current_dir(dir)
-        .output()
-        .ok()?;
-    out.status
-        .success()
-        .then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned())
-        .filter(|branch| !branch.is_empty())
 }

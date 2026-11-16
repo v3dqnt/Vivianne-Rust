@@ -40,15 +40,19 @@ pub fn model() -> Result<String, String> {
 }
 
 pub fn provider() -> Result<Arc<dyn Provider>, String> {
-    let Selection { provider: id, .. } = selection()?;
+    provider_for(&selection()?.provider)
+}
+
+/// The provider with this id, using the saved or environment key for it.
+pub fn provider_for(id: &str) -> Result<Arc<dyn Provider>, String> {
     if id == "openai"
         && let Ok(base) = std::env::var("OPENAI_BASE_URL")
     {
         return Ok(Arc::new(AiProvider::new(LOCAL_PROVIDER, Some(base), key_for("openai"))));
     }
-    let key = key_for(&id).ok_or_else(|| format!("no API key for `{id}`; save one in Vivianne or set its variable"))?;
+    let key = key_for(id).ok_or_else(|| format!("no API key for `{id}`; save one in Vivianne or set its variable"))?;
     let base = (id == "vercel").then(|| std::env::var("VIV_GATEWAY_URL").ok()).flatten();
-    Ok(Arc::new(AiProvider::new(&id, base, Some(key))))
+    Ok(Arc::new(AiProvider::new(id, base, Some(key))))
 }
 
 /// The provider and model to use now.

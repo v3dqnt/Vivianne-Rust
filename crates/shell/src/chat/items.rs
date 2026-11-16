@@ -24,21 +24,40 @@ pub enum Item {
     Notice(String),
 }
 
+/// What one event did to the transcript.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Change {
+    Nothing,
+    /// A new item at the end.
+    Appended,
+    /// An item that was already there grew or finished.
+    Updated(usize),
+}
+
 /// Fold one agent event into the transcript.
-pub fn apply(items: &mut Vec<Item>, event: &AgentEvent) {
+pub fn apply(items: &mut Vec<Item>, event: &AgentEvent) -> Change {
     match event {
         AgentEvent::Text(piece) => match items.last_mut() {
-            Some(Item::Assistant(text)) => text.push_str(piece),
-            _ => items.push(Item::Assistant(piece.clone())),
+            Some(Item::Assistant(text)) => {
+                text.push_str(piece);
+                Change::Updated(items.len() - 1)
+            }
+            _ => {
+                items.push(Item::Assistant(piece.clone()));
+                Change::Appended
+            }
         },
-        AgentEvent::ToolStart { id, name, args } => items.push(Item::Tool(ToolItem {
-            id: id.clone(),
-            name: name.clone(),
-            args: args.clone(),
-            output: None,
-            is_error: false,
-            details: None,
-        })),
+        AgentEvent::ToolStart { id, name, args } => {
+            items.push(Item::Tool(ToolItem {
+                id: id.clone(),
+                name: name.clone(),
+                args: args.clone(),
+                output: None,
+                is_error: false,
+                details: None,
+            }));
+            Change::Appended
+        }
         AgentEvent::ToolEnd {
             id,
             output,
@@ -46,20 +65,23 @@ pub fn apply(items: &mut Vec<Item>, event: &AgentEvent) {
             details,
             ..
         } => {
-            let running = items.iter_mut().rev().find_map(|item| match item {
-                Item::Tool(tool) if tool.id == *id => Some(tool),
+            let running = items.iter_mut().enumerate().rev().find_map(|(index, item)| match item {
+                Item::Tool(tool) if tool.id == *id => Some((index, tool)),
                 _ => None,
             });
-            if let Some(tool) = running {
-                tool.output = Some(output.clone());
-                tool.is_error = *is_error;
-                tool.details.clone_from(details);
-            }
+            let Some((index, tool)) = running else {
+                return Change::Nothing;
+            };
+            tool.output = Some(output.clone());
+            tool.is_error = *is_error;
+            tool.details.clone_from(details);
+            Change::Updated(index)
         }
         AgentEvent::StepLimit => {
             items.push(Item::Notice("Stopped: step limit reached.".to_owned()));
+            Change::Appended
         }
-        AgentEvent::Done => {}
+        AgentEvent::Done => Change::Nothing,
     }
 }
 
@@ -127,6 +149,17 @@ mod tests {
         assert_eq!(first.details, Some(json!({"matches": 1})));
         assert_eq!(second.output, None);
         assert_eq!(first.args["pattern"], "x");
+    }
+
+    #[test]
+    fn each_event_says_what_it_changed() {
+        let mut items = Vec::new();
+        assert_eq!(apply(&mut items, &AgentEvent::Text("a".into())), Change::Appended);
+        assert_eq!(apply(&mut items, &AgentEvent::Text("b".into())), Change::Updated(0));
+        assert_eq!(apply(&mut items, &tool_start("1")), Change::Appended);
+        assert_eq!(apply(&mut items, &tool_end("1", "ok", false)), Change::Updated(1));
+        assert_eq!(apply(&mut items, &tool_end("gone", "ok", false)), Change::Nothing);
+        assert_eq!(apply(&mut items, &AgentEvent::Done), Change::Nothing);
     }
 
     #[test]

@@ -2,47 +2,66 @@
 
 mod composer;
 mod items;
+mod models;
 mod session;
 mod toolcalls;
 mod transcript;
 
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::Arc;
 
+use gpui_kit::component::combobox::{ComboboxEvent, ComboboxState};
 use gpui_kit::component::input::InputEvent;
+use gpui_kit::component::message_scroller::{MessageScroller, MessageScrollerState};
+use gpui_kit::component::searchable_list::{SearchableListItem as _, SearchableVec};
+use tokio::runtime::Runtime;
+use vivianne_providers::env::Selection;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, Context, FocusHandle, Focusable, FontWeight, PathPromptOptions, ScrollHandle,
+    App, Context, Entity, FocusHandle, Focusable, FontWeight, PathPromptOptions, StyleRefinement,
     Subscription, Window, div, px,
 };
 
 use crate::theme::{self, color};
 use composer::{Composer, Thinking, compose_message, display_message};
-use items::{Item, apply};
+use items::{Change, Item, apply};
+use models::{ModelChoice, Picker, choices};
 use session::{Finished, Run, Session};
 
 pub use session::Session as ChatSession;
 
+/// What a chat needs from the app around it to find models and switch between them.
+pub struct ChatHost {
+    pub runtime: Arc<Runtime>,
+    pub workspace: PathBuf,
+}
+
 const PLACEHOLDER: &str = "Message Vivianne…";
-/// Content is measured one frame after it changes, so keep scrolling to the
-/// bottom for a few frames after every update.
-const PIN_FRAMES: u8 = 10;
+/// Agent events that arrive faster than this are applied together, so a fast stream redraws the
+/// transcript a few dozen times a second rather than once per token.
+const EVENT_BATCH_INTERVAL: std::time::Duration = std::time::Duration::from_millis(40);
 
 pub struct ChatView {
     items: Vec<Item>,
     composer: Composer,
-    scroll: ScrollHandle,
+    /// Which rows of the transcript are on screen; only those are laid out and drawn.
+    scroller: Entity<MessageScrollerState>,
     /// `Err` holds what is wrong with the setup, shown as the composer hint.
     session: Result<Session, String>,
-    model: String,
+    /// The provider and model the next message goes to.
+    selection: Selection,
+    host: ChatHost,
+    /// Every model the saved keys reach; empty until they are looked up.
+    models: Vec<ModelChoice>,
+    picker: Picker,
     /// Name of the project folder, shown on the empty screen.
     project: String,
     running: bool,
     /// Tool calls the user has folded shut, by id.
     folded_tools: HashSet<String>,
-    /// Frames left in which to keep the transcript scrolled to the bottom.
-    pin_frames: u8,
     _input_events: Subscription,
+    _picker_events: Subscription,
 }
 
 /// Starting points shown before the first message. Picking one fills the composer.
@@ -55,8 +74,9 @@ const SUGGESTIONS: [&str; 3] = [
 impl ChatView {
     pub fn new(
         session: Result<Session, String>,
-        model: String,
+        selection: Selection,
         project: String,
+        host: ChatHost,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -77,18 +97,110 @@ impl ChatView {
                 }
             },
         );
+        let picker: Picker =
+            cx.new(|cx| ComboboxState::new(SearchableVec::new(Vec::<ModelChoice>::new()), vec![], window, cx).searchable(true));
+        let picker_events = cx.subscribe_in(&picker, window, |chat, _picker, event, _window, cx| {
+            if let ComboboxEvent::Change(values) = event
+                && let Some(value) = values.first()
+            {
+                chat.select_model(value, cx);
+            }
+        });
+        Self::look_up_models(&host, window, cx);
         Self {
             items: Vec::new(),
             composer,
-            scroll: ScrollHandle::new(),
+            scroller: cx.new(|cx| MessageScrollerState::new(0, cx)),
             session,
-            model,
+            selection,
+            host,
+            models: Vec::new(),
+            picker,
             project,
             running: false,
             folded_tools: HashSet::new(),
-            pin_frames: 0,
             _input_events: input_events,
+            _picker_events: picker_events,
         }
+    }
+
+    /// Ask every provider with a saved key which models it offers, without holding up the window.
+    fn look_up_models(host: &ChatHost, window: &mut Window, cx: &mut Context<Self>) {
+        let (found, models) = tokio::sync::oneshot::channel();
+        host.runtime.spawn(async move {
+            let _ = found.send(vivianne_ai::host::discover_models(false).await);
+        });
+        cx.spawn_in(window, async move |chat, cx| {
+            let Ok(discovered) = models.await else { return };
+            chat.update_in(cx, |chat, window, cx| chat.show_models(&discovered, window, cx)).ok();
+        })
+        .detach();
+    }
+
+    fn show_models(
+        &mut self,
+        discovered: &[vivianne_ai::ai::model_discovery::DiscoveredModel],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.models = choices(discovered);
+        let current = ModelChoice::value_of(&self.selection.provider, &self.selection.model);
+        let items = SearchableVec::new(self.models.clone());
+        self.picker.update(cx, |picker, cx| {
+            picker.set_items(items, window, cx);
+            picker.set_selected_values(&[current], window, cx);
+        });
+        cx.notify();
+    }
+
+    /// Switch the thread to the picked model; the conversation so far stays.
+    fn select_model(&mut self, value: &str, cx: &mut Context<Self>) {
+        let Some(choice) = self.models.iter().find(|m| m.value() == value).cloned() else {
+            return;
+        };
+        if self.running {
+            self.push_item(Item::Notice("Wait for the reply to finish before switching models.".to_owned()), cx);
+            return;
+        }
+        match crate::agent_setup::agent_for(&choice.provider, &choice.id, &self.host.workspace) {
+            Ok(agent) => self.use_agent(agent, &choice, cx),
+            Err(problem) => self.push_item(Item::Notice(format!("Can't use {}: {problem}", choice.name)), cx),
+        }
+    }
+
+    fn use_agent(&mut self, agent: vivianne_runtime::Agent, choice: &ModelChoice, cx: &mut Context<Self>) {
+        match self.session.as_mut() {
+            Ok(session) => session.switch_agent(agent),
+            Err(_) => self.session = Ok(Session::new(agent, self.host.runtime.clone())),
+        }
+        self.selection = Selection { provider: choice.provider.clone(), model: choice.id.clone() };
+        if let Err(problem) = vivianne_ai::host::remember_last_model(&choice.provider, &choice.id) {
+            self.push_item(Item::Notice(format!("Switched, but couldn't remember the choice: {problem}")), cx);
+        }
+        cx.notify();
+    }
+
+    /// Add an item at the end of the transcript.
+    fn push_item(&mut self, item: Item, cx: &mut Context<Self>) {
+        self.items.push(item);
+        self.scroller.update(cx, |scroller, cx| scroller.append(1, cx));
+        cx.notify();
+    }
+
+    /// Fold a batch of agent events in, telling the list only which rows changed.
+    fn apply_events(&mut self, events: &[vivianne_runtime::AgentEvent], cx: &mut Context<Self>) {
+        for event in events {
+            match apply(&mut self.items, event) {
+                Change::Nothing => {}
+                Change::Appended => {
+                    self.scroller.update(cx, |scroller, cx| scroller.append(1, cx));
+                }
+                Change::Updated(index) => {
+                    self.scroller.update(cx, |scroller, cx| scroller.remeasure_items(index..index + 1, cx));
+                }
+            }
+        }
+        cx.notify();
     }
 
     fn send(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -106,24 +218,23 @@ impl ChatView {
         let Some(run) = session.send(compose_message(&text, files), self.composer.thinking) else {
             return;
         };
-        self.items.push(Item::User(display_message(&text, files)));
+        self.push_item(Item::User(display_message(&text, files)), cx);
         self.composer.attachments.clear();
         self.composer
             .input
             .update(cx, |input, cx| input.clean(window, cx));
         self.running = true;
-        self.pin_frames = PIN_FRAMES;
         let Run { mut events, done } = run;
         cx.spawn(async move |this, cx| {
-            while let Some(event) = events.recv().await {
-                let alive = this.update(cx, |chat, cx| {
-                    apply(&mut chat.items, &event);
-                    chat.pin_frames = PIN_FRAMES;
-                    cx.notify();
-                });
-                if alive.is_err() {
+            while let Some(first) = events.recv().await {
+                let mut batch = vec![first];
+                while let Ok(more) = events.try_recv() {
+                    batch.push(more);
+                }
+                if this.update(cx, |chat, cx| chat.apply_events(&batch, cx)).is_err() {
                     return;
                 }
+                cx.background_executor().timer(EVENT_BATCH_INTERVAL).await;
             }
             if let Ok(finished) = done.await {
                 this.update(cx, |chat, cx| chat.finish(finished, cx)).ok();
@@ -135,11 +246,10 @@ impl ChatView {
 
     fn finish(&mut self, finished: Finished, cx: &mut Context<Self>) {
         self.running = false;
-        self.pin_frames = PIN_FRAMES;
         if let Ok(session) = self.session.as_mut()
             && let Some(error) = session.finish(finished)
         {
-            self.items.push(Item::Notice(format!("Error: {error}")));
+            self.push_item(Item::Notice(format!("Error: {error}")), cx);
         }
         cx.notify();
     }
@@ -153,9 +263,7 @@ impl ChatView {
             session.cancel();
         }
         self.running = false;
-        self.pin_frames = PIN_FRAMES;
-        self.items.push(Item::Notice("Stopped.".to_owned()));
-        cx.notify();
+        self.push_item(Item::Notice("Stopped.".to_owned()), cx);
     }
 
     /// Open the system file picker and attach what is chosen.
@@ -227,7 +335,7 @@ impl ChatView {
             .justify_center()
             .text_size(px(11.0))
             .text_color(color(theme::MUTED))
-            .child(format!("{}  ·  {status}", self.model))
+            .child(format!("{}  ·  {status}", self.selection.model))
     }
 
     /// The screen before the first message: a question and a few starting points.
@@ -284,29 +392,21 @@ impl ChatView {
         window.focus(&self.composer.input.read(cx).focus_handle(cx), cx);
     }
 
+    /// The conversation: a virtual list, so a long transcript costs no more to draw than a short one.
     fn transcript(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let column =
-            div()
-                .w_full()
-                .max_w(px(theme::COLUMN_MAX))
-                .flex()
-                .flex_col()
-                .gap(px(theme::GAP))
-                .children(self.items.iter().enumerate().map(|(index, item)| {
-                    transcript::render_item(index, item, &self.folded_tools, cx)
-                }));
-        div()
-            .id("transcript")
-            .flex_1()
-            .min_h_0()
-            .overflow_y_scroll()
-            .track_scroll(&self.scroll)
-            .px(px(theme::SIDE_PAD))
-            .py(px(16.0))
-            .flex()
-            .flex_col()
-            .items_center()
-            .child(column)
+        let chat = cx.entity();
+        let row = StyleRefinement::default().max_w(px(theme::COLUMN_MAX)).mx_auto().pb(px(theme::GAP));
+        let list = StyleRefinement::default().px(px(theme::SIDE_PAD));
+        div().id("transcript").flex_1().min_h_0().child(
+            MessageScroller::new("messages", self.scroller.clone(), move |index, _window, app| {
+                chat.update(app, |chat, cx| match chat.items.get(index) {
+                    Some(item) => transcript::render_item(index, item, &chat.folded_tools, cx),
+                    None => div().into_any_element(),
+                })
+            })
+            .with_row_style(row)
+            .with_list_style(list),
+        )
     }
 }
 
@@ -318,11 +418,6 @@ impl Focusable for ChatView {
 
 impl Render for ChatView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.pin_frames > 0 {
-            self.pin_frames -= 1;
-            self.scroll.scroll_to_bottom();
-            window.request_animation_frame();
-        }
         div()
             .size_full()
             .flex()

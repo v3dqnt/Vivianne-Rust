@@ -13,9 +13,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::io::AsyncWriteExt;
 
-use crate::ai::auth::{wait_for_state, Credential};
+use crate::ai::auth::{wait_for_state, AuthState, Credential, CredentialStore, DefaultAuthContext, ModifyFuture};
 use crate::ai::env_api_keys::get_env_api_key;
 use crate::ai::keychain_store::KeychainCredentialStore;
+use crate::ai::model_discovery::{list_cached_or_fresh, DiscoveredModel};
 use crate::events::Events;
 use crate::paths::viv_home;
 
@@ -75,6 +76,15 @@ pub async fn read_settings_json() -> Value {
     tokio::task::spawn_blocking(settings_blocking).await.unwrap_or_else(|_| json!({}))
 }
 
+/// Record `provider`/`model` as the last model used, in the settings file the old app reads it from.
+pub fn remember_last_model(provider: &str, model: &str) -> Result<(), String> {
+    let mut settings = settings_blocking();
+    let Some(object) = settings.as_object_mut() else { return Err("settings.json is not an object".to_owned()) };
+    object.insert("lastModel".to_owned(), json!({ "id": model, "provider": provider }));
+    let text = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    std::fs::write(settings_path()?, text).map_err(|e| e.to_string())
+}
+
 /// Replace `~/.viv/agent/settings.json`.
 pub async fn save_settings_json(settings: &Value) -> Result<(), String> {
     let path = settings_path()?;
@@ -102,15 +112,70 @@ fn key_in(credential: Credential) -> Option<String> {
 /// `~/.viv/agent/auth.json`. Reads without an async runtime.
 #[must_use]
 pub fn stored_api_key(provider: &str) -> Option<String> {
-    let from_keychain = KeychainCredentialStore::read_blocking(provider).ok().flatten().and_then(key_in);
-    from_keychain.or_else(|| key_from_auth_file(provider))
+    std::iter::once(provider).chain(provider_alias(provider)).find_map(|id| {
+        let from_keychain = KeychainCredentialStore::read_blocking(id).ok().flatten();
+        from_keychain.or_else(|| credential_from_auth_file(id)).and_then(key_in)
+    })
 }
 
-fn key_from_auth_file(provider: &str) -> Option<String> {
+/// Another id the old app may have saved the same provider's key under.
+fn provider_alias(provider: &str) -> Option<&'static str> {
+    match provider {
+        "nvidia" => Some("nvidia-nim"),
+        "nvidia-nim" => Some("nvidia"),
+        _ => None,
+    }
+}
+
+fn credential_from_auth_file(provider: &str) -> Option<Credential> {
     let path = viv_home().ok()?.join("agent").join("auth.json");
     let text = std::fs::read_to_string(path).ok()?;
     let mut credentials: HashMap<String, Credential> = serde_json::from_str(&text).ok()?;
-    credentials.remove(provider).and_then(key_in)
+    credentials.remove(provider)
+}
+
+/// The credentials the old app saved (OS keychain, then `~/.viv/agent/auth.json`), read-only: this app
+/// reads them, the old app's settings screen is where they are changed.
+#[derive(Default)]
+pub struct SavedCredentials {
+    keychain: KeychainCredentialStore,
+}
+
+#[async_trait::async_trait]
+impl CredentialStore for SavedCredentials {
+    async fn read(&self, provider_id: &str) -> Result<Option<Credential>, String> {
+        for id in std::iter::once(provider_id).chain(provider_alias(provider_id)) {
+            if let Some(credential) = self.keychain.read(id).await.ok().flatten() {
+                return Ok(Some(credential));
+            }
+            if let Some(credential) = credential_from_auth_file(id) {
+                return Ok(Some(credential));
+            }
+        }
+        Ok(None)
+    }
+
+    async fn modify(
+        &self,
+        _provider_id: &str,
+        _change: Box<dyn FnOnce(Option<Credential>) -> ModifyFuture + Send>,
+    ) -> Result<Option<Credential>, String> {
+        Err("saved credentials are read-only here".to_owned())
+    }
+
+    async fn delete(&self, _provider_id: &str) -> Result<(), String> {
+        Err("saved credentials are read-only here".to_owned())
+    }
+}
+
+/// The models every provider with a saved or environment key offers. The last list is reused while it is
+/// fresh (`~/.viv/models-cache.json`); `refresh` asks the providers again.
+pub async fn discover_models(refresh: bool) -> Vec<DiscoveredModel> {
+    let auth = AuthState {
+        store: std::sync::Arc::new(SavedCredentials::default()),
+        auth_context: std::sync::Arc::new(DefaultAuthContext),
+    };
+    list_cached_or_fresh(&auth, refresh).await.0
 }
 
 /// The key for `provider`: the stored credential first, then the environment.
@@ -275,6 +340,19 @@ mod tests {
         let parsed: HashMap<String, Credential> = serde_json::from_str(file).unwrap();
         assert_eq!(parsed.get("openai").cloned().and_then(key_in).as_deref(), Some("sk-1"));
         assert_eq!(parsed.get("x").cloned().and_then(key_in).as_deref(), Some("t"));
+    }
+
+    #[test]
+    fn the_two_nvidia_ids_find_each_others_keys() {
+        assert_eq!(provider_alias("nvidia"), Some("nvidia-nim"));
+        assert_eq!(provider_alias("nvidia-nim"), Some("nvidia"));
+        assert_eq!(provider_alias("openai"), None);
+    }
+
+    #[tokio::test]
+    async fn saved_credentials_cannot_be_written() {
+        let store = SavedCredentials::default();
+        assert!(store.delete("openai").await.is_err());
     }
 
     #[test]

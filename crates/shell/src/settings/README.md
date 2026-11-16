@@ -4,7 +4,9 @@ The Settings dialog (Kit `Settings`): a page list on the left, the page on the r
 (Viv Instant left out on purpose).
 
 - `mod.rs`: opens the dialog.
-- `pages.rs`: one function per page. Reliability, Web & browser, Memory, Diagnostics, Appearance and Layout have
-  controls; the rest say "not built yet".
+- `pages/`: one module per page (Account, Providers, Local models, Reliability, Mods, Connections, Web & browser,
+  Memory, Vault, Skills, Diagnostics, Appearance, Layout, Components, Updates). `pages/mod.rs` lists them in order.
 - `values.rs`: the values the controls edit. **In memory only for now**: nothing is saved or applied. Saving
   into `~/.viv` (the old app's format) comes with the settings store.
+- `demo.rs`: the sample data that fills `Values` until real data is wired in.
+- `widgets.rs`: shared building blocks (text styles, switch/dropdown/input fields bound to `Values`, buttons).

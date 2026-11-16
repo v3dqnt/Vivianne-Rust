@@ -60,6 +60,31 @@ fn push_children(dir: &Path, depth: usize, expanded: &HashSet<PathBuf>, rows: &m
     }
 }
 
+/// What the preview can show for a file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Content {
+    Text(String),
+    Markdown(String),
+    Image,
+    Unavailable(String),
+}
+
+const IMAGE_EXTENSIONS: [&str; 5] = ["png", "jpg", "jpeg", "gif", "webp"];
+
+/// Reads a file for the preview, or says why it cannot be shown.
+#[must_use]
+pub fn classify(path: &Path) -> Content {
+    let extension = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    if IMAGE_EXTENSIONS.contains(&extension.as_str()) {
+        return Content::Image;
+    }
+    match read_preview(path) {
+        Ok(text) if extension == "md" || extension == "markdown" => Content::Markdown(text),
+        Ok(text) => Content::Text(text),
+        Err(why) => Content::Unavailable(why),
+    }
+}
+
 /// Text of a file for the preview, or why it cannot be shown.
 pub fn read_preview(path: &Path) -> Result<String, String> {
     let size = std::fs::metadata(path).map_err(|e| e.to_string())?.len();
@@ -105,6 +130,18 @@ mod tests {
         assert_eq!(names(&rows), ["src", "lib.rs", "A.txt", "b.txt"]);
         assert_eq!((rows[0].depth, rows[0].expanded), (0, true));
         assert_eq!(rows[1].depth, 1);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn files_are_classified_by_what_they_hold() {
+        let root = scratch("classify");
+        std::fs::write(root.join("r.md"), "# hi").unwrap();
+        std::fs::write(root.join("p.PNG"), [1, 2]).unwrap();
+        assert_eq!(classify(&root.join("b.txt")), Content::Text("b".into()));
+        assert_eq!(classify(&root.join("r.md")), Content::Markdown("# hi".into()));
+        assert_eq!(classify(&root.join("p.PNG")), Content::Image);
+        assert!(matches!(classify(&root.join("missing")), Content::Unavailable(_)));
         let _ = std::fs::remove_dir_all(root);
     }
 

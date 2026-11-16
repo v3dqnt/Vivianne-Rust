@@ -6,6 +6,7 @@ use gpui_kit::component::attachment::{
     AttachmentTitle,
 };
 use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::combobox::Combobox;
 use gpui_kit::component::input::Textarea;
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::spinner::Spinner;
@@ -21,6 +22,8 @@ use crate::theme::{self, color};
 
 /// Longest model name shown on the toolbar before it is cut.
 const MODEL_LABEL_CHARS: usize = 24;
+const MODEL_MENU_WIDTH: f32 = 380.0;
+const MODEL_MENU_HEIGHT: f32 = 320.0;
 const SEND_SIZE: f32 = 28.0;
 
 pub fn render(
@@ -115,7 +118,7 @@ fn toolbar(chat: &ChatView, can_send: bool, cx: &mut Context<ChatView>) -> impl 
                         ),
                 )
                 .child(thinking_menu(chat, cx))
-                .child(model_menu(chat, cx)),
+                .child(model_menu(chat)),
         )
         .child(
             div()
@@ -157,23 +160,25 @@ fn thinking_menu(chat: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElemen
         })
 }
 
-fn model_menu(chat: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElement {
-    let _ = cx;
-    let model = chat.model.clone();
-    Button::new("model")
-        .ghost()
-        .small()
-        .label(shorten(&model, MODEL_LABEL_CHARS))
-        .dropdown_caret(true)
-        .tooltip("Model")
-        .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _window, _cx| {
-            menu.item(PopupMenuItem::new(model.clone()).checked(true))
-                .separator()
-                .item(
-                    PopupMenuItem::new("Manage models in Settings")
-                        .icon(IconName::Settings)
-                        .on_click(|_event, window, app| settings::open(window, app)),
-                )
+fn model_menu(chat: &ChatView) -> impl IntoElement {
+    let label = shorten(&chat.selection.model, MODEL_LABEL_CHARS);
+    Combobox::new(&chat.picker)
+        .placeholder(label.clone())
+        .search_placeholder("Search models")
+        .menu_width(px(MODEL_MENU_WIDTH))
+        .menu_max_h(px(MODEL_MENU_HEIGHT))
+        .appearance(false)
+        .empty(|_window, _cx| div().p_3().text_sm().child("No models found. Save a provider key in Settings."))
+        .render_trigger(move |_trigger, _window, _cx| {
+            Button::new("model").ghost().small().label(label.clone()).dropdown_caret(true).tooltip("Model")
+        })
+        .footer(|_window, _cx| {
+            Button::new("manage-models")
+                .ghost()
+                .small()
+                .icon(IconName::Settings)
+                .label("Manage models in Settings")
+                .on_click(|_event, window, app| settings::open(window, app))
         })
 }
 
