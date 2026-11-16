@@ -1,13 +1,11 @@
-/// openai_completions.rs — OpenAI Chat Completions API streaming implementation.
-///
-/// Endpoint:  POST https://api.openai.com/v1/chat/completions
-/// Protocol:  SSE (`data: {...}\n\n`)
-///
-/// Reuses types from `openai_shared`. Also handles OpenAI-compatible
-/// endpoints (Azure OpenAI, local models, etc.) when called with a
-/// custom base_url.
-
-#[allow(dead_code, unused_variables, unused_imports)]
+//! openai_completions.rs — OpenAI Chat Completions API streaming implementation.
+//!
+//! Endpoint:  POST https://api.openai.com/v1/chat/completions
+//! Protocol:  SSE (`data: {...}\n\n`)
+//!
+//! Reuses types from `openai_shared`. Also handles OpenAI-compatible
+//! endpoints (Azure OpenAI, local models, etc.) when called with a
+//! custom base_url.
 
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -564,17 +562,9 @@ pub async fn stream_chat_completions(
                     consumed += offset + 1;
 
                     if let Some(data) = parse_sse_data(&line) {
-                        match serde_json::from_str::<ChatCompletionChunk>(data) {
-                            Ok(chunk) => {
-                                process_chunk(
-                                    &chunk,
-                                    &mut state,
-                                    &mut output,
-                                    &app,
-                                    &stream_id,
-                                );
-                            }
-                            Err(_) => {} // ignore parse errors for individual chunks
+                        // A chunk that does not parse is skipped; the stream goes on.
+                        if let Ok(chunk) = serde_json::from_str::<ChatCompletionChunk>(data) {
+                            process_chunk(&chunk, &mut state, &mut output, &app, &stream_id);
                         }
                     } else if line.starts_with('{') {
                         // Some providers (e.g. OpenRouter) return a JSON error object

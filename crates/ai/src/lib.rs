@@ -1,15 +1,12 @@
-//! The provider layer from the old Vivianne, copied: the provider registry, the
-//! streaming API for each kind of provider, credentials and model discovery.
+//! Vivianne's AI layer, brought over from the old app: the provider registry, a streaming client for
+//! each kind of provider, credentials, model discovery, one-shot completions, embeddings, image
+//! generation, and the Laya and Jev decision engines.
 //!
-//! `ai/` is that code. Beside it are the only things it needs from the host:
-//! [`events`] (where stream tokens and refresh notices go) and [`paths`] (the
-//! data folder). See the README for exactly what was changed in the copy.
-
-// The copied code keeps places where Tauri calls used to be (an unused argument)
-// and helpers only the old app's commands called. Left as copied.
-#![allow(unused, dead_code)]
+//! `ai/` is that code. Around it, the only things it needs from the app: [`events`] (where stream
+//! tokens and refresh notices go), [`paths`] (the data folder) and [`host`] (settings, keys, downloads).
 
 #[rustfmt::skip]
 pub mod ai;
 pub mod events;
+pub mod host;
 pub mod paths;

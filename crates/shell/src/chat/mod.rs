@@ -103,7 +103,7 @@ impl ChatView {
         if text.trim().is_empty() && files.is_empty() {
             return;
         }
-        let Some(run) = session.send(compose_message(&text, files)) else {
+        let Some(run) = session.send(compose_message(&text, files), self.composer.thinking) else {
             return;
         };
         self.items.push(Item::User(display_message(&text, files)));

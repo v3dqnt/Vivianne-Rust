@@ -1,6 +1,4 @@
 use crate::ai::types::{AssistantMessage, Context, Usage};
-#[allow(unused_imports)]
-
 
 // ============================================================================
 // overflow.rs — context window overflow detection

@@ -1,10 +1,10 @@
-/// Message transformation pipeline — from api/transform-messages.ts
-///
-/// Handles:
-/// 1. Image downgrade for non-vision models
-/// 2. Thinking block normalization across models
-/// 3. Tool call ID normalization for cross-provider compatibility
-/// 4. Synthetic tool result injection for orphaned tool calls
+//! Message transformation pipeline — from api/transform-messages.ts
+//!
+//! Handles:
+//! 1. Image downgrade for non-vision models
+//! 2. Thinking block normalization across models
+//! 3. Tool call ID normalization for cross-provider compatibility
+//! 4. Synthetic tool result injection for orphaned tool calls
 
 use crate::ai::types::{Message, MessageContent, ToolCall};
 
@@ -79,8 +79,11 @@ pub struct TransformOptions {
     /// Model ID of the target model
     pub target_model_id: String,
     /// Optional function to normalize tool call IDs for cross-provider compatibility
-    pub normalize_tool_call_id: Option<Box<dyn Fn(&str) -> String + Send + Sync>>,
+    pub normalize_tool_call_id: Option<ToolCallIdNormalizer>,
 }
+
+/// Rewrites a tool call id into the form a provider accepts.
+pub type ToolCallIdNormalizer = Box<dyn Fn(&str) -> String + Send + Sync>;
 
 /// Full message transformation pipeline.
 ///

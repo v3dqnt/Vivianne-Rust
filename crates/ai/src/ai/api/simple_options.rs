@@ -1,4 +1,4 @@
-/// Token clamping and base options — from api/simple-options.ts
+//! Token clamping and base options — from api/simple-options.ts
 
 use crate::ai::utils_ext::estimate_context_tokens;
 use crate::ai::types::{Context, StreamOptions, ThinkingLevel};

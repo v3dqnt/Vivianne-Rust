@@ -1,8 +1,7 @@
-/// Google Generative AI — streaming implementation
-/// Translated from packages/ai/src/api/google-generative-ai.ts
-///
-/// Calls: POST https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse
-#[allow(dead_code, unused_variables, unused_imports)]
+//! Google Generative AI — streaming implementation
+//! Translated from packages/ai/src/api/google-generative-ai.ts
+//!
+//! Calls: POST https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -211,31 +210,26 @@ enum CurrentBlock {
 
 // ── Main entry point ──────────────────────────────────────────────────────────
 
-/// Stream a request to Google Generative AI, emitting Tauri `ai-stream-token` events.
+/// The Google model a request is for.
+#[derive(Debug, Clone)]
+pub struct GoogleModel {
+    pub id: String,
+    pub provider: String,
+    pub api: String,
+    pub reasoning: bool,
+}
+
+/// Stream a request to Google Generative AI, emitting `ai-stream-token` events.
 pub async fn stream(
     app: Events,
     stream_id: String,
-    model_id: String,
-    model_provider: String,
-    model_api: String,
-    model_reasoning: bool,
+    model: GoogleModel,
     base_url: Option<String>,
     context: Context,
     options: GoogleOptions,
 ) {
     let stream_id_clone = stream_id.clone();
-    let result = stream_inner(
-        app.clone(),
-        stream_id.clone(),
-        model_id,
-        model_provider,
-        model_api,
-        model_reasoning,
-        base_url,
-        context,
-        options,
-    )
-    .await;
+    let result = stream_inner(app.clone(), stream_id.clone(), model, base_url, context, options).await;
 
     if let Err(e) = result {
         let ts = std::time::SystemTime::now()
@@ -270,10 +264,7 @@ pub async fn stream(
 async fn stream_inner(
     app: Events,
     stream_id: String,
-    model_id: String,
-    model_provider: String,
-    model_api: String,
-    model_reasoning: bool,
+    model: GoogleModel,
     base_url: Option<String>,
     context: Context,
     options: GoogleOptions,
@@ -289,11 +280,11 @@ async fn stream_inner(
     let url = format!(
         "{}/v1beta/models/{}:streamGenerateContent?alt=sse&key={}",
         base.trim_end_matches('/'),
-        urlencoding_encode(&model_id),
+        urlencoding_encode(&model.id),
         urlencoding_encode(&api_key)
     );
 
-    let body = build_request_body(&model_id, &model_provider, &model_api, model_reasoning, &context, &options);
+    let body = build_request_body(&model.id, &model.provider, &model.api, model.reasoning, &context, &options);
     let body_json = serde_json::to_string(&body).map_err(|e| e.to_string())?;
 
     let client = crate::ai::http::client();
@@ -326,8 +317,8 @@ async fn stream_inner(
         role: "assistant".to_string(),
         content: vec![],
         api: "google-generative-ai".to_string(),
-        provider: model_provider.clone(),
-        model: model_id.clone(),
+        provider: model.provider.clone(),
+        model: model.id.clone(),
         usage: Usage::default(),
         stop_reason: "stop".to_string(),
         error_message: None,
@@ -530,10 +521,9 @@ fn process_chunk(
                     })
                 }).unwrap_or(false);
 
-                let tool_call_id = if provided_id.is_none() || already_used {
-                    next_tool_call_id(&fc_name)
-                } else {
-                    provided_id.unwrap()
+                let tool_call_id = match provided_id {
+                    Some(id) if !already_used => id,
+                    _ => next_tool_call_id(&fc_name),
                 };
 
                 let tool_call = ToolCall {

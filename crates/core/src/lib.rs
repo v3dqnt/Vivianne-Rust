@@ -18,6 +18,33 @@ pub enum Role {
     Tool,
 }
 
+/// How much the model should think before answering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Thinking {
+    Off,
+    Low,
+    #[default]
+    Medium,
+    High,
+}
+
+impl Thinking {
+    pub const ALL: [Self; 4] = [Self::Off, Self::Low, Self::Medium, Self::High];
+
+    /// The level's name as providers spell reasoning effort (`low`, `medium`, `high`);
+    /// `None` when thinking is off.
+    #[must_use]
+    pub fn effort(self) -> Option<&'static str> {
+        match self {
+            Self::Off => None,
+            Self::Low => Some("low"),
+            Self::Medium => Some("medium"),
+            Self::High => Some("high"),
+        }
+    }
+}
+
 /// A request from the model to run one tool.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolCall {
@@ -83,6 +110,13 @@ mod tests {
         let m = Message::tool_result("c1", "ok");
         assert_eq!(m.role, Role::Tool);
         assert_eq!(m.tool_call_id.as_deref(), Some("c1"));
+    }
+
+    #[test]
+    fn thinking_names_its_effort_and_defaults_to_medium() {
+        assert_eq!(Thinking::default(), Thinking::Medium);
+        let efforts: Vec<_> = Thinking::ALL.iter().map(|t| t.effort()).collect();
+        assert_eq!(efforts, [None, Some("low"), Some("medium"), Some("high")]);
     }
 
     #[test]

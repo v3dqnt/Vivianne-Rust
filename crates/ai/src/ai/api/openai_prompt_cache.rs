@@ -1,4 +1,4 @@
-/// OpenAI prompt cache key helpers — from api/openai-prompt-cache.ts
+//! OpenAI prompt cache key helpers — from api/openai-prompt-cache.ts
 
 pub const OPENAI_PROMPT_CACHE_KEY_MAX_LENGTH: usize = 64;
 

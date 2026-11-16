@@ -1,4 +1,4 @@
-/// GitHub Copilot dynamic header helpers — from api/github-copilot-headers.ts
+//! GitHub Copilot dynamic header helpers — from api/github-copilot-headers.ts
 
 use crate::ai::types::Message;
 use std::collections::HashMap;

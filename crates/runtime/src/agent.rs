@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use futures::StreamExt;
 use tokio::sync::mpsc::UnboundedSender;
-use vivianne_core::{Message, ToolCall};
+use vivianne_core::{Message, Thinking, ToolCall};
 use vivianne_providers::{ChatEvent, ChatRequest, Provider, ProviderError, ToolSpec};
 use vivianne_tools::{ToolResult, Toolbox};
 
@@ -66,9 +66,10 @@ impl Agent {
         &self,
         history: &mut Vec<Message>,
         events: &UnboundedSender<AgentEvent>,
+        thinking: Thinking,
     ) -> Result<(), AgentError> {
         for _ in 0..self.max_steps {
-            let (text, calls) = self.stream_step(history, events).await?;
+            let (text, calls) = self.stream_step(history, events, thinking).await?;
             let finished = calls.is_empty();
             history.push(Message::assistant(text, calls.clone()));
             if finished {
@@ -87,8 +88,12 @@ impl Agent {
         &self,
         history: &[Message],
         events: &UnboundedSender<AgentEvent>,
+        thinking: Thinking,
     ) -> Result<(String, Vec<ToolCall>), AgentError> {
-        let mut stream = self.provider.stream(&self.request(history)).await?;
+        let mut stream = self
+            .provider
+            .stream(&self.request(history, thinking))
+            .await?;
         let (mut text, mut calls) = (String::new(), Vec::new());
         while let Some(event) = stream.next().await {
             match event? {
@@ -139,7 +144,7 @@ impl Agent {
         Message::tool_result(&call.id, output)
     }
 
-    fn request(&self, history: &[Message]) -> ChatRequest {
+    fn request(&self, history: &[Message], thinking: Thinking) -> ChatRequest {
         ChatRequest {
             model: self.model.clone(),
             system: self.system.clone(),
@@ -154,6 +159,7 @@ impl Agent {
                     parameters: d.parameters,
                 })
                 .collect(),
+            thinking,
         }
     }
 }
@@ -249,7 +255,7 @@ mod tests {
         let mut history = vec![Message::new(Role::User, "ping")];
 
         agent(provider.clone())
-            .run(&mut history, &tx)
+            .run(&mut history, &tx, Thinking::Low)
             .await
             .unwrap();
 
@@ -261,6 +267,14 @@ mod tests {
         assert_eq!(history[2].text, "pong");
         assert_eq!(history[2].tool_call_id.as_deref(), Some("c1"));
         assert_eq!(provider.seen.lock().unwrap()[1].messages.len(), 3);
+        assert!(
+            provider
+                .seen
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|r| r.thinking == Thinking::Low)
+        );
 
         drop(tx);
         let mut seen = Vec::new();
@@ -276,7 +290,10 @@ mod tests {
         let provider = Scripted::new(vec![vec![echo_call("c1", "nope")], vec![ChatEvent::Done]]);
         let (tx, _rx) = unbounded_channel();
         let mut history = vec![Message::new(Role::User, "x")];
-        agent(provider).run(&mut history, &tx).await.unwrap();
+        agent(provider)
+            .run(&mut history, &tx, Thinking::default())
+            .await
+            .unwrap();
         assert!(history[2].text.starts_with("error: unknown tool"));
     }
 
@@ -287,7 +304,7 @@ mod tests {
         let mut history = vec![Message::new(Role::User, "x")];
         agent(Scripted::new(looping))
             .with_max_steps(3)
-            .run(&mut history, &tx)
+            .run(&mut history, &tx, Thinking::default())
             .await
             .unwrap();
         drop(tx);

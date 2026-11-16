@@ -1,6 +1,5 @@
-/// Anthropic Messages API — streaming implementation
-/// Translated from packages/ai/src/api/anthropic-messages.ts
-#[allow(dead_code, unused_variables, unused_imports)]
+//! Anthropic Messages API — streaming implementation
+//! Translated from packages/ai/src/api/anthropic-messages.ts
 
 use std::collections::HashMap;
 
@@ -728,13 +727,11 @@ fn process_event(
             match delta_type {
                 "text_delta" => {
                     let text = parsed["delta"]["text"].as_str().unwrap_or("");
-                    if let Some(b) = blocks.iter_mut().find(|b| b.api_index() == api_index) {
-                        if let Block::Text { text: t, content_index, .. } = b {
-                            t.push_str(text);
-                            let ci = *content_index;
-                            if let Some(MessageContent::Text { text: ct }) = output.content.get_mut(ci) {
-                                *ct = t.clone();
-                            }
+                    if let Some(Block::Text { text: t, content_index, .. }) = blocks.iter_mut().find(|b| b.api_index() == api_index) {
+                        t.push_str(text);
+                        let ci = *content_index;
+                        if let Some(MessageContent::Text { text: ct }) = output.content.get_mut(ci) {
+                            *ct = t.clone();
                         }
                     }
                     let _ = app.emit(
@@ -751,13 +748,11 @@ fn process_event(
 
                 "thinking_delta" => {
                     let thinking_text = parsed["delta"]["thinking"].as_str().unwrap_or("");
-                    if let Some(b) = blocks.iter_mut().find(|b| b.api_index() == api_index) {
-                        if let Block::Thinking { thinking: t, content_index, .. } = b {
-                            t.push_str(thinking_text);
-                            let ci = *content_index;
-                            if let Some(MessageContent::Thinking { thinking: ct, .. }) = output.content.get_mut(ci) {
-                                *ct = t.clone();
-                            }
+                    if let Some(Block::Thinking { thinking: t, content_index, .. }) = blocks.iter_mut().find(|b| b.api_index() == api_index) {
+                        t.push_str(thinking_text);
+                        let ci = *content_index;
+                        if let Some(MessageContent::Thinking { thinking: ct, .. }) = output.content.get_mut(ci) {
+                            *ct = t.clone();
                         }
                     }
                     let _ = app.emit(
@@ -774,16 +769,14 @@ fn process_event(
 
                 "input_json_delta" => {
                     let partial = parsed["delta"]["partial_json"].as_str().unwrap_or("");
-                    if let Some(b) = blocks.iter_mut().find(|b| b.api_index() == api_index) {
-                        if let Block::ToolCall { partial_json, content_index, .. } = b {
-                            partial_json.push_str(partial);
-                            let pj = partial_json.clone();
-                            let ci = *content_index;
-                            // Parse best-effort
-                            if let Ok(args) = serde_json::from_str::<Value>(&pj) {
-                                if let Some(MessageContent::ToolCall(tc)) = output.content.get_mut(ci) {
-                                    tc.arguments = args;
-                                }
+                    if let Some(Block::ToolCall { partial_json, content_index, .. }) = blocks.iter_mut().find(|b| b.api_index() == api_index) {
+                        partial_json.push_str(partial);
+                        let pj = partial_json.clone();
+                        let ci = *content_index;
+                        // Parse best-effort
+                        if let Ok(args) = serde_json::from_str::<Value>(&pj) {
+                            if let Some(MessageContent::ToolCall(tc)) = output.content.get_mut(ci) {
+                                tc.arguments = args;
                             }
                         }
                     }
@@ -801,14 +794,12 @@ fn process_event(
 
                 "signature_delta" => {
                     let sig = parsed["delta"]["signature"].as_str().unwrap_or("");
-                    if let Some(b) = blocks.iter_mut().find(|b| b.api_index() == api_index) {
-                        if let Block::Thinking { thinking_signature, content_index, .. } = b {
-                            thinking_signature.push_str(sig);
-                            let ts = thinking_signature.clone();
-                            let ci = *content_index;
-                            if let Some(MessageContent::Thinking { thinking_signature: tss, .. }) = output.content.get_mut(ci) {
-                                *tss = if ts.is_empty() { None } else { Some(ts) };
-                            }
+                    if let Some(Block::Thinking { thinking_signature, content_index, .. }) = blocks.iter_mut().find(|b| b.api_index() == api_index) {
+                        thinking_signature.push_str(sig);
+                        let ts = thinking_signature.clone();
+                        let ci = *content_index;
+                        if let Some(MessageContent::Thinking { thinking_signature: tss, .. }) = output.content.get_mut(ci) {
+                            *tss = if ts.is_empty() { None } else { Some(ts) };
                         }
                     }
                 }

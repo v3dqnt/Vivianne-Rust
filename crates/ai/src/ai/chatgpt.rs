@@ -203,8 +203,7 @@ async fn wait_for_callback(listener: TcpListener) -> Result<std::collections::Ha
     }
 }
 
-#[allow(deprecated)]
-fn open_in_browser(app: &Events, url: &str) -> Result<(), String> {
+fn open_in_browser(url: &str) -> Result<(), String> {
     open::that(url).map_err(|e| format!("Couldn't open the browser: {e}"))
 }
 
@@ -307,7 +306,7 @@ pub async fn sign_in(app: &Events) -> Result<ChatGptStatus, String> {
             q.append_pair("login_hint", email);
         }
     }
-    open_in_browser(app, url.as_str())?;
+    open_in_browser(url.as_str())?;
 
     let params = wait_for_callback(listener).await?;
     if params.get("state").map(String::as_str) != Some(state.as_str()) {
@@ -444,7 +443,7 @@ pub async fn list_models(auth: &crate::ai::auth::AuthState) -> Result<Vec<(Strin
 fn parse_models(body: &serde_json::Value) -> Vec<(String, String)> {
     let list = body.get("models").or_else(|| body.get("data")).and_then(|m| m.as_array()).cloned().unwrap_or_default();
     list.iter()
-        .filter(|m| m.get("visibility").and_then(|v| v.as_str()).map_or(true, |v| v == "list"))
+        .filter(|m| m.get("visibility").and_then(|v| v.as_str()).is_none_or(|v| v == "list"))
         .filter_map(|m| {
             let slug = m.get("slug").or_else(|| m.get("id")).and_then(|s| s.as_str())?.to_string();
             let name = m.get("display_name").and_then(|s| s.as_str()).unwrap_or(&slug).to_string();

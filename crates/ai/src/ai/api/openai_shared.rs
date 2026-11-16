@@ -1,11 +1,11 @@
-/// openai_shared.rs — shared request/response types for OpenAI-compatible APIs.
-///
-/// Covers:
-///   - Chat Completions API  (openai_completions.rs, azure_openai.rs, mistral.rs)
-///   - Responses API         (openai_responses.rs)
-///
-/// All structs are `#[allow(dead_code)]` so unused fields are not warned about
-/// until the frontend commands wire them up.
+//! openai_shared.rs — shared request/response types for OpenAI-compatible APIs.
+//!
+//! Covers:
+//!   - Chat Completions API  (openai_completions.rs, azure_openai.rs, mistral.rs)
+//!   - Responses API         (openai_responses.rs)
+//!
+//! All structs are `#[allow(dead_code)]` so unused fields are not warned about
+//! until the frontend commands wire them up.
 
 #[allow(dead_code, unused_variables, unused_imports)]
 use serde::{Deserialize, Serialize};

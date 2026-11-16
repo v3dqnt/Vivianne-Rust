@@ -6,6 +6,7 @@ mod view;
 
 use gpui_kit::component::input::TextareaState;
 use gpui_kit::{AppContext as _, Context, Entity, Window};
+pub use vivianne_core::Thinking;
 
 pub use attachments::{AttachedFile, compose_message, display_message};
 pub use view::render;
@@ -13,27 +14,14 @@ pub use view::render;
 /// The composer grows with its text up to this many rows.
 const MAX_ROWS: usize = 8;
 
-/// How much the model should think before answering. Chosen here, but not sent
-/// to the provider yet: that arrives with provider reasoning settings.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Thinking {
-    Off,
-    Low,
-    Medium,
-    High,
-}
-
-impl Thinking {
-    pub const ALL: [Self; 4] = [Self::Off, Self::Low, Self::Medium, Self::High];
-
-    #[must_use]
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Off => "Off",
-            Self::Low => "Low",
-            Self::Medium => "Medium",
-            Self::High => "High",
-        }
+/// The thinking level's name in the menu and on the button.
+#[must_use]
+pub fn thinking_label(level: Thinking) -> &'static str {
+    match level {
+        Thinking::Off => "Off",
+        Thinking::Low => "Low",
+        Thinking::Medium => "Medium",
+        Thinking::High => "High",
     }
 }
 
@@ -54,7 +42,7 @@ impl Composer {
         Self {
             input,
             attachments: Vec::new(),
-            thinking: Thinking::Medium,
+            thinking: Thinking::default(),
         }
     }
 
@@ -76,7 +64,7 @@ mod tests {
 
     #[test]
     fn thinking_levels_are_ordered_and_named() {
-        let labels: Vec<_> = Thinking::ALL.iter().map(|t| t.label()).collect();
+        let labels: Vec<_> = Thinking::ALL.iter().map(|&t| thinking_label(t)).collect();
         assert_eq!(labels, ["Off", "Low", "Medium", "High"]);
     }
 }

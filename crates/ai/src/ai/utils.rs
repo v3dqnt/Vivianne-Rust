@@ -174,10 +174,7 @@ pub fn parse_streaming_json<T: DeserializeOwned + Default>(partial_json: Option<
         _ => return T::default(),
     };
 
-    match parse_json_with_repair(json) {
-        Ok(parsed) => parsed,
-        Err(_) => T::default(),
-    }
+    parse_json_with_repair(json).unwrap_or_default()
 }
 
 // --- error-body.rs translation ---

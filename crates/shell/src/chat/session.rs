@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
-use vivianne_core::{Message, Role};
+use vivianne_core::{Message, Role, Thinking};
 use vivianne_runtime::{Agent, AgentEvent};
 
 /// The conversation and the agent that answers it.
@@ -44,7 +44,7 @@ impl Session {
     }
 
     /// Start answering `text`. `None` if a run is already going.
-    pub fn send(&mut self, text: String) -> Option<Run> {
+    pub fn send(&mut self, text: String, thinking: Thinking) -> Option<Run> {
         let mut history = self.history.take()?;
         self.before_run = Some(history.clone());
         history.push(Message::new(Role::User, text));
@@ -52,7 +52,7 @@ impl Session {
         let (done_tx, done) = oneshot::channel();
         let agent = self.agent.clone();
         self.task = Some(self.runtime.spawn(async move {
-            let result = agent.run(&mut history, &events_tx).await;
+            let result = agent.run(&mut history, &events_tx, thinking).await;
             drop(events_tx);
             let error = result.err().map(|e| e.to_string());
             let _ = done_tx.send(Finished { history, error });

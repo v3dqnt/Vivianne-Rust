@@ -8,16 +8,11 @@ rust-version.workspace = true
 
 [dependencies]
 vivianne-core.workspace = true
+vivianne-ai.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 async-trait.workspace = true
-bytes.workspace = true
 futures.workspace = true
-reqwest.workspace = true
-vivianne-ai = { path = "../ai" }
-tokio.workspace = true
-
-[dev-dependencies]
 tokio.workspace = true
 
 [lints]

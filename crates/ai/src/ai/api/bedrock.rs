@@ -692,12 +692,12 @@ pub async fn stream_bedrock(
                     let idx = payload["contentBlockIndex"].as_u64().unwrap_or(0) as usize;
                     if let Some(partial) = tool_partial.remove(&idx) {
                         // Finalize tool call arguments
-                        if let Some(tc_content) = output.content.iter_mut().find(|c| {
-                            matches!(c, MessageContent::ToolCall(tc) if tc.arguments == Value::Object(serde_json::Map::new()))
-                        }) {
-                            if let MessageContent::ToolCall(ref mut tc) = tc_content {
-                                tc.arguments = serde_json::from_str(&partial).unwrap_or(Value::Object(serde_json::Map::new()));
-                            }
+                        let unfinished = output.content.iter_mut().find_map(|c| match c {
+                            MessageContent::ToolCall(tc) if tc.arguments == Value::Object(serde_json::Map::new()) => Some(tc),
+                            _ => None,
+                        });
+                        if let Some(tc) = unfinished {
+                            tc.arguments = serde_json::from_str(&partial).unwrap_or(Value::Object(serde_json::Map::new()));
                         }
                     }
                 }

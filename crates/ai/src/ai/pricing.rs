@@ -8,9 +8,11 @@
 //! is the bug this module exists to fix.
 //!
 //! Sourced from each provider's own pricing docs, checked 2026-08-23:
-//!   - <https://platform.claude.com/docs/en/about-claude/pricing>
-//!   - <https://developers.openai.com/api/docs/pricing>
-//!   - <https://ai.google.dev/gemini-api/docs/pricing>
+//!
+//! - <https://platform.claude.com/docs/en/about-claude/pricing>
+//! - <https://developers.openai.com/api/docs/pricing>
+//! - <https://ai.google.dev/gemini-api/docs/pricing>
+//!
 //! Prices change and new models ship constantly — this WILL drift over time.
 //! A model with no entry here returns `None` rather than a fabricated price;
 //! `usage_store::DayUsage::has_unknown_cost` tracks that honestly instead of

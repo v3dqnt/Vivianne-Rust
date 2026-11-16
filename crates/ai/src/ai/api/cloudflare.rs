@@ -1,4 +1,4 @@
-/// Cloudflare base URLs — from api/cloudflare.ts
+//! Cloudflare base URLs — from api/cloudflare.ts
 
 /// Workers AI direct endpoint.
 pub const CLOUDFLARE_WORKERS_AI_BASE_URL: &str =

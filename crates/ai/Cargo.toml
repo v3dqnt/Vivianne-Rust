@@ -28,11 +28,11 @@ chrono = { version = "0.4", features = ["serde"] }
 keyring = { version = "3", features = ["windows-native", "apple-native", "sync-secret-service"] }
 async-stream = "0.3.6"
 open = "5"
-
-# The copied files are the old app's code and keep its style, so the strict
-# workspace lints do not apply to this crate.
-[lints.rust]
-warnings = "allow"
+which = "7"
+zip = "4.2"
+# Local embeddings: pure-Rust ONNX (no ONNX Runtime) and Hugging Face tokenizers, as in the old app.
+tract-onnx = "0.23"
+tokenizers = { version = "0.21", default-features = false, features = ["fancy-regex"] }
 
 [lints.clippy]
-all = { level = "allow", priority = -1 }
+all = { level = "warn", priority = -1 }

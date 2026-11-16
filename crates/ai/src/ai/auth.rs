@@ -1,7 +1,6 @@
-/// Auth module — translated from `packages/ai/src/auth/`
-///
-/// Covers: types, credential-store, resolve, helpers, context, and
-/// Tauri command bindings for the frontend.
+//! Auth module — translated from `packages/ai/src/auth/`
+//!
+//! Covers: types, credential-store, resolve, helpers and context.
 
 use crate::events::Events;
 use async_trait::async_trait;
@@ -1206,6 +1205,51 @@ impl CredentialPool {
     }
 }
 
+/// The app's `AuthState`, waiting for startup to register it if necessary.
+///
+/// `setup` registers `AuthState` only after probing the OS keychain — a real
+/// blocking syscall — but Tauri creates the configured windows before `setup`
+/// finishes, so the frontend's first commands can arrive while the probe is
+/// still running. `app.state()` panics on unregistered state, which is what
+/// happened: `cmd_list_skills` and `cmd_debug_agent_status` both run at launch,
+/// and a panic there left the skills list empty until the next reload.
+///
+/// Waiting is the right answer rather than erroring: the state is guaranteed
+/// to arrive, and only a caller that races startup ever waits at all. The
+/// bound turns a genuinely broken startup back into the loud failure it was.
+static GLOBAL_STATE: std::sync::OnceLock<Arc<AuthState>> = std::sync::OnceLock::new();
+
+/// Register the app's credential store for code that has no `Events`.
+pub fn set_global(state: Arc<AuthState>) {
+    let _ = GLOBAL_STATE.set(state);
+}
+
+/// The app's credential store, once startup has registered it.
+pub fn global() -> Option<Arc<AuthState>> {
+    GLOBAL_STATE.get().cloned()
+}
+
+/// A stored API key for `provider`, if the app has one.
+pub async fn stored_api_key(provider: &str) -> Option<String> {
+    let state = global()?;
+    match state.store.read(provider).await.ok().flatten()? {
+        Credential::ApiKey(k) => k.key.filter(|k| !k.trim().is_empty()),
+        Credential::OAuth(o) => Some(o.access_token),
+    }
+}
+
+pub async fn wait_for_state(app: &Events) -> Arc<AuthState> {
+    const POLL: std::time::Duration = std::time::Duration::from_millis(25);
+    const LIMIT: u32 = 600; // 15 s
+    for _ in 0..LIMIT {
+        if let Some(state) = app.try_state::<Arc<AuthState>>() {
+            return (*state).clone();
+        }
+        tokio::time::sleep(POLL).await;
+    }
+    panic!("AuthState was still not registered 15s after startup — setup failed before app.manage(auth_state)");
+}
+
 // ── Tauri commands (credential pool) ─────────────────────────────────────────
 
 #[cfg(test)]
@@ -1291,51 +1335,5 @@ mod pool_tests {
         assert_eq!(cooldown_for(CredentialStatus::Retryable), Some(RATE_LIMIT_COOLDOWN_MS));
         assert_eq!(cooldown_for(CredentialStatus::QuotaOrBilling), Some(QUOTA_COOLDOWN_MS));
         assert_eq!(cooldown_for(CredentialStatus::Other), Some(OTHER_COOLDOWN_MS));
-        assert!(QUOTA_COOLDOWN_MS > RATE_LIMIT_COOLDOWN_MS, "a confirmed quota/billing error should cool down longer than a generic one");
     }
-}
-
-/// The app's `AuthState`, waiting for startup to register it if necessary.
-///
-/// `setup` registers `AuthState` only after probing the OS keychain — a real
-/// blocking syscall — but Tauri creates the configured windows before `setup`
-/// finishes, so the frontend's first commands can arrive while the probe is
-/// still running. `app.state()` panics on unregistered state, which is what
-/// happened: `cmd_list_skills` and `cmd_debug_agent_status` both run at launch,
-/// and a panic there left the skills list empty until the next reload.
-///
-/// Waiting is the right answer rather than erroring: the state is guaranteed
-/// to arrive, and only a caller that races startup ever waits at all. The
-/// bound turns a genuinely broken startup back into the loud failure it was.
-static GLOBAL_STATE: std::sync::OnceLock<Arc<AuthState>> = std::sync::OnceLock::new();
-
-/// Register the app's credential store for code that has no `Events`.
-pub fn set_global(state: Arc<AuthState>) {
-    let _ = GLOBAL_STATE.set(state);
-}
-
-/// The app's credential store, once startup has registered it.
-pub fn global() -> Option<Arc<AuthState>> {
-    GLOBAL_STATE.get().cloned()
-}
-
-/// A stored API key for `provider`, if the app has one.
-pub async fn stored_api_key(provider: &str) -> Option<String> {
-    let state = global()?;
-    match state.store.read(provider).await.ok().flatten()? {
-        Credential::ApiKey(k) => k.key.filter(|k| !k.trim().is_empty()),
-        Credential::OAuth(o) => Some(o.access_token),
-    }
-}
-
-pub async fn wait_for_state(app: &Events) -> Arc<AuthState> {
-    const POLL: std::time::Duration = std::time::Duration::from_millis(25);
-    const LIMIT: u32 = 600; // 15 s
-    for _ in 0..LIMIT {
-        if let Some(state) = app.try_state::<Arc<AuthState>>() {
-            return (*state).clone();
-        }
-        tokio::time::sleep(POLL).await;
-    }
-    panic!("AuthState was still not registered 15s after startup — setup failed before app.manage(auth_state)");
 }

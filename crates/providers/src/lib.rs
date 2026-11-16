@@ -1,30 +1,26 @@
-//! Model providers behind one small trait (ADR 0007).
+//! What the agent loop sees of a model provider: one small trait, [`Provider`].
 //!
-//! Two adapters cover the field: [`openai::OpenAiCompatible`] (OpenAI, Google's
-//! compatible endpoint, local servers like Ollama or llama.cpp) and
-//! [`anthropic::Anthropic`].
+//! Every real provider is Vivianne's old provider layer (`vivianne-ai`), reached through
+//! [`ai_provider::AiProvider`]. [`env`] picks one from environment variables.
 
-pub mod anthropic;
+pub mod ai_provider;
 pub mod env;
-pub mod legacy;
-pub mod openai;
-mod sse;
 
 use std::pin::Pin;
 
 use async_trait::async_trait;
 use futures::Stream;
 use serde_json::Value;
-use vivianne_core::{Message, ToolCall};
+use vivianne_core::{Message, Thinking, ToolCall};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProviderError {
-    #[error("network error: {0}")]
-    Http(String),
-    #[error("provider returned {status}: {body}")]
-    Api { status: u16, body: String },
-    #[error("could not read provider stream: {0}")]
-    Parse(String),
+    /// The provider could not be reached or was set up wrongly (unknown provider, no base URL).
+    #[error("{0}")]
+    Unavailable(String),
+    /// The provider answered with a failure.
+    #[error("{0}")]
+    Failed(String),
 }
 
 /// A tool the model may call, described for the provider.
@@ -42,6 +38,7 @@ pub struct ChatRequest {
     pub system: Option<String>,
     pub messages: Vec<Message>,
     pub tools: Vec<ToolSpec>,
+    pub thinking: Thinking,
 }
 
 /// What a provider streams back. Tool calls arrive complete, never as fragments.

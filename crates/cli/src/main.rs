@@ -5,7 +5,7 @@
 use std::io::{BufRead, Write};
 
 use tokio::sync::mpsc::unbounded_channel;
-use vivianne_core::{Message, Role};
+use vivianne_core::{Message, Role, Thinking};
 use vivianne_providers::env;
 use vivianne_runtime::{Agent, AgentEvent, CODING_SYSTEM_PROMPT};
 use vivianne_tools::Toolbox;
@@ -50,7 +50,7 @@ async fn ask(agent: &Agent, history: &mut Vec<Message>, prompt: String) -> Resul
             print_event(&event);
         }
     });
-    let result = agent.run(history, &tx).await;
+    let result = agent.run(history, &tx, Thinking::default()).await;
     drop(tx);
     let _ = printer.await;
     println!();

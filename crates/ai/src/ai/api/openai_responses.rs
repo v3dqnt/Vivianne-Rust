@@ -1,14 +1,14 @@
-/// openai_responses.rs — OpenAI Responses API streaming implementation.
-///
-/// Endpoint:  POST https://api.openai.com/v1/responses
-/// Protocol:  SSE (`data: {...}\n\n`), typed event vocabulary (see
-///            `openai_shared::ResponsesStreamEvent`) — not the delta-array
-///            shape Chat Completions uses.
-///
-/// Only used for the direct OpenAI provider (`provider_registry::ApiKind::
-/// OpenAiResponses`). Every other OpenAI-*compatible* host (OpenRouter, Groq,
-/// xAI, DeepSeek, local servers, ...) only implements Chat Completions and
-/// stays on `openai_completions.rs`.
+//! openai_responses.rs — OpenAI Responses API streaming implementation.
+//!
+//! Endpoint:  POST https://api.openai.com/v1/responses
+//! Protocol:  SSE (`data: {...}\n\n`), typed event vocabulary (see
+//!            `openai_shared::ResponsesStreamEvent`) — not the delta-array
+//!            shape Chat Completions uses.
+//!
+//! Only used for the direct OpenAI provider (`provider_registry::ApiKind::
+//! OpenAiResponses`). Every other OpenAI-*compatible* host (OpenRouter, Groq,
+//! xAI, DeepSeek, local servers, ...) only implements Chat Completions and
+//! stays on `openai_completions.rs`.
 
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -403,9 +403,9 @@ pub async fn stream_responses(
                     buffer.drain(..=newline_pos);
 
                     if let Some(data) = parse_sse_data(&line) {
-                        match serde_json::from_str::<ResponsesStreamEvent>(data) {
-                            Ok(event) => process_event(&event, &mut state, &mut output, &app, &stream_id),
-                            Err(_) => {} // ignore parse errors for individual events
+                        // An event that does not parse is skipped; the stream goes on.
+                        if let Ok(event) = serde_json::from_str::<ResponsesStreamEvent>(data) {
+                            process_event(&event, &mut state, &mut output, &app, &stream_id);
                         }
                     }
                 }
@@ -467,51 +467,47 @@ fn process_event(
                 );
             }
         }
-        ResponsesStreamEvent::OutputItemDone { item, .. } => {
-            if let Some(item) = item {
-                if item.get("type").and_then(|t| t.as_str()) == Some("function_call") {
-                    let call_id = item.get("call_id").and_then(|v| v.as_str()).unwrap_or_default();
-                    let name = item.get("name").and_then(|v| v.as_str()).unwrap_or_default();
-                    let args_str = item.get("arguments").and_then(|v| v.as_str()).unwrap_or("{}");
-                    let arguments = serde_json::from_str(args_str)
-                        .unwrap_or_else(|_| Value::Object(Default::default()));
-                    state.tool_calls.push(ToolCall {
-                        id: call_id.to_string(),
-                        name: name.to_string(),
-                        arguments,
-                        thought_signature: None,
-                    });
-                }
+        ResponsesStreamEvent::OutputItemDone { item: Some(item), .. } => {
+            if item.get("type").and_then(|t| t.as_str()) == Some("function_call") {
+                let call_id = item.get("call_id").and_then(|v| v.as_str()).unwrap_or_default();
+                let name = item.get("name").and_then(|v| v.as_str()).unwrap_or_default();
+                let args_str = item.get("arguments").and_then(|v| v.as_str()).unwrap_or("{}");
+                let arguments = serde_json::from_str(args_str)
+                    .unwrap_or_else(|_| Value::Object(Default::default()));
+                state.tool_calls.push(ToolCall {
+                    id: call_id.to_string(),
+                    name: name.to_string(),
+                    arguments,
+                    thought_signature: None,
+                });
             }
         }
-        ResponsesStreamEvent::ResponseCompleted { response } => {
-            if let Some(resp) = response {
-                if let Some(ref usage) = resp.usage {
-                    let input = usage.input_tokens.unwrap_or(0);
-                    let output_tokens = usage.output_tokens.unwrap_or(0);
-                    let cached = usage
-                        .input_tokens_details
-                        .as_ref()
-                        .and_then(|d| d.cached_tokens)
-                        .unwrap_or(0);
-                    output.usage = Usage {
-                        input: input.saturating_sub(cached),
-                        output: output_tokens,
-                        cache_read: cached,
-                        cache_write: 0,
-                        total_tokens: usage.total_tokens.unwrap_or(input + output_tokens),
-                        cost: Some(CostBreakdown {
-                            input: 0.0,
-                            output: 0.0,
-                            cache_read: 0.0,
-                            cache_write: 0.0,
-                            total: 0.0,
-                        }),
-                    };
-                }
-                if resp.status.as_deref() == Some("incomplete") {
-                    state.stop_reason = "length".to_string();
-                }
+        ResponsesStreamEvent::ResponseCompleted { response: Some(resp) } => {
+            if let Some(ref usage) = resp.usage {
+                let input = usage.input_tokens.unwrap_or(0);
+                let output_tokens = usage.output_tokens.unwrap_or(0);
+                let cached = usage
+                    .input_tokens_details
+                    .as_ref()
+                    .and_then(|d| d.cached_tokens)
+                    .unwrap_or(0);
+                output.usage = Usage {
+                    input: input.saturating_sub(cached),
+                    output: output_tokens,
+                    cache_read: cached,
+                    cache_write: 0,
+                    total_tokens: usage.total_tokens.unwrap_or(input + output_tokens),
+                    cost: Some(CostBreakdown {
+                        input: 0.0,
+                        output: 0.0,
+                        cache_read: 0.0,
+                        cache_write: 0.0,
+                        total: 0.0,
+                    }),
+                };
+            }
+            if resp.status.as_deref() == Some("incomplete") {
+                state.stop_reason = "length".to_string();
             }
         }
         ResponsesStreamEvent::Error { message, .. } => {
@@ -716,20 +712,18 @@ mod tests {
     // OutputItemDone branch so the parsing/finalization logic gets covered
     // without needing a real app handle.
     fn process_event_for_test(event: &ResponsesStreamEvent, state: &mut StreamState, _output: &mut AssistantMessage) {
-        if let ResponsesStreamEvent::OutputItemDone { item, .. } = event {
-            if let Some(item) = item {
-                if item.get("type").and_then(|t| t.as_str()) == Some("function_call") {
-                    let call_id = item.get("call_id").and_then(|v| v.as_str()).unwrap_or_default();
-                    let name = item.get("name").and_then(|v| v.as_str()).unwrap_or_default();
-                    let args_str = item.get("arguments").and_then(|v| v.as_str()).unwrap_or("{}");
-                    let arguments = serde_json::from_str(args_str).unwrap_or_else(|_| Value::Object(Default::default()));
-                    state.tool_calls.push(ToolCall {
-                        id: call_id.to_string(),
-                        name: name.to_string(),
-                        arguments,
-                        thought_signature: None,
-                    });
-                }
+        if let ResponsesStreamEvent::OutputItemDone { item: Some(item), .. } = event {
+            if item.get("type").and_then(|t| t.as_str()) == Some("function_call") {
+                let call_id = item.get("call_id").and_then(|v| v.as_str()).unwrap_or_default();
+                let name = item.get("name").and_then(|v| v.as_str()).unwrap_or_default();
+                let args_str = item.get("arguments").and_then(|v| v.as_str()).unwrap_or("{}");
+                let arguments = serde_json::from_str(args_str).unwrap_or_else(|_| Value::Object(Default::default()));
+                state.tool_calls.push(ToolCall {
+                    id: call_id.to_string(),
+                    name: name.to_string(),
+                    arguments,
+                    thought_signature: None,
+                });
             }
         }
     }

@@ -1,43 +1,50 @@
 # vivianne-ai
 
-Vivianne's provider layer, **copied from the old app** (`viv-main-gui-exp`, `src/ai/`), not rewritten:
-the provider registry, one streaming API per kind of provider (Anthropic, OpenAI chat and responses,
-Google, Azure OpenAI, Bedrock, Mistral, Cloudflare), credentials and the OS keychain, ChatGPT plan
-sign-in, model discovery, pricing, env-var keys. About 12,000 lines; its 71 original tests pass.
+Vivianne's AI layer, brought over from the old app (`viv-main-gui-exp`, `src/ai/`): all 36 files, about
+13,300 lines, with their tests. The code is the old code; it was edited only to cut it loose from Tauri and
+the old app's internals, and then cleaned up.
 
-This replaces ADR 0007 (small hand-written adapters). The earlier `vivianne-providers` crate is still
-what `runtime` and `cli` use; wiring them to this layer is a separate step.
+## What is in it
 
-## What was left out
-
-`imagegen`, `laya`, `jev`, `local_onnx`, `local_registry`, `embedding` (image generation, Laya, Jev and the
-offline embedding models: not provider code) and `completion` (background LLM calls routed by agent
-logic). The list is in `mod.rs`, which lost those seven lines.
-
-## What was changed (all of it)
-
-Everything else is byte for byte the original. The old layer was written for Tauri, which the new app
-drops, so only the places where it touched Tauri or the old app were edited, by rules in a script and
-counted:
-
-| Count | Change |
+| Area | Files |
 |---|---|
-| 24 | `tauri::AppHandle` / `AppHandle` becomes `Events` (our own handle, `src/events.rs`) |
-| 7 | `use tauri::...` lines dropped or replaced by `use crate::events::Events;` |
-| 17 | `#[tauri::command]` functions deleted: they were the old webview's IPC wrappers around code that a native app calls directly (`auth_*`, `cmd_*`) |
-| 3 | `crate::agent::system::paths::` becomes `crate::paths::` (`src/paths.rs`, same `~/.viv`, never renames) |
-| 1 | ChatGPT sign-in opens the browser with `open::that` instead of Tauri's shell plugin |
-| 1 | ChatGPT sign-in emits `tool-defs-invalidated` instead of calling the old agent's cache directly |
-| 1 | `State::inner().clone()` becomes `(*state).clone()` (a kept service is an `Arc`, not Tauri's `State`) |
+| Providers | `provider_registry` (which id is which kind of API), `api/` (a streaming client per kind: Anthropic, OpenAI chat and responses, Google, Azure OpenAI, Bedrock, Mistral, Cloudflare) |
+| Keys and sign-in | `auth`, `keychain_store`, `oauth`, `chatgpt` (ChatGPT plan sign-in), `env_api_keys` |
+| Models | `models`, `model_discovery`, `pricing`, `types` |
+| One-shot calls | `completion` (a single question, plain text back), `embedding` and `local_onnx` (text embeddings, local or remote) |
+| Images | `imagegen` (cloud image models and stable-diffusion.cpp) |
+| Decision engines | `laya` (local, in a Python environment), `jev` (hosted) |
+| Local servers | `local_registry` |
+| Shared | `http`, `utils`, `utils_ext` |
 
-The crate builds with edition 2021, as the old code did, and with its lints relaxed so the copy keeps
-its style.
+## What changed from the old code
 
-## What it needs from the host
+The old layer was written for Tauri, which the new app drops.
 
-- `Events`: stream tokens (`ai-stream-token`), `models_refreshed` and `tool-defs-invalidated` go onto its bus;
-  the agent loop and UI `subscribe()`. It also keeps shared services such as the credential store.
+| Change | Why |
+|---|---|
+| `tauri::AppHandle` became `Events` (`src/events.rs`) | The in-process bus stream tokens and notices go onto; the agent loop and the UI `subscribe()`. It also keeps shared services such as the credential store. |
+| `#[tauri::command]` attributes dropped, `cmd_x` renamed `x` | They were the webview's IPC wrappers; the native app calls the functions directly. In the first 29 files (auth, ChatGPT, discovery) they were thin wrappers and were deleted; in `laya`, `imagegen`, `embedding` and `local_onnx` they held the logic (status, install, download) and stay as public functions. |
+| `crate::agent::system::paths` became `crate::paths` | Same `~/.viv` folder, nothing renamed. |
+| Reaches into the old agent runtime became `crate::host` | Settings, key lookup, resumable downloads, the memory re-embed event, the model a background call uses. One seam instead of many. |
+| `imagegen::run_turn` dropped | It drove the old agent runtime's turn; the picture itself still comes from `generate`. |
+| The ignored test in `laya` that needed the old notch router dropped | The router is not part of this app. |
+
+## Clean-code pass
+
+The crate builds with `clippy::all` as warnings and no blanket `allow(unused, dead_code)`. Findings fixed:
+module docs written as `//!`, stray `#[allow]`s removed, nested `if let`s collapsed, a Google stream
+function that took nine arguments now takes a `GoogleModel`, an `unwrap` after an `is_none` check became a
+`match`, a complex type got a name.
+
+## What it needs from the app
+
+- `Events`: stream tokens (`ai-stream-token`), `models_refreshed`, `tool-defs-invalidated`, `memory-reembed`.
 - `paths`: the `~/.viv` data folder.
+- `host`: `~/.viv/agent/settings.json`, the key for a provider, downloads with progress, the model for background work.
 
-The 0901 backend's copy of this layer differs in six files (`api/anthropic.rs`, `model_discovery.rs`,
-`types.rs`, `mod.rs` and two of the left-out modules). This copy is from `viv-main-gui-exp`.
+## Not here
+
+`embedding` and `local_onnx` ask the app's memory store to re-embed through the `memory-reembed` event;
+there is no memory store in the new app yet, so nothing answers. `host::background_model` returns the model
+it is given: cost-aware routing is not part of the new app.

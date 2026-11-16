@@ -13,7 +13,7 @@ use gpui_kit::component::{Icon, IconName, Sizable as _};
 use gpui_kit::prelude::*;
 use gpui_kit::{Anchor, Context, ExternalPaths, Focusable as _, Hsla, Window, div, px, rgb};
 
-use super::Thinking;
+use super::{Thinking, thinking_label};
 use super::attachments::size_label;
 use crate::chat::{ChatView, shorten};
 use crate::settings;
@@ -140,14 +140,14 @@ fn thinking_menu(chat: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElemen
     Button::new("thinking")
         .ghost()
         .small()
-        .label(format!("Thinking: {}", current.label()))
+        .label(format!("Thinking: {}", thinking_label(current)))
         .dropdown_caret(true)
         .tooltip("How much the model thinks before answering")
         .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _window, _cx| {
             Thinking::ALL.iter().fold(menu, |menu, &level| {
                 let me = me.clone();
                 menu.item(
-                    PopupMenuItem::new(level.label())
+                    PopupMenuItem::new(thinking_label(level))
                         .checked(level == current)
                         .on_click(move |_event, _window, app| {
                             me.update(app, |chat, cx| chat.set_thinking(level, cx)).ok();

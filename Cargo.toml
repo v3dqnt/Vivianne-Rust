@@ -9,7 +9,6 @@ members = [
     "crates/app-api",
     "crates/cli",
     "crates/ai",
-    "crates/pi-ai",
     "crates/shell",
 ]
 
@@ -33,6 +32,7 @@ reqwest = { version = "0.13", features = ["json", "stream"] }
 vivianne-core = { path = "crates/core" }
 vivianne-runtime = { path = "crates/runtime" }
 vivianne-providers = { path = "crates/providers" }
+vivianne-ai = { path = "crates/ai" }
 vivianne-tools = { path = "crates/tools" }
 vivianne-plugins = { path = "crates/plugins" }
 vivianne-app-api = { path = "crates/app-api" }

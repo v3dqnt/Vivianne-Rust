@@ -1,7 +1,6 @@
-/// Google Shared Utilities — translated from packages/ai/src/api/google-shared.ts
-///
-/// Shared helpers for both google-generative-ai and google-vertex providers.
-#[allow(dead_code, unused_variables, unused_imports)]
+//! Google Shared Utilities — translated from packages/ai/src/api/google-shared.ts
+//!
+//! Shared helpers for both google-generative-ai and google-vertex providers.
 
 use regex::Regex;
 use serde_json::{json, Value};
