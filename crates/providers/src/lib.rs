@@ -6,6 +6,7 @@
 
 pub mod anthropic;
 pub mod env;
+pub mod legacy;
 pub mod openai;
 mod sse;
 

@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use crate::Provider;
-use crate::anthropic::Anthropic;
+use crate::legacy::Legacy;
 use crate::openai::OpenAiCompatible;
 
 const DEFAULT_OPENAI_BASE: &str = "https://api.openai.com/v1";
@@ -37,13 +37,13 @@ pub fn provider() -> Result<Arc<dyn Provider>, String> {
     match wanted.as_str() {
         "anthropic" => {
             let key = anthropic_key.ok_or("set ANTHROPIC_API_KEY")?;
-            Ok(Arc::new(Anthropic::new(key)))
+            Ok(Arc::new(Legacy::new("anthropic", None, Some(key))))
         }
         "vercel" => {
             let key = gateway_key.ok_or("set AI_GATEWAY_API_KEY")?;
             let base = std::env::var("VIV_GATEWAY_URL")
                 .unwrap_or_else(|_| DEFAULT_GATEWAY_BASE.to_owned());
-            Ok(Arc::new(OpenAiCompatible::new("vercel", &base, Some(key))))
+            Ok(Arc::new(Legacy::new("vercel", Some(base), Some(key))))
         }
         "openai" => {
             let base =
