@@ -9,6 +9,7 @@ members = [
     "crates/app-api",
     "crates/cli",
     "crates/ai",
+    "crates/pi-ai",
     "crates/shell",
 ]
 

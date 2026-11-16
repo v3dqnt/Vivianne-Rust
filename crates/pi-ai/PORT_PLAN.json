@@ -1,0 +1,5912 @@
+[
+ {
+  "label": "examples",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/scripts/capture-factory-droid-native.ts",
+    "rs": "crates/pi-ai/examples/capture_factory_droid_native.rs",
+    "lines": 233
+   }
+  ],
+  "id": 0,
+  "lines": 233
+ },
+ {
+  "label": "src/(root)",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/api-registry.ts",
+    "rs": "crates/pi-ai/src/api_registry.rs",
+    "lines": 112
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth-retry.ts",
+    "rs": "crates/pi-ai/src/auth_retry.rs",
+    "lines": 591
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth-storage.ts",
+    "rs": "crates/pi-ai/src/auth_storage.rs",
+    "lines": 411
+   },
+   {
+    "ts": "vendor/pi-ai/src/env-api-key.ts",
+    "rs": "crates/pi-ai/src/env_api_key.rs",
+    "lines": 81
+   },
+   {
+    "ts": "vendor/pi-ai/src/index.ts",
+    "rs": "crates/pi-ai/src/lib.rs",
+    "lines": 76
+   },
+   {
+    "ts": "vendor/pi-ai/src/oneshot-retry.ts",
+    "rs": "crates/pi-ai/src/oneshot_retry.rs",
+    "lines": 246
+   },
+   {
+    "ts": "vendor/pi-ai/src/provider-details.ts",
+    "rs": "crates/pi-ai/src/provider_details.rs",
+    "lines": 91
+   },
+   {
+    "ts": "vendor/pi-ai/src/provider-session-state.ts",
+    "rs": "crates/pi-ai/src/provider_session_state.rs",
+    "lines": 60
+   }
+  ],
+  "id": 1,
+  "lines": 1668
+ },
+ {
+  "label": "src/(root)",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/stream.ts",
+    "rs": "crates/pi-ai/src/stream.rs",
+    "lines": 2422
+   }
+  ],
+  "id": 2,
+  "lines": 2422
+ },
+ {
+  "label": "src/(root)",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/types.ts",
+    "rs": "crates/pi-ai/src/types.rs",
+    "lines": 1771
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage.ts",
+    "rs": "crates/pi-ai/src/usage.rs",
+    "lines": 534
+   }
+  ],
+  "id": 3,
+  "lines": 2305
+ },
+ {
+  "label": "src/(root)",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/utils.ts",
+    "rs": "crates/pi-ai/src/utils.rs",
+    "lines": 762
+   }
+  ],
+  "id": 4,
+  "lines": 762
+ },
+ {
+  "label": "src/auth_broker",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/auth-broker/client.ts",
+    "rs": "crates/pi-ai/src/auth_broker/client.rs",
+    "lines": 521
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth-broker/discover.ts",
+    "rs": "crates/pi-ai/src/auth_broker/discover.rs",
+    "lines": 543
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth-broker/index.ts",
+    "rs": "crates/pi-ai/src/auth_broker/mod.rs",
+    "lines": 8
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth-broker/protocol.ts",
+    "rs": "crates/pi-ai/src/auth_broker/protocol.rs",
+    "lines": 33
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth-broker/refresher.ts",
+    "rs": "crates/pi-ai/src/auth_broker/refresher.rs",
+    "lines": 126
+   }
+  ],
+  "id": 5,
+  "lines": 1231
+ },
+ {
+  "label": "src/auth_broker",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/auth-broker/remote-store.ts",
+    "rs": "crates/pi-ai/src/auth_broker/remote_store.rs",
+    "lines": 1867
+   }
+  ],
+  "id": 6,
+  "lines": 1867
+ },
+ {
+  "label": "src/auth_broker",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/auth-broker/server.ts",
+    "rs": "crates/pi-ai/src/auth_broker/server.rs",
+    "lines": 1105
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth-broker/snapshot-cache.ts",
+    "rs": "crates/pi-ai/src/auth_broker/snapshot_cache.rs",
+    "lines": 360
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth-broker/types.ts",
+    "rs": "crates/pi-ai/src/auth_broker/types.rs",
+    "lines": 197
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth-broker/wire-schemas.ts",
+    "rs": "crates/pi-ai/src/auth_broker/wire_schemas.rs",
+    "lines": 436
+   }
+  ],
+  "id": 7,
+  "lines": 2098
+ },
+ {
+  "label": "src/auth_gateway",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/auth-gateway/clients.ts",
+    "rs": "crates/pi-ai/src/auth_gateway/clients.rs",
+    "lines": 319
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth-gateway/dispatch.ts",
+    "rs": "crates/pi-ai/src/auth_gateway/dispatch.rs",
+    "lines": 329
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth-gateway/http.ts",
+    "rs": "crates/pi-ai/src/auth_gateway/http.rs",
+    "lines": 340
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth-gateway/index.ts",
+    "rs": "crates/pi-ai/src/auth_gateway/mod.rs",
+    "lines": 8
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth-gateway/routes/embeddings.ts",
+    "rs": "crates/pi-ai/src/auth_gateway/routes/embeddings.rs",
+    "lines": 89
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth-gateway/routes/images.ts",
+    "rs": "crates/pi-ai/src/auth_gateway/routes/images.rs",
+    "lines": 129
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth-gateway/routes/rerank.ts",
+    "rs": "crates/pi-ai/src/auth_gateway/routes/rerank.rs",
+    "lines": 82
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth-gateway/routes/speech.ts",
+    "rs": "crates/pi-ai/src/auth_gateway/routes/speech.rs",
+    "lines": 102
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth-gateway/routes/systemone.ts",
+    "rs": "crates/pi-ai/src/auth_gateway/routes/systemone.rs",
+    "lines": 131
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth-gateway/routes/transcriptions.ts",
+    "rs": "crates/pi-ai/src/auth_gateway/routes/transcriptions.rs",
+    "lines": 101
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth-gateway/routes/video.ts",
+    "rs": "crates/pi-ai/src/auth_gateway/routes/video.rs",
+    "lines": 238
+   }
+  ],
+  "id": 8,
+  "lines": 1868
+ },
+ {
+  "label": "src/auth_gateway",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/auth-gateway/server.ts",
+    "rs": "crates/pi-ai/src/auth_gateway/server.rs",
+    "lines": 1102
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth-gateway/session-state.ts",
+    "rs": "crates/pi-ai/src/auth_gateway/session_state.rs",
+    "lines": 369
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth-gateway/stdio.ts",
+    "rs": "crates/pi-ai/src/auth_gateway/stdio.rs",
+    "lines": 133
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth-gateway/types.ts",
+    "rs": "crates/pi-ai/src/auth_gateway/types.rs",
+    "lines": 179
+   }
+  ],
+  "id": 9,
+  "lines": 1783
+ },
+ {
+  "label": "src/auth",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/auth/abort.ts",
+    "rs": "crates/pi-ai/src/auth/abort.rs",
+    "lines": 23
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth/affinity.ts",
+    "rs": "crates/pi-ai/src/auth/affinity.rs",
+    "lines": 413
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth/blocks.ts",
+    "rs": "crates/pi-ai/src/auth/blocks.rs",
+    "lines": 689
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth/cascade.ts",
+    "rs": "crates/pi-ai/src/auth/cascade.rs",
+    "lines": 621
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth/health.ts",
+    "rs": "crates/pi-ai/src/auth/health.rs",
+    "lines": 439
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth/oauth.ts",
+    "rs": "crates/pi-ai/src/auth/oauth.rs",
+    "lines": 392
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth/policy.ts",
+    "rs": "crates/pi-ai/src/auth/policy.rs",
+    "lines": 188
+   }
+  ],
+  "id": 10,
+  "lines": 2765
+ },
+ {
+  "label": "src/auth",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/auth/pool.ts",
+    "rs": "crates/pi-ai/src/auth/pool.rs",
+    "lines": 833
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth/rank.ts",
+    "rs": "crates/pi-ai/src/auth/rank.rs",
+    "lines": 165
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth/refresh.ts",
+    "rs": "crates/pi-ai/src/auth/refresh.rs",
+    "lines": 1242
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth/resets.ts",
+    "rs": "crates/pi-ai/src/auth/resets.rs",
+    "lines": 321
+   }
+  ],
+  "id": 11,
+  "lines": 2561
+ },
+ {
+  "label": "src/auth",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/auth/rotation.ts",
+    "rs": "crates/pi-ai/src/auth/rotation.rs",
+    "lines": 590
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth/select.ts",
+    "rs": "crates/pi-ai/src/auth/select.rs",
+    "lines": 1251
+   }
+  ],
+  "id": 12,
+  "lines": 1841
+ },
+ {
+  "label": "src/auth",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/auth/sqlite-credential-store.ts",
+    "rs": "crates/pi-ai/src/auth/sqlite_credential_store.rs",
+    "lines": 2173
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth/store.ts",
+    "rs": "crates/pi-ai/src/auth/store.rs",
+    "lines": 267
+   }
+  ],
+  "id": 13,
+  "lines": 2440
+ },
+ {
+  "label": "src/auth",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/auth/types.ts",
+    "rs": "crates/pi-ai/src/auth/types.rs",
+    "lines": 1445
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth/usage-cache.ts",
+    "rs": "crates/pi-ai/src/auth/usage_cache.rs",
+    "lines": 413
+   },
+   {
+    "ts": "vendor/pi-ai/src/auth/usage-report.ts",
+    "rs": "crates/pi-ai/src/auth/usage_report.rs",
+    "lines": 270
+   }
+  ],
+  "id": 14,
+  "lines": 2128
+ },
+ {
+  "label": "src/auth",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/auth/usage.ts",
+    "rs": "crates/pi-ai/src/auth/usage.rs",
+    "lines": 956
+   }
+  ],
+  "id": 15,
+  "lines": 956
+ },
+ {
+  "label": "src/dialect",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/dialect/anthropic.ts",
+    "rs": "crates/pi-ai/src/dialect/anthropic.rs",
+    "lines": 587
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/catalog.ts",
+    "rs": "crates/pi-ai/src/dialect/catalog.rs",
+    "lines": 30
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/coercion.ts",
+    "rs": "crates/pi-ai/src/dialect/coercion.rs",
+    "lines": 153
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/deepseek.ts",
+    "rs": "crates/pi-ai/src/dialect/deepseek.rs",
+    "lines": 963
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/demotion.ts",
+    "rs": "crates/pi-ai/src/dialect/demotion.rs",
+    "lines": 41
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/examples.ts",
+    "rs": "crates/pi-ai/src/dialect/examples.rs",
+    "lines": 72
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/factory.ts",
+    "rs": "crates/pi-ai/src/dialect/factory.rs",
+    "lines": 35
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/fenced-thinking.ts",
+    "rs": "crates/pi-ai/src/dialect/fenced_thinking.rs",
+    "lines": 185
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/gemini.ts",
+    "rs": "crates/pi-ai/src/dialect/gemini.rs",
+    "lines": 590
+   }
+  ],
+  "id": 16,
+  "lines": 2656
+ },
+ {
+  "label": "src/dialect",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/dialect/gemma.ts",
+    "rs": "crates/pi-ai/src/dialect/gemma.rs",
+    "lines": 388
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/glm.ts",
+    "rs": "crates/pi-ai/src/dialect/glm.rs",
+    "lines": 580
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/harmony.ts",
+    "rs": "crates/pi-ai/src/dialect/harmony.rs",
+    "lines": 342
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/hermes.ts",
+    "rs": "crates/pi-ai/src/dialect/hermes.rs",
+    "lines": 206
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/history.ts",
+    "rs": "crates/pi-ai/src/dialect/history.rs",
+    "lines": 82
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/index.ts",
+    "rs": "crates/pi-ai/src/dialect/mod.rs",
+    "lines": 16
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/inventory.ts",
+    "rs": "crates/pi-ai/src/dialect/inventory.rs",
+    "lines": 31
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/kimi.ts",
+    "rs": "crates/pi-ai/src/dialect/kimi.rs",
+    "lines": 344
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/minimax.ts",
+    "rs": "crates/pi-ai/src/dialect/minimax.rs",
+    "lines": 75
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/owned-stream.ts",
+    "rs": "crates/pi-ai/src/dialect/owned_stream.rs",
+    "lines": 513
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/qwen-xml.ts",
+    "rs": "crates/pi-ai/src/dialect/qwen_xml.rs",
+    "lines": 89
+   }
+  ],
+  "id": 17,
+  "lines": 2666
+ },
+ {
+  "label": "src/dialect",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/dialect/qwen3.ts",
+    "rs": "crates/pi-ai/src/dialect/qwen3.rs",
+    "lines": 236
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/rendering.ts",
+    "rs": "crates/pi-ai/src/dialect/rendering.rs",
+    "lines": 323
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/terminator-wait.ts",
+    "rs": "crates/pi-ai/src/dialect/terminator_wait.rs",
+    "lines": 43
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/thinking-fence-strip.ts",
+    "rs": "crates/pi-ai/src/dialect/thinking_fence_strip.rs",
+    "lines": 93
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/thinking.ts",
+    "rs": "crates/pi-ai/src/dialect/thinking.rs",
+    "lines": 348
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/types.ts",
+    "rs": "crates/pi-ai/src/dialect/types.rs",
+    "lines": 65
+   },
+   {
+    "ts": "vendor/pi-ai/src/dialect/xml.ts",
+    "rs": "crates/pi-ai/src/dialect/xml.rs",
+    "lines": 75
+   }
+  ],
+  "id": 18,
+  "lines": 1183
+ },
+ {
+  "label": "src/embeddings",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/embeddings/index.ts",
+    "rs": "crates/pi-ai/src/embeddings/mod.rs",
+    "lines": 18
+   },
+   {
+    "ts": "vendor/pi-ai/src/embeddings/openai-embeddings.ts",
+    "rs": "crates/pi-ai/src/embeddings/openai_embeddings.rs",
+    "lines": 142
+   },
+   {
+    "ts": "vendor/pi-ai/src/embeddings/types.ts",
+    "rs": "crates/pi-ai/src/embeddings/types.rs",
+    "lines": 15
+   }
+  ],
+  "id": 19,
+  "lines": 175
+ },
+ {
+  "label": "src/error",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/error/abort.ts",
+    "rs": "crates/pi-ai/src/error/abort.rs",
+    "lines": 31
+   },
+   {
+    "ts": "vendor/pi-ai/src/error/auth-classify.ts",
+    "rs": "crates/pi-ai/src/error/auth_classify.rs",
+    "lines": 63
+   },
+   {
+    "ts": "vendor/pi-ai/src/error/auth.ts",
+    "rs": "crates/pi-ai/src/error/auth.rs",
+    "lines": 80
+   },
+   {
+    "ts": "vendor/pi-ai/src/error/aws.ts",
+    "rs": "crates/pi-ai/src/error/aws.rs",
+    "lines": 40
+   },
+   {
+    "ts": "vendor/pi-ai/src/error/body-error.ts",
+    "rs": "crates/pi-ai/src/error/body_error.rs",
+    "lines": 311
+   },
+   {
+    "ts": "vendor/pi-ai/src/error/classes.ts",
+    "rs": "crates/pi-ai/src/error/classes.rs",
+    "lines": 305
+   },
+   {
+    "ts": "vendor/pi-ai/src/error/finalize.ts",
+    "rs": "crates/pi-ai/src/error/finalize.rs",
+    "lines": 86
+   },
+   {
+    "ts": "vendor/pi-ai/src/error/flags.ts",
+    "rs": "crates/pi-ai/src/error/flags.rs",
+    "lines": 1240
+   },
+   {
+    "ts": "vendor/pi-ai/src/error/format.ts",
+    "rs": "crates/pi-ai/src/error/format.rs",
+    "lines": 50
+   },
+   {
+    "ts": "vendor/pi-ai/src/error/gateway.ts",
+    "rs": "crates/pi-ai/src/error/gateway.rs",
+    "lines": 97
+   },
+   {
+    "ts": "vendor/pi-ai/src/error/index.ts",
+    "rs": "crates/pi-ai/src/error/mod.rs",
+    "lines": 17
+   },
+   {
+    "ts": "vendor/pi-ai/src/error/network-cause.ts",
+    "rs": "crates/pi-ai/src/error/network_cause.rs",
+    "lines": 180
+   },
+   {
+    "ts": "vendor/pi-ai/src/error/oauth.ts",
+    "rs": "crates/pi-ai/src/error/oauth.rs",
+    "lines": 62
+   },
+   {
+    "ts": "vendor/pi-ai/src/error/provider.ts",
+    "rs": "crates/pi-ai/src/error/provider.rs",
+    "lines": 65
+   }
+  ],
+  "id": 20,
+  "lines": 2627
+ },
+ {
+  "label": "src/error",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/error/rate-limit.ts",
+    "rs": "crates/pi-ai/src/error/rate_limit.rs",
+    "lines": 577
+   },
+   {
+    "ts": "vendor/pi-ai/src/error/retryable.ts",
+    "rs": "crates/pi-ai/src/error/retryable.rs",
+    "lines": 76
+   },
+   {
+    "ts": "vendor/pi-ai/src/error/validation.ts",
+    "rs": "crates/pi-ai/src/error/validation.rs",
+    "lines": 45
+   }
+  ],
+  "id": 21,
+  "lines": 698
+ },
+ {
+  "label": "src/images",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/images/factory-droid.ts",
+    "rs": "crates/pi-ai/src/images/factory_droid.rs",
+    "lines": 212
+   },
+   {
+    "ts": "vendor/pi-ai/src/images/google-antigravity.ts",
+    "rs": "crates/pi-ai/src/images/google_antigravity.rs",
+    "lines": 180
+   },
+   {
+    "ts": "vendor/pi-ai/src/images/google-generative-ai.ts",
+    "rs": "crates/pi-ai/src/images/google_generative_ai.rs",
+    "lines": 112
+   },
+   {
+    "ts": "vendor/pi-ai/src/images/index.ts",
+    "rs": "crates/pi-ai/src/images/mod.rs",
+    "lines": 53
+   },
+   {
+    "ts": "vendor/pi-ai/src/images/openai-hosted.ts",
+    "rs": "crates/pi-ai/src/images/openai_hosted.rs",
+    "lines": 235
+   },
+   {
+    "ts": "vendor/pi-ai/src/images/openai-images.ts",
+    "rs": "crates/pi-ai/src/images/openai_images.rs",
+    "lines": 134
+   },
+   {
+    "ts": "vendor/pi-ai/src/images/openrouter-images.ts",
+    "rs": "crates/pi-ai/src/images/openrouter_images.rs",
+    "lines": 34
+   },
+   {
+    "ts": "vendor/pi-ai/src/images/shared.ts",
+    "rs": "crates/pi-ai/src/images/shared.rs",
+    "lines": 281
+   },
+   {
+    "ts": "vendor/pi-ai/src/images/types.ts",
+    "rs": "crates/pi-ai/src/images/types.rs",
+    "lines": 46
+   }
+  ],
+  "id": 22,
+  "lines": 1287
+ },
+ {
+  "label": "src/judgment",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/judgment/chat.ts",
+    "rs": "crates/pi-ai/src/judgment/chat.rs",
+    "lines": 110
+   },
+   {
+    "ts": "vendor/pi-ai/src/judgment/index.ts",
+    "rs": "crates/pi-ai/src/judgment/mod.rs",
+    "lines": 6
+   },
+   {
+    "ts": "vendor/pi-ai/src/judgment/native.ts",
+    "rs": "crates/pi-ai/src/judgment/native.rs",
+    "lines": 611
+   },
+   {
+    "ts": "vendor/pi-ai/src/judgment/openai-decisions.ts",
+    "rs": "crates/pi-ai/src/judgment/openai_decisions.rs",
+    "lines": 154
+   },
+   {
+    "ts": "vendor/pi-ai/src/judgment/question-file.ts",
+    "rs": "crates/pi-ai/src/judgment/question_file.rs",
+    "lines": 91
+   },
+   {
+    "ts": "vendor/pi-ai/src/judgment/systemone.ts",
+    "rs": "crates/pi-ai/src/judgment/systemone.rs",
+    "lines": 230
+   },
+   {
+    "ts": "vendor/pi-ai/src/judgment/text.ts",
+    "rs": "crates/pi-ai/src/judgment/text.rs",
+    "lines": 329
+   },
+   {
+    "ts": "vendor/pi-ai/src/judgment/types.ts",
+    "rs": "crates/pi-ai/src/judgment/types.rs",
+    "lines": 176
+   },
+   {
+    "ts": "vendor/pi-ai/src/judgment/wire.ts",
+    "rs": "crates/pi-ai/src/judgment/wire.rs",
+    "lines": 59
+   }
+  ],
+  "id": 23,
+  "lines": 1766
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/amazon-bedrock.ts",
+    "rs": "crates/pi-ai/src/providers/amazon_bedrock.rs",
+    "lines": 1711
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/anthropic-client.ts",
+    "rs": "crates/pi-ai/src/providers/anthropic_client.rs",
+    "lines": 351
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/anthropic-compaction.ts",
+    "rs": "crates/pi-ai/src/providers/anthropic_compaction.rs",
+    "lines": 94
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/anthropic-headers.ts",
+    "rs": "crates/pi-ai/src/providers/anthropic_headers.rs",
+    "lines": 419
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/anthropic-http-options.ts",
+    "rs": "crates/pi-ai/src/providers/anthropic_http_options.rs",
+    "lines": 149
+   }
+  ],
+  "id": 24,
+  "lines": 2724
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/anthropic-identity.ts",
+    "rs": "crates/pi-ai/src/providers/anthropic_identity.rs",
+    "lines": 137
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/anthropic-images.ts",
+    "rs": "crates/pi-ai/src/providers/anthropic_images.rs",
+    "lines": 264
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/anthropic-messages-server-schema.ts",
+    "rs": "crates/pi-ai/src/providers/anthropic_messages_server_schema.rs",
+    "lines": 286
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/anthropic-messages-server.ts",
+    "rs": "crates/pi-ai/src/providers/anthropic_messages_server.rs",
+    "lines": 1047
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/anthropic-signature.ts",
+    "rs": "crates/pi-ai/src/providers/anthropic_signature.rs",
+    "lines": 134
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/anthropic-slow-mode.ts",
+    "rs": "crates/pi-ai/src/providers/anthropic_slow_mode.rs",
+    "lines": 233
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/anthropic-state.ts",
+    "rs": "crates/pi-ai/src/providers/anthropic_state.rs",
+    "lines": 104
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/anthropic-threads.ts",
+    "rs": "crates/pi-ai/src/providers/anthropic_threads.rs",
+    "lines": 457
+   }
+  ],
+  "id": 25,
+  "lines": 2662
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/anthropic-user-profiles.ts",
+    "rs": "crates/pi-ai/src/providers/anthropic_user_profiles.rs",
+    "lines": 197
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/anthropic-wire.ts",
+    "rs": "crates/pi-ai/src/providers/anthropic_wire.rs",
+    "lines": 518
+   }
+  ],
+  "id": 26,
+  "lines": 715
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/anthropic.ts",
+    "rs": "crates/pi-ai/src/providers/anthropic.rs",
+    "lines": 7038,
+    "parts": null,
+    "part": {
+     "n": 1,
+     "start": 1,
+     "end": 3934
+    },
+    "rs_part": "crates/pi-ai/src/providers/anthropic.rs.part1"
+   }
+  ],
+  "id": 27,
+  "lines": 3934
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/anthropic.ts",
+    "rs": "crates/pi-ai/src/providers/anthropic.rs",
+    "lines": 7038,
+    "parts": null,
+    "part": {
+     "n": 2,
+     "start": 3935,
+     "end": 4721
+    },
+    "rs_part": "crates/pi-ai/src/providers/anthropic.rs.part2"
+   }
+  ],
+  "id": 28,
+  "lines": 787
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/anthropic.ts",
+    "rs": "crates/pi-ai/src/providers/anthropic.rs",
+    "lines": 7038,
+    "parts": null,
+    "part": {
+     "n": 3,
+     "start": 4722,
+     "end": 7038
+    },
+    "rs_part": "crates/pi-ai/src/providers/anthropic.rs.part3"
+   }
+  ],
+  "id": 29,
+  "lines": 2317
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/apple-foundation-models.ts",
+    "rs": "crates/pi-ai/src/providers/apple_foundation_models.rs",
+    "lines": 414
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/aws-credentials.ts",
+    "rs": "crates/pi-ai/src/providers/aws_credentials.rs",
+    "lines": 1139
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/aws-eventstream.ts",
+    "rs": "crates/pi-ai/src/providers/aws_eventstream.rs",
+    "lines": 183
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/aws-sigv4.ts",
+    "rs": "crates/pi-ai/src/providers/aws_sigv4.rs",
+    "lines": 224
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/azure-openai-responses.ts",
+    "rs": "crates/pi-ai/src/providers/azure_openai_responses.rs",
+    "lines": 452
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/bedrock-anthropic.ts",
+    "rs": "crates/pi-ai/src/providers/bedrock_anthropic.rs",
+    "lines": 31
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/bedrock-mantle.ts",
+    "rs": "crates/pi-ai/src/providers/bedrock_mantle.rs",
+    "lines": 111
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/bedrock-request-metadata.ts",
+    "rs": "crates/pi-ai/src/providers/bedrock_request_metadata.rs",
+    "lines": 7
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/claude-code-fingerprint.ts",
+    "rs": "crates/pi-ai/src/providers/claude_code_fingerprint.rs",
+    "lines": 81
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/connect-error-detail.ts",
+    "rs": "crates/pi-ai/src/providers/connect_error_detail.rs",
+    "lines": 101
+   }
+  ],
+  "id": 30,
+  "lines": 2743
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/connect-frame.ts",
+    "rs": "crates/pi-ai/src/providers/connect_frame.rs",
+    "lines": 108
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/connection-prewarm.ts",
+    "rs": "crates/pi-ai/src/providers/connection_prewarm.rs",
+    "lines": 79
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/cowork-fetch.ts",
+    "rs": "crates/pi-ai/src/providers/cowork_fetch.rs",
+    "lines": 302
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/cursor-pi-args.ts",
+    "rs": "crates/pi-ai/src/providers/cursor_pi_args.rs",
+    "lines": 279
+   }
+  ],
+  "id": 31,
+  "lines": 768
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/cursor.ts",
+    "rs": "crates/pi-ai/src/providers/cursor.rs",
+    "lines": 7573,
+    "parts": null,
+    "part": {
+     "n": 1,
+     "start": 1,
+     "end": 2530
+    },
+    "rs_part": "crates/pi-ai/src/providers/cursor.rs.part1"
+   }
+  ],
+  "id": 32,
+  "lines": 2530
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/cursor.ts",
+    "rs": "crates/pi-ai/src/providers/cursor.rs",
+    "lines": 7573,
+    "parts": null,
+    "part": {
+     "n": 2,
+     "start": 2531,
+     "end": 5056
+    },
+    "rs_part": "crates/pi-ai/src/providers/cursor.rs.part2"
+   }
+  ],
+  "id": 33,
+  "lines": 2526
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/cursor.ts",
+    "rs": "crates/pi-ai/src/providers/cursor.rs",
+    "lines": 7573,
+    "parts": null,
+    "part": {
+     "n": 3,
+     "start": 5057,
+     "end": 7573
+    },
+    "rs_part": "crates/pi-ai/src/providers/cursor.rs.part3"
+   }
+  ],
+  "id": 34,
+  "lines": 2517
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/cursor/exec-modern.ts",
+    "rs": "crates/pi-ai/src/providers/cursor/exec_modern.rs",
+    "lines": 502
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/cursor/exec-order.ts",
+    "rs": "crates/pi-ai/src/providers/cursor/exec_order.rs",
+    "lines": 66
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/cursor/interaction-query.ts",
+    "rs": "crates/pi-ai/src/providers/cursor/interaction_query.rs",
+    "lines": 210
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/devin.ts",
+    "rs": "crates/pi-ai/src/providers/devin.rs",
+    "lines": 906
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/embeddings-server.ts",
+    "rs": "crates/pi-ai/src/providers/embeddings_server.rs",
+    "lines": 148
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/error-message.ts",
+    "rs": "crates/pi-ai/src/providers/error_message.rs",
+    "lines": 24
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/factory-droid.ts",
+    "rs": "crates/pi-ai/src/providers/factory_droid.rs",
+    "lines": 814
+   }
+  ],
+  "id": 35,
+  "lines": 2670
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/factory-droid/gemini.ts",
+    "rs": "crates/pi-ai/src/providers/factory_droid/gemini.rs",
+    "lines": 643
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/factory-droid/tool-names.ts",
+    "rs": "crates/pi-ai/src/providers/factory_droid/tool_names.rs",
+    "lines": 22
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/github-copilot-headers.ts",
+    "rs": "crates/pi-ai/src/providers/github_copilot_headers.rs",
+    "lines": 388
+   }
+  ],
+  "id": 36,
+  "lines": 1053
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/gitlab-duo-workflow.ts",
+    "rs": "crates/pi-ai/src/providers/gitlab_duo_workflow.rs",
+    "lines": 3213,
+    "parts": null,
+    "part": {
+     "n": 1,
+     "start": 1,
+     "end": 1607
+    },
+    "rs_part": "crates/pi-ai/src/providers/gitlab_duo_workflow.rs.part1"
+   }
+  ],
+  "id": 37,
+  "lines": 1607
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/gitlab-duo-workflow.ts",
+    "rs": "crates/pi-ai/src/providers/gitlab_duo_workflow.rs",
+    "lines": 3213,
+    "parts": null,
+    "part": {
+     "n": 2,
+     "start": 1608,
+     "end": 3213
+    },
+    "rs_part": "crates/pi-ai/src/providers/gitlab_duo_workflow.rs.part2"
+   }
+  ],
+  "id": 38,
+  "lines": 1606
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/gitlab-duo.ts",
+    "rs": "crates/pi-ai/src/providers/gitlab_duo.rs",
+    "lines": 272
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/google-auth.ts",
+    "rs": "crates/pi-ai/src/providers/google_auth.rs",
+    "lines": 382
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/google-gemini-cli.ts",
+    "rs": "crates/pi-ai/src/providers/google_gemini_cli.rs",
+    "lines": 1417
+   }
+  ],
+  "id": 39,
+  "lines": 2071
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/google-shared.ts",
+    "rs": "crates/pi-ai/src/providers/google_shared.rs",
+    "lines": 1289
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/google-types.ts",
+    "rs": "crates/pi-ai/src/providers/google_types.rs",
+    "lines": 190
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/google-vertex.ts",
+    "rs": "crates/pi-ai/src/providers/google_vertex.rs",
+    "lines": 135
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/google.ts",
+    "rs": "crates/pi-ai/src/providers/google.rs",
+    "lines": 55
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/grammar.ts",
+    "rs": "crates/pi-ai/src/providers/grammar.rs",
+    "lines": 71
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/images-server.ts",
+    "rs": "crates/pi-ai/src/providers/images_server.rs",
+    "lines": 158
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/inference-headers.ts",
+    "rs": "crates/pi-ai/src/providers/inference_headers.rs",
+    "lines": 162
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/kimi.ts",
+    "rs": "crates/pi-ai/src/providers/kimi.rs",
+    "lines": 49
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/mock.ts",
+    "rs": "crates/pi-ai/src/providers/mock.rs",
+    "lines": 529
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/native-finish-reason.ts",
+    "rs": "crates/pi-ai/src/providers/native_finish_reason.rs",
+    "lines": 14
+   }
+  ],
+  "id": 40,
+  "lines": 2652
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/ollama.ts",
+    "rs": "crates/pi-ai/src/providers/ollama.rs",
+    "lines": 808
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-anthropic-shim.ts",
+    "rs": "crates/pi-ai/src/providers/openai_anthropic_shim.rs",
+    "lines": 170
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-chat-server-schema.ts",
+    "rs": "crates/pi-ai/src/providers/openai_chat_server_schema.rs",
+    "lines": 244
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-chat-server.ts",
+    "rs": "crates/pi-ai/src/providers/openai_chat_server.rs",
+    "lines": 834
+   }
+  ],
+  "id": 41,
+  "lines": 2056
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-chat-wire.ts",
+    "rs": "crates/pi-ai/src/providers/openai_chat_wire.rs",
+    "lines": 869
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-codex-attestation.ts",
+    "rs": "crates/pi-ai/src/providers/openai_codex_attestation.rs",
+    "lines": 20
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-codex-compaction.ts",
+    "rs": "crates/pi-ai/src/providers/openai_codex_compaction.rs",
+    "lines": 19
+   }
+  ],
+  "id": 42,
+  "lines": 908
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-codex-responses.ts",
+    "rs": "crates/pi-ai/src/providers/openai_codex_responses.rs",
+    "lines": 4742,
+    "parts": null,
+    "part": {
+     "n": 1,
+     "start": 1,
+     "end": 3182
+    },
+    "rs_part": "crates/pi-ai/src/providers/openai_codex_responses.rs.part1"
+   }
+  ],
+  "id": 43,
+  "lines": 3182
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-codex-responses.ts",
+    "rs": "crates/pi-ai/src/providers/openai_codex_responses.rs",
+    "lines": 4742,
+    "parts": null,
+    "part": {
+     "n": 2,
+     "start": 3183,
+     "end": 4742
+    },
+    "rs_part": "crates/pi-ai/src/providers/openai_codex_responses.rs.part2"
+   }
+  ],
+  "id": 44,
+  "lines": 1560
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-codex-state.ts",
+    "rs": "crates/pi-ai/src/providers/openai_codex_state.rs",
+    "lines": 195
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-codex-transport.ts",
+    "rs": "crates/pi-ai/src/providers/openai_codex_transport.rs",
+    "lines": 19
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-codex/access-programs.ts",
+    "rs": "crates/pi-ai/src/providers/openai_codex/access_programs.rs",
+    "lines": 89
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-codex/live-steering.ts",
+    "rs": "crates/pi-ai/src/providers/openai_codex/live_steering.rs",
+    "lines": 247
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-codex/request-transformer.ts",
+    "rs": "crates/pi-ai/src/providers/openai_codex/request_transformer.rs",
+    "lines": 545
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-codex/response-handler.ts",
+    "rs": "crates/pi-ai/src/providers/openai_codex/response_handler.rs",
+    "lines": 116
+   }
+  ],
+  "id": 45,
+  "lines": 1211
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-completions.ts",
+    "rs": "crates/pi-ai/src/providers/openai_completions.rs",
+    "lines": 3110,
+    "parts": null,
+    "part": {
+     "n": 1,
+     "start": 1,
+     "end": 1926
+    },
+    "rs_part": "crates/pi-ai/src/providers/openai_completions.rs.part1"
+   }
+  ],
+  "id": 46,
+  "lines": 1926
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-completions.ts",
+    "rs": "crates/pi-ai/src/providers/openai_completions.rs",
+    "lines": 3110,
+    "parts": null,
+    "part": {
+     "n": 2,
+     "start": 1927,
+     "end": 3110
+    },
+    "rs_part": "crates/pi-ai/src/providers/openai_completions.rs.part2"
+   }
+  ],
+  "id": 47,
+  "lines": 1184
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-configuration-update.ts",
+    "rs": "crates/pi-ai/src/providers/openai_configuration_update.rs",
+    "lines": 210
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-data-uri.ts",
+    "rs": "crates/pi-ai/src/providers/openai_data_uri.rs",
+    "lines": 52
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-reasoning-fallback.ts",
+    "rs": "crates/pi-ai/src/providers/openai_reasoning_fallback.rs",
+    "lines": 410
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-request-error.ts",
+    "rs": "crates/pi-ai/src/providers/openai_request_error.rs",
+    "lines": 74
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-responses-server-schema.ts",
+    "rs": "crates/pi-ai/src/providers/openai_responses_server_schema.rs",
+    "lines": 421
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-responses-server.ts",
+    "rs": "crates/pi-ai/src/providers/openai_responses_server.rs",
+    "lines": 1521
+   }
+  ],
+  "id": 48,
+  "lines": 2688
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-responses-session.ts",
+    "rs": "crates/pi-ai/src/providers/openai_responses_session.rs",
+    "lines": 385
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-responses-state.ts",
+    "rs": "crates/pi-ai/src/providers/openai_responses_state.rs",
+    "lines": 101
+   }
+  ],
+  "id": 49,
+  "lines": 486
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-responses-wire.ts",
+    "rs": "crates/pi-ai/src/providers/openai_responses_wire.rs",
+    "lines": 6378,
+    "parts": null,
+    "part": {
+     "n": 1,
+     "start": 1,
+     "end": 6378
+    },
+    "rs_part": "crates/pi-ai/src/providers/openai_responses_wire.rs.part1"
+   }
+  ],
+  "id": 50,
+  "lines": 6378
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-responses.ts",
+    "rs": "crates/pi-ai/src/providers/openai_responses.rs",
+    "lines": 2184
+   }
+  ],
+  "id": 51,
+  "lines": 2184
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-shared.ts",
+    "rs": "crates/pi-ai/src/providers/openai_shared.rs",
+    "lines": 4603,
+    "parts": null,
+    "part": {
+     "n": 1,
+     "start": 1,
+     "end": 2517
+    },
+    "rs_part": "crates/pi-ai/src/providers/openai_shared.rs.part1"
+   }
+  ],
+  "id": 52,
+  "lines": 2517
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/openai-shared.ts",
+    "rs": "crates/pi-ai/src/providers/openai_shared.rs",
+    "lines": 4603,
+    "parts": null,
+    "part": {
+     "n": 2,
+     "start": 2518,
+     "end": 4603
+    },
+    "rs_part": "crates/pi-ai/src/providers/openai_shared.rs.part2"
+   }
+  ],
+  "id": 53,
+  "lines": 2086
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/openrouter-generation.ts",
+    "rs": "crates/pi-ai/src/providers/openrouter_generation.rs",
+    "lines": 56
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/pi-native-client.ts",
+    "rs": "crates/pi-ai/src/providers/pi_native_client.rs",
+    "lines": 339
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/pi-native-server.ts",
+    "rs": "crates/pi-ai/src/providers/pi_native_server.rs",
+    "lines": 271
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/register-builtins.ts",
+    "rs": "crates/pi-ai/src/providers/register_builtins.rs",
+    "lines": 323
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/rerank-server.ts",
+    "rs": "crates/pi-ai/src/providers/rerank_server.rs",
+    "lines": 163
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/responses-websocket-connection.ts",
+    "rs": "crates/pi-ai/src/providers/responses_websocket_connection.rs",
+    "lines": 693
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/speech-server.ts",
+    "rs": "crates/pi-ai/src/providers/speech_server.rs",
+    "lines": 47
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/synthetic.ts",
+    "rs": "crates/pi-ai/src/providers/synthetic.rs",
+    "lines": 44
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/systemone-server.ts",
+    "rs": "crates/pi-ai/src/providers/systemone_server.rs",
+    "lines": 126
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/transcriptions-server.ts",
+    "rs": "crates/pi-ai/src/providers/transcriptions_server.rs",
+    "lines": 240
+   }
+  ],
+  "id": 54,
+  "lines": 2302
+ },
+ {
+  "label": "src/providers",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/providers/transform-messages.ts",
+    "rs": "crates/pi-ai/src/providers/transform_messages.rs",
+    "lines": 1598
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/video-server.ts",
+    "rs": "crates/pi-ai/src/providers/video_server.rs",
+    "lines": 283
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/vision-guard.ts",
+    "rs": "crates/pi-ai/src/providers/vision_guard.rs",
+    "lines": 69
+   },
+   {
+    "ts": "vendor/pi-ai/src/providers/xai-base-url.ts",
+    "rs": "crates/pi-ai/src/providers/xai_base_url.rs",
+    "lines": 33
+   }
+  ],
+  "id": 55,
+  "lines": 1983
+ },
+ {
+  "label": "src/registry",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/registry/amazon-bedrock.ts",
+    "rs": "crates/pi-ai/src/registry/amazon_bedrock.rs",
+    "lines": 15
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/api-key-validation.ts",
+    "rs": "crates/pi-ai/src/registry/api_key_validation.rs",
+    "lines": 177
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/aws.ts",
+    "rs": "crates/pi-ai/src/registry/aws.rs",
+    "lines": 103
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/bedrock-mantle.ts",
+    "rs": "crates/pi-ai/src/registry/bedrock_mantle.rs",
+    "lines": 32
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/build.ts",
+    "rs": "crates/pi-ai/src/registry/build.rs",
+    "lines": 75
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/cloudflare-ai-gateway.ts",
+    "rs": "crates/pi-ai/src/registry/cloudflare_ai_gateway.rs",
+    "lines": 113
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/derived.ts",
+    "rs": "crates/pi-ai/src/registry/derived.rs",
+    "lines": 10
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/engine/api-key.ts",
+    "rs": "crates/pi-ai/src/registry/engine/api_key.rs",
+    "lines": 117
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/engine/common.ts",
+    "rs": "crates/pi-ai/src/registry/engine/common.rs",
+    "lines": 312
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/engine/device-code.ts",
+    "rs": "crates/pi-ai/src/registry/engine/device_code.rs",
+    "lines": 132
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/engine/oauth-code.ts",
+    "rs": "crates/pi-ai/src/registry/engine/oauth_code.rs",
+    "lines": 238
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/engine/refresh.ts",
+    "rs": "crates/pi-ai/src/registry/engine/refresh.rs",
+    "lines": 110
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/hooks/api-key.ts",
+    "rs": "crates/pi-ai/src/registry/hooks/api_key.rs",
+    "lines": 21
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/hooks/custom.ts",
+    "rs": "crates/pi-ai/src/registry/hooks/custom.rs",
+    "lines": 22
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/hooks/device-code.ts",
+    "rs": "crates/pi-ai/src/registry/hooks/device_code.rs",
+    "lines": 17
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/hooks/env.ts",
+    "rs": "crates/pi-ai/src/registry/hooks/env.rs",
+    "lines": 40
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/hooks/index.ts",
+    "rs": "crates/pi-ai/src/registry/hooks/mod.rs",
+    "lines": 22
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/hooks/oauth-code.ts",
+    "rs": "crates/pi-ai/src/registry/hooks/oauth_code.rs",
+    "lines": 19
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/hooks/types.ts",
+    "rs": "crates/pi-ai/src/registry/hooks/types.rs",
+    "lines": 54
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/index.ts",
+    "rs": "crates/pi-ai/src/registry/mod.rs",
+    "lines": 5
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/muse-code.ts",
+    "rs": "crates/pi-ai/src/registry/muse_code.rs",
+    "lines": 24
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/alibaba-coding-plan.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/alibaba_coding_plan.rs",
+    "lines": 97
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/alibaba-token-plan.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/alibaba_token_plan.rs",
+    "lines": 123
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/anthropic-constants.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/anthropic_constants.rs",
+    "lines": 13
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/anthropic.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/anthropic.rs",
+    "lines": 113
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/callback-server.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/callback_server.rs",
+    "lines": 691
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/cloudflare-ai-gateway.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/cloudflare_ai_gateway.rs",
+    "lines": 40
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/cloudflare-workers-ai.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/cloudflare_workers_ai.rs",
+    "lines": 33
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/coreweave.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/coreweave.rs",
+    "lines": 17
+   }
+  ],
+  "id": 56,
+  "lines": 2785
+ },
+ {
+  "label": "src/registry",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/cursor.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/cursor.rs",
+    "lines": 287
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/device-code.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/device_code.rs",
+    "lines": 118
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/devin-cli.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/devin_cli.rs",
+    "lines": 84
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/devin-windsurf.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/devin_windsurf.rs",
+    "lines": 102
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/factory-droid.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/factory_droid.rs",
+    "lines": 161
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/github-copilot.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/github_copilot.rs",
+    "lines": 410
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/gitlab-duo.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/gitlab_duo.rs",
+    "lines": 10
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/google-antigravity.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/google_antigravity.rs",
+    "lines": 332
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/google-gemini-cli.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/google_gemini_cli.rs",
+    "lines": 264
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/google-oauth-shared.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/google_oauth_shared.rs",
+    "lines": 69
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/index.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/mod.rs",
+    "lines": 206
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/kilo.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/kilo.rs",
+    "lines": 108
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/kimi.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/kimi.rs",
+    "lines": 73
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/mistral-vibe.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/mistral_vibe.rs",
+    "lines": 215
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/muse-code.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/muse_code.rs",
+    "lines": 171
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/native-scheme-callback.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/native_scheme_callback.rs",
+    "lines": 63
+   }
+  ],
+  "id": 57,
+  "lines": 2673
+ },
+ {
+  "label": "src/registry",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/openai-codex.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/openai_codex.rs",
+    "lines": 303
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/perplexity.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/perplexity.rs",
+    "lines": 372
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/pkce.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/pkce.rs",
+    "lines": 19
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/snowflake.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/snowflake.rs",
+    "lines": 184
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/types.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/types.rs",
+    "lines": 120
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/xai-oauth.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/xai_oauth.rs",
+    "lines": 247
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/xiaomi.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/xiaomi.rs",
+    "lines": 136
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/oauth/zai.ts",
+    "rs": "crates/pi-ai/src/registry/oauth/zai.rs",
+    "lines": 206
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/registry.ts",
+    "rs": "crates/pi-ai/src/registry/registry.rs",
+    "lines": 52
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/snowflake.ts",
+    "rs": "crates/pi-ai/src/registry/snowflake.rs",
+    "lines": 150
+   },
+   {
+    "ts": "vendor/pi-ai/src/registry/types.ts",
+    "rs": "crates/pi-ai/src/registry/types.rs",
+    "lines": 96
+   }
+  ],
+  "id": 58,
+  "lines": 1885
+ },
+ {
+  "label": "src/rerank",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/rerank/index.ts",
+    "rs": "crates/pi-ai/src/rerank/mod.rs",
+    "lines": 14
+   },
+   {
+    "ts": "vendor/pi-ai/src/rerank/openrouter-rerank.ts",
+    "rs": "crates/pi-ai/src/rerank/openrouter_rerank.rs",
+    "lines": 142
+   },
+   {
+    "ts": "vendor/pi-ai/src/rerank/types.ts",
+    "rs": "crates/pi-ai/src/rerank/types.rs",
+    "lines": 21
+   }
+  ],
+  "id": 59,
+  "lines": 177
+ },
+ {
+  "label": "src/speech",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/speech/index.ts",
+    "rs": "crates/pi-ai/src/speech/mod.rs",
+    "lines": 36
+   },
+   {
+    "ts": "vendor/pi-ai/src/speech/openai-speech.ts",
+    "rs": "crates/pi-ai/src/speech/openai_speech.rs",
+    "lines": 27
+   },
+   {
+    "ts": "vendor/pi-ai/src/speech/transport.ts",
+    "rs": "crates/pi-ai/src/speech/transport.rs",
+    "lines": 67
+   },
+   {
+    "ts": "vendor/pi-ai/src/speech/types.ts",
+    "rs": "crates/pi-ai/src/speech/types.rs",
+    "lines": 39
+   },
+   {
+    "ts": "vendor/pi-ai/src/speech/xai-tts.ts",
+    "rs": "crates/pi-ai/src/speech/xai_tts.rs",
+    "lines": 44
+   }
+  ],
+  "id": 60,
+  "lines": 213
+ },
+ {
+  "label": "src/transcription",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/transcription/index.ts",
+    "rs": "crates/pi-ai/src/transcription/mod.rs",
+    "lines": 18
+   },
+   {
+    "ts": "vendor/pi-ai/src/transcription/openai-transcriptions.ts",
+    "rs": "crates/pi-ai/src/transcription/openai_transcriptions.rs",
+    "lines": 134
+   },
+   {
+    "ts": "vendor/pi-ai/src/transcription/types.ts",
+    "rs": "crates/pi-ai/src/transcription/types.rs",
+    "lines": 48
+   }
+  ],
+  "id": 61,
+  "lines": 200
+ },
+ {
+  "label": "src/usage",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/usage/alibaba-token-plan.ts",
+    "rs": "crates/pi-ai/src/usage/alibaba_token_plan.rs",
+    "lines": 296
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/charm-hyper.ts",
+    "rs": "crates/pi-ai/src/usage/charm_hyper.rs",
+    "lines": 96
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/claude-api.ts",
+    "rs": "crates/pi-ai/src/usage/claude_api.rs",
+    "lines": 67
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/claude-reset.ts",
+    "rs": "crates/pi-ai/src/usage/claude_reset.rs",
+    "lines": 696
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/claude.ts",
+    "rs": "crates/pi-ai/src/usage/claude.rs",
+    "lines": 1025
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/cline-pass.ts",
+    "rs": "crates/pi-ai/src/usage/cline_pass.rs",
+    "lines": 162
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/commandcode.ts",
+    "rs": "crates/pi-ai/src/usage/commandcode.rs",
+    "lines": 210
+   }
+  ],
+  "id": 62,
+  "lines": 2552
+ },
+ {
+  "label": "src/usage",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/usage/cursor.ts",
+    "rs": "crates/pi-ai/src/usage/cursor.rs",
+    "lines": 651
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/devin.ts",
+    "rs": "crates/pi-ai/src/usage/devin.rs",
+    "lines": 312
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/factory-droid.ts",
+    "rs": "crates/pi-ai/src/usage/factory_droid.rs",
+    "lines": 227
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/gemini.ts",
+    "rs": "crates/pi-ai/src/usage/gemini.rs",
+    "lines": 230
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/github-copilot.ts",
+    "rs": "crates/pi-ai/src/usage/github_copilot.rs",
+    "lines": 479
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/google-antigravity.ts",
+    "rs": "crates/pi-ai/src/usage/google_antigravity.rs",
+    "lines": 767
+   }
+  ],
+  "id": 63,
+  "lines": 2666
+ },
+ {
+  "label": "src/usage",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/usage/kimi.ts",
+    "rs": "crates/pi-ai/src/usage/kimi.rs",
+    "lines": 357
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/litellm.ts",
+    "rs": "crates/pi-ai/src/usage/litellm.rs",
+    "lines": 133
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/minimax-code.ts",
+    "rs": "crates/pi-ai/src/usage/minimax_code.rs",
+    "lines": 279
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/muse-code.ts",
+    "rs": "crates/pi-ai/src/usage/muse_code.rs",
+    "lines": 245
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/ollama.ts",
+    "rs": "crates/pi-ai/src/usage/ollama.rs",
+    "lines": 42
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/openai-codex-base-url.ts",
+    "rs": "crates/pi-ai/src/usage/openai_codex_base_url.rs",
+    "lines": 36
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/openai-codex-reset.ts",
+    "rs": "crates/pi-ai/src/usage/openai_codex_reset.rs",
+    "lines": 207
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/openai-codex.ts",
+    "rs": "crates/pi-ai/src/usage/openai_codex.rs",
+    "lines": 994
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/opencode-go.ts",
+    "rs": "crates/pi-ai/src/usage/opencode_go.rs",
+    "lines": 211
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/registry.ts",
+    "rs": "crates/pi-ai/src/usage/registry.rs",
+    "lines": 81
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/shared.ts",
+    "rs": "crates/pi-ai/src/usage/shared.rs",
+    "lines": 61
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/synthetic.ts",
+    "rs": "crates/pi-ai/src/usage/synthetic.rs",
+    "lines": 138
+   }
+  ],
+  "id": 64,
+  "lines": 2784
+ },
+ {
+  "label": "src/usage",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/usage/umans.ts",
+    "rs": "crates/pi-ai/src/usage/umans.rs",
+    "lines": 238
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/xai-oauth.ts",
+    "rs": "crates/pi-ai/src/usage/xai_oauth.rs",
+    "lines": 479
+   },
+   {
+    "ts": "vendor/pi-ai/src/usage/zai.ts",
+    "rs": "crates/pi-ai/src/usage/zai.rs",
+    "lines": 414
+   }
+  ],
+  "id": 65,
+  "lines": 1131
+ },
+ {
+  "label": "src/utils",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/utils/abort.ts",
+    "rs": "crates/pi-ai/src/utils/abort.rs",
+    "lines": 77
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/anthropic-auth.ts",
+    "rs": "crates/pi-ai/src/utils/anthropic_auth.rs",
+    "lines": 119
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/aws-profile.ts",
+    "rs": "crates/pi-ai/src/utils/aws_profile.rs",
+    "lines": 133
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/block-symbols.ts",
+    "rs": "crates/pi-ai/src/utils/block_symbols.rs",
+    "lines": 218
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/deterministic-id.ts",
+    "rs": "crates/pi-ai/src/utils/deterministic_id.rs",
+    "lines": 21
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/dsml-leak.ts",
+    "rs": "crates/pi-ai/src/utils/dsml_leak.rs",
+    "lines": 165
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/empty-completion-retry.ts",
+    "rs": "crates/pi-ai/src/utils/empty_completion_retry.rs",
+    "lines": 202
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/event-stream.ts",
+    "rs": "crates/pi-ai/src/utils/event_stream.rs",
+    "lines": 274
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/foundry.ts",
+    "rs": "crates/pi-ai/src/utils/foundry.rs",
+    "lines": 9
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/glyph-codec.ts",
+    "rs": "crates/pi-ai/src/utils/glyph_codec.rs",
+    "lines": 652
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/google-validation.ts",
+    "rs": "crates/pi-ai/src/utils/google_validation.rs",
+    "lines": 26
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/harmony-leak.ts",
+    "rs": "crates/pi-ai/src/utils/harmony_leak.rs",
+    "lines": 501
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/http-inspector.ts",
+    "rs": "crates/pi-ai/src/utils/http_inspector.rs",
+    "lines": 370
+   }
+  ],
+  "id": 66,
+  "lines": 2767
+ },
+ {
+  "label": "src/utils",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/utils/idle-iterator.ts",
+    "rs": "crates/pi-ai/src/utils/idle_iterator.rs",
+    "lines": 582
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/leaked-thinking-stream.ts",
+    "rs": "crates/pi-ai/src/utils/leaked_thinking_stream.rs",
+    "lines": 573
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/narration.ts",
+    "rs": "crates/pi-ai/src/utils/narration.rs",
+    "lines": 19
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/openai-http.ts",
+    "rs": "crates/pi-ai/src/utils/openai_http.rs",
+    "lines": 206
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/openrouter-headers.ts",
+    "rs": "crates/pi-ai/src/utils/openrouter_headers.rs",
+    "lines": 13
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/parse-bind.ts",
+    "rs": "crates/pi-ai/src/utils/parse_bind.rs",
+    "lines": 57
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/provider-response.ts",
+    "rs": "crates/pi-ai/src/utils/provider_response.rs",
+    "lines": 31
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/proxy.ts",
+    "rs": "crates/pi-ai/src/utils/proxy.rs",
+    "lines": 441
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/reasoning-source.ts",
+    "rs": "crates/pi-ai/src/utils/reasoning_source.rs",
+    "lines": 21
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/request-body.ts",
+    "rs": "crates/pi-ai/src/utils/request_body.rs",
+    "lines": 28
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/request-compression.ts",
+    "rs": "crates/pi-ai/src/utils/request_compression.rs",
+    "lines": 203
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/request-debug.ts",
+    "rs": "crates/pi-ai/src/utils/request_debug.rs",
+    "lines": 344
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/resolve-peer.ts",
+    "rs": "crates/pi-ai/src/utils/resolve_peer.rs",
+    "lines": 8
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/retry-after.ts",
+    "rs": "crates/pi-ai/src/utils/retry_after.rs",
+    "lines": 155
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/retry-wait.ts",
+    "rs": "crates/pi-ai/src/utils/retry_wait.rs",
+    "lines": 20
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/schema/adapt.ts",
+    "rs": "crates/pi-ai/src/utils/schema/adapt.rs",
+    "lines": 37
+   }
+  ],
+  "id": 67,
+  "lines": 2738
+ },
+ {
+  "label": "src/utils",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/utils/schema/allowlist.ts",
+    "rs": "crates/pi-ai/src/utils/schema/allowlist.rs",
+    "lines": 287
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/schema/compatibility.ts",
+    "rs": "crates/pi-ai/src/utils/schema/compatibility.rs",
+    "lines": 436
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/schema/dereference.ts",
+    "rs": "crates/pi-ai/src/utils/schema/dereference.rs",
+    "lines": 132
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/schema/draft.ts",
+    "rs": "crates/pi-ai/src/utils/schema/draft.rs",
+    "lines": 350
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/schema/equality.ts",
+    "rs": "crates/pi-ai/src/utils/schema/equality.rs",
+    "lines": 98
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/schema/fields.ts",
+    "rs": "crates/pi-ai/src/utils/schema/fields.rs",
+    "lines": 247
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/schema/foundation-models.ts",
+    "rs": "crates/pi-ai/src/utils/schema/foundation_models.rs",
+    "lines": 256
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/schema/index.ts",
+    "rs": "crates/pi-ai/src/utils/schema/mod.rs",
+    "lines": 17
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/schema/json-schema-validator.ts",
+    "rs": "crates/pi-ai/src/utils/schema/json_schema_validator.rs",
+    "lines": 791
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/schema/meta-validator.ts",
+    "rs": "crates/pi-ai/src/utils/schema/meta_validator.rs",
+    "lines": 165
+   }
+  ],
+  "id": 68,
+  "lines": 2779
+ },
+ {
+  "label": "src/utils",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/utils/schema/normalize.ts",
+    "rs": "crates/pi-ai/src/utils/schema/normalize.rs",
+    "lines": 2586
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/schema/spill.ts",
+    "rs": "crates/pi-ai/src/utils/schema/spill.rs",
+    "lines": 44
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/schema/stamps.ts",
+    "rs": "crates/pi-ai/src/utils/schema/stamps.rs",
+    "lines": 98
+   }
+  ],
+  "id": 69,
+  "lines": 2728
+ },
+ {
+  "label": "src/utils",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/utils/schema/strict-tool-validation.ts",
+    "rs": "crates/pi-ai/src/utils/schema/strict_tool_validation.rs",
+    "lines": 152
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/schema/types.ts",
+    "rs": "crates/pi-ai/src/utils/schema/types.rs",
+    "lines": 11
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/schema/typescript.ts",
+    "rs": "crates/pi-ai/src/utils/schema/typescript.rs",
+    "lines": 213
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/schema/wire.ts",
+    "rs": "crates/pi-ai/src/utils/schema/wire.rs",
+    "lines": 692
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/sdk-stream-timeout.ts",
+    "rs": "crates/pi-ai/src/utils/sdk_stream_timeout.rs",
+    "lines": 44
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/sse-debug.ts",
+    "rs": "crates/pi-ai/src/utils/sse_debug.rs",
+    "lines": 19
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/stream-markup-healing.ts",
+    "rs": "crates/pi-ai/src/utils/stream_markup_healing.rs",
+    "lines": 234
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/thinking-loop.ts",
+    "rs": "crates/pi-ai/src/utils/thinking_loop.rs",
+    "lines": 673
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/tool-call-arguments.ts",
+    "rs": "crates/pi-ai/src/utils/tool_call_arguments.rs",
+    "lines": 50
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/tool-call-loop-guard.ts",
+    "rs": "crates/pi-ai/src/utils/tool_call_loop_guard.rs",
+    "lines": 130
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/tool-choice.ts",
+    "rs": "crates/pi-ai/src/utils/tool_choice.rs",
+    "lines": 102
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/tool-names.ts",
+    "rs": "crates/pi-ai/src/utils/tool_names.rs",
+    "lines": 23
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/transport-fetch.ts",
+    "rs": "crates/pi-ai/src/utils/transport_fetch.rs",
+    "lines": 95
+   }
+  ],
+  "id": 70,
+  "lines": 2438
+ },
+ {
+  "label": "src/utils",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/utils/validation.ts",
+    "rs": "crates/pi-ai/src/utils/validation.rs",
+    "lines": 2288
+   },
+   {
+    "ts": "vendor/pi-ai/src/utils/websocket.ts",
+    "rs": "crates/pi-ai/src/utils/websocket.rs",
+    "lines": 87
+   }
+  ],
+  "id": 71,
+  "lines": 2375
+ },
+ {
+  "label": "src/video",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/src/video/index.ts",
+    "rs": "crates/pi-ai/src/video/mod.rs",
+    "lines": 35
+   },
+   {
+    "ts": "vendor/pi-ai/src/video/openrouter-video.ts",
+    "rs": "crates/pi-ai/src/video/openrouter_video.rs",
+    "lines": 211
+   },
+   {
+    "ts": "vendor/pi-ai/src/video/types.ts",
+    "rs": "crates/pi-ai/src/video/types.rs",
+    "lines": 73
+   }
+  ],
+  "id": 72,
+  "lines": 319
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/abliteration-effort-aliases.test.ts",
+    "rs": "crates/pi-ai/tests/suite/abliteration_effort_aliases_test.rs",
+    "lines": 37
+   },
+   {
+    "ts": "vendor/pi-ai/test/abliteration-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/abliteration_login_test.rs",
+    "lines": 97
+   },
+   {
+    "ts": "vendor/pi-ai/test/abort-source-tracker.test.ts",
+    "rs": "crates/pi-ai/tests/suite/abort_source_tracker_test.rs",
+    "lines": 103
+   },
+   {
+    "ts": "vendor/pi-ai/test/abort.test.ts",
+    "rs": "crates/pi-ai/tests/suite/abort_test.rs",
+    "lines": 214
+   },
+   {
+    "ts": "vendor/pi-ai/test/alibaba-endpoint-selection.test.ts",
+    "rs": "crates/pi-ai/tests/suite/alibaba_endpoint_selection_test.rs",
+    "lines": 226
+   },
+   {
+    "ts": "vendor/pi-ai/test/alibaba-token-plan-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/alibaba_token_plan_usage_test.rs",
+    "lines": 296
+   },
+   {
+    "ts": "vendor/pi-ai/test/alibaba-token-plan.test.ts",
+    "rs": "crates/pi-ai/tests/suite/alibaba_token_plan_test.rs",
+    "lines": 182
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-abandoned-tooluse-replay.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_abandoned_tooluse_replay_test.rs",
+    "lines": 245
+   }
+  ],
+  "id": 73,
+  "lines": 1400
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/anthropic-alignment.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_alignment_test.rs",
+    "lines": 3264,
+    "parts": null,
+    "part": {
+     "n": 1,
+     "start": 1,
+     "end": 3264
+    },
+    "rs_part": "crates/pi-ai/tests/suite/anthropic_alignment_test.rs.part1"
+   }
+  ],
+  "id": 74,
+  "lines": 3264
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/anthropic-api-version.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_api_version_test.rs",
+    "lines": 98
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-block-start-thinking-signature.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_block_start_thinking_signature_test.rs",
+    "lines": 78
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-cache-control-rejection.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_cache_control_rejection_test.rs",
+    "lines": 1168
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-client.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_client_test.rs",
+    "lines": 734
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-connection-reuse.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_connection_reuse_test.rs",
+    "lines": 118
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-context-management-compat.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_context_management_compat_test.rs",
+    "lines": 154
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-control-state-stability.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_control_state_stability_test.rs",
+    "lines": 277
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-disable-experimental-betas.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_disable_experimental_betas_test.rs",
+    "lines": 310
+   }
+  ],
+  "id": 75,
+  "lines": 2937
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/anthropic-disabled-thinking-compat.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_disabled_thinking_compat_test.rs",
+    "lines": 327
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-empty-error-tool-result.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_empty_error_tool_result_test.rs",
+    "lines": 126
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-error-tool-result-image.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_error_tool_result_image_test.rs",
+    "lines": 149
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-fable-request-shaping.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_fable_request_shaping_test.rs",
+    "lines": 461
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-fallback-handoff.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_fallback_handoff_test.rs",
+    "lines": 275
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-fast-mode.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_fast_mode_test.rs",
+    "lines": 194
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-haiku-thinking-off.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_haiku_thinking_off_test.rs",
+    "lines": 104
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-head-caching.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_head_caching_test.rs",
+    "lines": 792
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-many-image-resize.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_many_image_resize_test.rs",
+    "lines": 298
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-message-threads.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_message_threads_test.rs",
+    "lines": 346
+   }
+  ],
+  "id": 76,
+  "lines": 3072
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/anthropic-mid-conversation-system.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_mid_conversation_system_test.rs",
+    "lines": 256
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-model-not-found-rotation.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_model_not_found_rotation_test.rs",
+    "lines": 265
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-oauth.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_oauth_test.rs",
+    "lines": 281
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-ping-keepalive.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_ping_keepalive_test.rs",
+    "lines": 286
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-prefill.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_prefill_test.rs",
+    "lines": 294
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-prefix-drop-replay.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_prefix_drop_replay_test.rs",
+    "lines": 168
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-prior-turn-thinking.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_prior_turn_thinking_test.rs",
+    "lines": 864
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-retry.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_retry_test.rs",
+    "lines": 128
+   }
+  ],
+  "id": 77,
+  "lines": 2542
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/anthropic-server-compaction.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_server_compaction_test.rs",
+    "lines": 899
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-server-side-fallback.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_server_side_fallback_test.rs",
+    "lines": 1011
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-signature-auto-mark.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_signature_auto_mark_test.rs",
+    "lines": 430
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-signature-drop-all-escalation.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_signature_drop_all_escalation_test.rs",
+    "lines": 344
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-signature-hint.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_signature_hint_test.rs",
+    "lines": 97
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-signature.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_signature_test.rs",
+    "lines": 259
+   }
+  ],
+  "id": 78,
+  "lines": 3040
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/anthropic-slow-mode.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_slow_mode_test.rs",
+    "lines": 294
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-stream-envelope.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_stream_envelope_test.rs",
+    "lines": 2711
+   }
+  ],
+  "id": 79,
+  "lines": 3005
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/anthropic-stream-timeout.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_stream_timeout_test.rs",
+    "lines": 923
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-thinking-immutability.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_thinking_immutability_test.rs",
+    "lines": 99
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-thinking-max-tokens.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_thinking_max_tokens_test.rs",
+    "lines": 127
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-thinking-only-length-truncated.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_thinking_only_length_truncated_test.rs",
+    "lines": 191
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-thinking-presence.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_thinking_presence_test.rs",
+    "lines": 215
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-tool-schema.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_tool_schema_test.rs",
+    "lines": 408
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-unsigned-thinking-replay.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_unsigned_thinking_replay_test.rs",
+    "lines": 284
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-unsupported-media.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_unsupported_media_test.rs",
+    "lines": 195
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-user-profiles.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_user_profiles_test.rs",
+    "lines": 229
+   },
+   {
+    "ts": "vendor/pi-ai/test/anthropic-zenmux-checkpoint-thinking-signature.test.ts",
+    "rs": "crates/pi-ai/tests/suite/anthropic_zenmux_checkpoint_thinking_signature_test.rs",
+    "lines": 179
+   },
+   {
+    "ts": "vendor/pi-ai/test/api-key-validation.test.ts",
+    "rs": "crates/pi-ai/tests/suite/api_key_validation_test.rs",
+    "lines": 206
+   },
+   {
+    "ts": "vendor/pi-ai/test/api-registry.test.ts",
+    "rs": "crates/pi-ai/tests/suite/api_registry_test.rs",
+    "lines": 44
+   }
+  ],
+  "id": 80,
+  "lines": 3100
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/apply-patch-freeform.test.ts",
+    "rs": "crates/pi-ai/tests/suite/apply_patch_freeform_test.rs",
+    "lines": 986
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-broker-config-discovery.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_broker_config_discovery_test.rs",
+    "lines": 357
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-broker-disabled-credentials.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_broker_disabled_credentials_test.rs",
+    "lines": 227
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-broker-model-policy.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_broker_model_policy_test.rs",
+    "lines": 119
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-broker-nested-config.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_broker_nested_config_test.rs",
+    "lines": 58
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-broker-oauth-extra-fields.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_broker_oauth_extra_fields_test.rs",
+    "lines": 103
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-broker-refresh-backoff.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_broker_refresh_backoff_test.rs",
+    "lines": 276
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-broker-refresher.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_broker_refresher_test.rs",
+    "lines": 234
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-broker-remote-store.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_broker_remote_store_test.rs",
+    "lines": 740
+   }
+  ],
+  "id": 81,
+  "lines": 3100
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/auth-broker-snapshot-cache.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_broker_snapshot_cache_test.rs",
+    "lines": 306
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-broker-usage-probe-refresh.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_broker_usage_probe_refresh_test.rs",
+    "lines": 54
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-broker-wire-schema-contract.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_broker_wire_schema_contract_test.rs",
+    "lines": 296
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-broker-wire.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_broker_wire_test.rs",
+    "lines": 1123
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-anthropic-caching.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_anthropic_caching_test.rs",
+    "lines": 162
+   }
+  ],
+  "id": 82,
+  "lines": 1941
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-anthropic-messages.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_anthropic_messages_test.rs",
+    "lines": 1328
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-anthropic-to-codex-caching.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_anthropic_to_codex_caching_test.rs",
+    "lines": 171
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-cache-key.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_cache_key_test.rs",
+    "lines": 71
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-classify-error.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_classify_error_test.rs",
+    "lines": 118
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-clients.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_clients_test.rs",
+    "lines": 356
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-cross-protocol-caching.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_cross_protocol_caching_test.rs",
+    "lines": 180
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-embeddings.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_embeddings_test.rs",
+    "lines": 316
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-images.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_images_test.rs",
+    "lines": 368
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-model-list.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_model_list_test.rs",
+    "lines": 57
+   }
+  ],
+  "id": 83,
+  "lines": 2965
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-openai-chat.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_openai_chat_test.rs",
+    "lines": 627
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-openai-prompt-cache.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_openai_prompt_cache_test.rs",
+    "lines": 89
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-openai-responses-caching.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_openai_responses_caching_test.rs",
+    "lines": 180
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-openai-responses.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_openai_responses_test.rs",
+    "lines": 1668
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-pi-native.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_pi_native_test.rs",
+    "lines": 577
+   }
+  ],
+  "id": 84,
+  "lines": 3141
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-provider-session-state.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_provider_session_state_test.rs",
+    "lines": 863
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-reasoning-effort.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_reasoning_effort_test.rs",
+    "lines": 143
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-rerank.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_rerank_test.rs",
+    "lines": 252
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-response-headers.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_response_headers_test.rs",
+    "lines": 134
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-speech.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_speech_test.rs",
+    "lines": 183
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-stdio.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_stdio_test.rs",
+    "lines": 133
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-systemone.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_systemone_test.rs",
+    "lines": 635
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-thinking-loop.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_thinking_loop_test.rs",
+    "lines": 184
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-transcriptions.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_transcriptions_test.rs",
+    "lines": 250
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_usage_test.rs",
+    "lines": 83
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-gateway-video.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_gateway_video_test.rs",
+    "lines": 259
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-hooks-registry.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_hooks_registry_test.rs",
+    "lines": 65
+   }
+  ],
+  "id": 85,
+  "lines": 3184
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/auth-retry.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_retry_test.rs",
+    "lines": 918
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-account-identity.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_account_identity_test.rs",
+    "lines": 167
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-account-reclaim.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_account_reclaim_test.rs",
+    "lines": 300
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-anthropic-env-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_anthropic_env_usage_test.rs",
+    "lines": 54
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-antigravity-selection.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_antigravity_selection_test.rs",
+    "lines": 410
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-api-key-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_api_key_login_test.rs",
+    "lines": 255
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-block-persistence.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_block_persistence_test.rs",
+    "lines": 894
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-broker-no-sentinel.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_broker_no_sentinel_test.rs",
+    "lines": 107
+   }
+  ],
+  "id": 86,
+  "lines": 3105
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-check-credentials.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_check_credentials_test.rs",
+    "lines": 587
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-claude-fable-fallback.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_claude_fable_fallback_test.rs",
+    "lines": 439
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-claude-reset.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_claude_reset_test.rs",
+    "lines": 394
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-close-releases-handles.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_close_releases_handles_test.rs",
+    "lines": 57
+   }
+  ],
+  "id": 87,
+  "lines": 1477
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-codex-selection.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_codex_selection_test.rs",
+    "lines": 4585,
+    "parts": null,
+    "part": {
+     "n": 1,
+     "start": 1,
+     "end": 4051
+    },
+    "rs_part": "crates/pi-ai/tests/suite/auth_storage_codex_selection_test.rs.part1"
+   }
+  ],
+  "id": 88,
+  "lines": 4051
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-codex-selection.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_codex_selection_test.rs",
+    "lines": 4585,
+    "parts": null,
+    "part": {
+     "n": 2,
+     "start": 4052,
+     "end": 4585
+    },
+    "rs_part": "crates/pi-ai/tests/suite/auth_storage_codex_selection_test.rs.part2"
+   }
+  ],
+  "id": 89,
+  "lines": 534
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-codex-workspace-identity.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_codex_workspace_identity_test.rs",
+    "lines": 345
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-config-override.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_config_override_test.rs",
+    "lines": 127
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-credential-disabled-event.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_credential_disabled_event_test.rs",
+    "lines": 437
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-credential-origin.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_credential_origin_test.rs",
+    "lines": 107
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-email-dedupe.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_email_dedupe_test.rs",
+    "lines": 950
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-force-refresh-rotate.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_force_refresh_rotate_test.rs",
+    "lines": 1232
+   }
+  ],
+  "id": 90,
+  "lines": 3198
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-manual-code-gate.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_manual_code_gate_test.rs",
+    "lines": 108
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-model-usage-health.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_model_usage_health_test.rs",
+    "lines": 786
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-noop-persistence.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_noop_persistence_test.rs",
+    "lines": 158
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-oauth-account-select.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_oauth_account_select_test.rs",
+    "lines": 323
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-oauth-refresh-race.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_oauth_refresh_race_test.rs",
+    "lines": 1684
+   }
+  ],
+  "id": 91,
+  "lines": 3059
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-org-scoped-identity.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_org_scoped_identity_test.rs",
+    "lines": 539
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-peek.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_peek_test.rs",
+    "lines": 37
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-refresh-skew.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_refresh_skew_test.rs",
+    "lines": 130
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-session-restriction.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_session_restriction_test.rs",
+    "lines": 158
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-sqlite-busy.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_sqlite_busy_test.rs",
+    "lines": 189
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-subscription.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_subscription_test.rs",
+    "lines": 59
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-transient-refresh.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_transient_refresh_test.rs",
+    "lines": 102
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-usage-cache.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_usage_cache_test.rs",
+    "lines": 1548
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-usage-history.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_usage_history_test.rs",
+    "lines": 429
+   }
+  ],
+  "id": 92,
+  "lines": 3191
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-xai-oauth-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_xai_oauth_usage_test.rs",
+    "lines": 339
+   },
+   {
+    "ts": "vendor/pi-ai/test/auth-storage-zai-api-key-selection.test.ts",
+    "rs": "crates/pi-ai/tests/suite/auth_storage_zai_api_key_selection_test.rs",
+    "lines": 284
+   },
+   {
+    "ts": "vendor/pi-ai/test/aws-credentials.test.ts",
+    "rs": "crates/pi-ai/tests/suite/aws_credentials_test.rs",
+    "lines": 770
+   },
+   {
+    "ts": "vendor/pi-ai/test/aws-eventstream.test.ts",
+    "rs": "crates/pi-ai/tests/suite/aws_eventstream_test.rs",
+    "lines": 160
+   },
+   {
+    "ts": "vendor/pi-ai/test/aws-registry.test.ts",
+    "rs": "crates/pi-ai/tests/suite/aws_registry_test.rs",
+    "lines": 248
+   },
+   {
+    "ts": "vendor/pi-ai/test/aws-sigv4.test.ts",
+    "rs": "crates/pi-ai/tests/suite/aws_sigv4_test.rs",
+    "lines": 123
+   },
+   {
+    "ts": "vendor/pi-ai/test/azure-openai-responses-stream.test.ts",
+    "rs": "crates/pi-ai/tests/suite/azure_openai_responses_stream_test.rs",
+    "lines": 481
+   },
+   {
+    "ts": "vendor/pi-ai/test/bedrock-anthropic-routes.test.ts",
+    "rs": "crates/pi-ai/tests/suite/bedrock_anthropic_routes_test.rs",
+    "lines": 275
+   },
+   {
+    "ts": "vendor/pi-ai/test/bedrock-caller-headers.test.ts",
+    "rs": "crates/pi-ai/tests/suite/bedrock_caller_headers_test.rs",
+    "lines": 157
+   },
+   {
+    "ts": "vendor/pi-ai/test/bedrock-disable-reasoning.test.ts",
+    "rs": "crates/pi-ai/tests/suite/bedrock_disable_reasoning_test.rs",
+    "lines": 125
+   },
+   {
+    "ts": "vendor/pi-ai/test/bedrock-haiku-thinking-off.test.ts",
+    "rs": "crates/pi-ai/tests/suite/bedrock_haiku_thinking_off_test.rs",
+    "lines": 59
+   }
+  ],
+  "id": 93,
+  "lines": 3021
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/bedrock-inference-profile.test.ts",
+    "rs": "crates/pi-ai/tests/suite/bedrock_inference_profile_test.rs",
+    "lines": 392
+   },
+   {
+    "ts": "vendor/pi-ai/test/bedrock-mantle-auth.test.ts",
+    "rs": "crates/pi-ai/tests/suite/bedrock_mantle_auth_test.rs",
+    "lines": 247
+   },
+   {
+    "ts": "vendor/pi-ai/test/bedrock-nova-unsigned-reasoning.test.ts",
+    "rs": "crates/pi-ai/tests/suite/bedrock_nova_unsigned_reasoning_test.rs",
+    "lines": 127
+   },
+   {
+    "ts": "vendor/pi-ai/test/bedrock-on-payload.test.ts",
+    "rs": "crates/pi-ai/tests/suite/bedrock_on_payload_test.rs",
+    "lines": 162
+   },
+   {
+    "ts": "vendor/pi-ai/test/bedrock-openai-reasoning.test.ts",
+    "rs": "crates/pi-ai/tests/suite/bedrock_openai_reasoning_test.rs",
+    "lines": 91
+   },
+   {
+    "ts": "vendor/pi-ai/test/bedrock-prefix-binding-retry.test.ts",
+    "rs": "crates/pi-ai/tests/suite/bedrock_prefix_binding_retry_test.rs",
+    "lines": 245
+   },
+   {
+    "ts": "vendor/pi-ai/test/bedrock-prompt-cache.test.ts",
+    "rs": "crates/pi-ai/tests/suite/bedrock_prompt_cache_test.rs",
+    "lines": 215
+   },
+   {
+    "ts": "vendor/pi-ai/test/bedrock-request-metadata.test.ts",
+    "rs": "crates/pi-ai/tests/suite/bedrock_request_metadata_test.rs",
+    "lines": 124
+   },
+   {
+    "ts": "vendor/pi-ai/test/bedrock-server-compaction.test.ts",
+    "rs": "crates/pi-ai/tests/suite/bedrock_server_compaction_test.rs",
+    "lines": 1060
+   },
+   {
+    "ts": "vendor/pi-ai/test/bedrock-stream-exception-status.test.ts",
+    "rs": "crates/pi-ai/tests/suite/bedrock_stream_exception_status_test.rs",
+    "lines": 186
+   },
+   {
+    "ts": "vendor/pi-ai/test/bedrock-system-prompt.test.ts",
+    "rs": "crates/pi-ai/tests/suite/bedrock_system_prompt_test.rs",
+    "lines": 74
+   },
+   {
+    "ts": "vendor/pi-ai/test/bedrock-tool-choice.test.ts",
+    "rs": "crates/pi-ai/tests/suite/bedrock_tool_choice_test.rs",
+    "lines": 88
+   },
+   {
+    "ts": "vendor/pi-ai/test/bedrock-tool-descriptions.test.ts",
+    "rs": "crates/pi-ai/tests/suite/bedrock_tool_descriptions_test.rs",
+    "lines": 87
+   },
+   {
+    "ts": "vendor/pi-ai/test/bedrock-tool-name-replay.test.ts",
+    "rs": "crates/pi-ai/tests/suite/bedrock_tool_name_replay_test.rs",
+    "lines": 102
+   }
+  ],
+  "id": 94,
+  "lines": 3200
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/bedrock-tool-result-image.test.ts",
+    "rs": "crates/pi-ai/tests/suite/bedrock_tool_result_image_test.rs",
+    "lines": 186
+   },
+   {
+    "ts": "vendor/pi-ai/test/budgeted-host.test.ts",
+    "rs": "crates/pi-ai/tests/suite/budgeted_host_test.rs",
+    "lines": 49
+   },
+   {
+    "ts": "vendor/pi-ai/test/callback-server-dual-stack.test.ts",
+    "rs": "crates/pi-ai/tests/suite/callback_server_dual_stack_test.rs",
+    "lines": 172
+   },
+   {
+    "ts": "vendor/pi-ai/test/callback-server-launch-route.test.ts",
+    "rs": "crates/pi-ai/tests/suite/callback_server_launch_route_test.rs",
+    "lines": 291
+   },
+   {
+    "ts": "vendor/pi-ai/test/callback-server-manual-input.test.ts",
+    "rs": "crates/pi-ai/tests/suite/callback_server_manual_input_test.rs",
+    "lines": 99
+   },
+   {
+    "ts": "vendor/pi-ai/test/callback-server-port-fallback.test.ts",
+    "rs": "crates/pi-ai/tests/suite/callback_server_port_fallback_test.rs",
+    "lines": 126
+   },
+   {
+    "ts": "vendor/pi-ai/test/callback-server-security.test.ts",
+    "rs": "crates/pi-ai/tests/suite/callback_server_security_test.rs",
+    "lines": 231
+   },
+   {
+    "ts": "vendor/pi-ai/test/charm-hyper-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/charm_hyper_usage_test.rs",
+    "lines": 128
+   },
+   {
+    "ts": "vendor/pi-ai/test/claude-block-healing.test.ts",
+    "rs": "crates/pi-ai/tests/suite/claude_block_healing_test.rs",
+    "lines": 537
+   },
+   {
+    "ts": "vendor/pi-ai/test/claude-ratelimit-headers.test.ts",
+    "rs": "crates/pi-ai/tests/suite/claude_ratelimit_headers_test.rs",
+    "lines": 121
+   },
+   {
+    "ts": "vendor/pi-ai/test/claude-reset.test.ts",
+    "rs": "crates/pi-ai/tests/suite/claude_reset_test.rs",
+    "lines": 441
+   },
+   {
+    "ts": "vendor/pi-ai/test/claude-usage-endpoint.test.ts",
+    "rs": "crates/pi-ai/tests/suite/claude_usage_endpoint_test.rs",
+    "lines": 193
+   }
+  ],
+  "id": 95,
+  "lines": 2574
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/claude-usage-headers.test.ts",
+    "rs": "crates/pi-ai/tests/suite/claude_usage_headers_test.rs",
+    "lines": 1001
+   },
+   {
+    "ts": "vendor/pi-ai/test/claude-usage-retry.test.ts",
+    "rs": "crates/pi-ai/tests/suite/claude_usage_retry_test.rs",
+    "lines": 190
+   },
+   {
+    "ts": "vendor/pi-ai/test/cline-pass-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cline_pass_login_test.rs",
+    "lines": 37
+   },
+   {
+    "ts": "vendor/pi-ai/test/cline-pass-transport.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cline_pass_transport_test.rs",
+    "lines": 372
+   },
+   {
+    "ts": "vendor/pi-ai/test/cline-pass-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cline_pass_usage_test.rs",
+    "lines": 162
+   },
+   {
+    "ts": "vendor/pi-ai/test/cloudflare-ai-gateway.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cloudflare_ai_gateway_test.rs",
+    "lines": 306
+   },
+   {
+    "ts": "vendor/pi-ai/test/commandcode-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/commandcode_usage_test.rs",
+    "lines": 273
+   },
+   {
+    "ts": "vendor/pi-ai/test/completion-retention.test.ts",
+    "rs": "crates/pi-ai/tests/suite/completion_retention_test.rs",
+    "lines": 29
+   },
+   {
+    "ts": "vendor/pi-ai/test/connect-error-detail.test.ts",
+    "rs": "crates/pi-ai/tests/suite/connect_error_detail_test.rs",
+    "lines": 79
+   },
+   {
+    "ts": "vendor/pi-ai/test/connect-frame.test.ts",
+    "rs": "crates/pi-ai/tests/suite/connect_frame_test.rs",
+    "lines": 62
+   },
+   {
+    "ts": "vendor/pi-ai/test/connection-prewarm.test.ts",
+    "rs": "crates/pi-ai/tests/suite/connection_prewarm_test.rs",
+    "lines": 133
+   }
+  ],
+  "id": 96,
+  "lines": 2644
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/context-overflow.test.ts",
+    "rs": "crates/pi-ai/tests/suite/context_overflow_test.rs",
+    "lines": 732
+   },
+   {
+    "ts": "vendor/pi-ai/test/coralbricks-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/coralbricks_login_test.rs",
+    "lines": 51
+   },
+   {
+    "ts": "vendor/pi-ai/test/coralbricks-wire-contract.test.ts",
+    "rs": "crates/pi-ai/tests/suite/coralbricks_wire_contract_test.rs",
+    "lines": 229
+   },
+   {
+    "ts": "vendor/pi-ai/test/coreweave-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/coreweave_login_test.rs",
+    "lines": 111
+   },
+   {
+    "ts": "vendor/pi-ai/test/coreweave-project-header.test.ts",
+    "rs": "crates/pi-ai/tests/suite/coreweave_project_header_test.rs",
+    "lines": 121
+   },
+   {
+    "ts": "vendor/pi-ai/test/cowork-fetch-cancellation.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cowork_fetch_cancellation_test.rs",
+    "lines": 163
+   },
+   {
+    "ts": "vendor/pi-ai/test/cowork-fetch-proxy.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cowork_fetch_proxy_test.rs",
+    "lines": 61
+   },
+   {
+    "ts": "vendor/pi-ai/test/credential-external-reload.test.ts",
+    "rs": "crates/pi-ai/tests/suite/credential_external_reload_test.rs",
+    "lines": 230
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-caller-headers.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_caller_headers_test.rs",
+    "lines": 190
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-checkpoint-retry.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_checkpoint_retry_test.rs",
+    "lines": 302
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-conversation-rotate.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_conversation_rotate_test.rs",
+    "lines": 501
+   }
+  ],
+  "id": 97,
+  "lines": 2691
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/cursor-edit-tool-call.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_edit_tool_call_test.rs",
+    "lines": 831
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-effort-routing.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_effort_routing_test.rs",
+    "lines": 84
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-exec-handlers.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_exec_handlers_test.rs",
+    "lines": 1992
+   }
+  ],
+  "id": 98,
+  "lines": 2907
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/cursor-exec-modern.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_exec_modern_test.rs",
+    "lines": 2495
+   }
+  ],
+  "id": 99,
+  "lines": 2495
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/cursor-external-tool-executor.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_external_tool_executor_test.rs",
+    "lines": 1094
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-h2-transport-error.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_h2_transport_error_test.rs",
+    "lines": 38
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-h2-unavailable.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_h2_unavailable_test.rs",
+    "lines": 247
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-http1-transport.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_http1_transport_test.rs",
+    "lines": 248
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-interaction-query.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_interaction_query_test.rs",
+    "lines": 226
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_login_test.rs",
+    "lines": 232
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-mcp-tool-catalog.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_mcp_tool_catalog_test.rs",
+    "lines": 286
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-on-payload.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_on_payload_test.rs",
+    "lines": 118
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-pi-args.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_pi_args_test.rs",
+    "lines": 129
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-proxy-env.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_proxy_env_test.rs",
+    "lines": 22
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-requested-model.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_requested_model_test.rs",
+    "lines": 253
+   }
+  ],
+  "id": 100,
+  "lines": 2893
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/cursor-server-records.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_server_records_test.rs",
+    "lines": 1182
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-streaming-args.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_streaming_args_test.rs",
+    "lines": 519
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-system-prompt-history.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_system_prompt_history_test.rs",
+    "lines": 80
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-terminal-error.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_terminal_error_test.rs",
+    "lines": 979
+   }
+  ],
+  "id": 101,
+  "lines": 2760
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/cursor-todo-bridge.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_todo_bridge_test.rs",
+    "lines": 817
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-transport-error.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_transport_error_test.rs",
+    "lines": 25
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-turn-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_turn_usage_test.rs",
+    "lines": 207
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_usage_test.rs",
+    "lines": 1171
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-webfetch-interaction-query.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_webfetch_interaction_query_test.rs",
+    "lines": 184
+   },
+   {
+    "ts": "vendor/pi-ai/test/cursor-wire-model-fallback.test.ts",
+    "rs": "crates/pi-ai/tests/suite/cursor_wire_model_fallback_test.rs",
+    "lines": 496
+   },
+   {
+    "ts": "vendor/pi-ai/test/deepinfra-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/deepinfra_login_test.rs",
+    "lines": 69
+   }
+  ],
+  "id": 102,
+  "lines": 2969
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/deepinfra-reasoning-contract.test.ts",
+    "rs": "crates/pi-ai/tests/suite/deepinfra_reasoning_contract_test.rs",
+    "lines": 256
+   },
+   {
+    "ts": "vendor/pi-ai/test/deepseek-reasoning-content.test.ts",
+    "rs": "crates/pi-ai/tests/suite/deepseek_reasoning_content_test.rs",
+    "lines": 695
+   },
+   {
+    "ts": "vendor/pi-ai/test/devin-account-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/devin_account_usage_test.rs",
+    "lines": 349
+   },
+   {
+    "ts": "vendor/pi-ai/test/devin-cli-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/devin_cli_login_test.rs",
+    "lines": 79
+   },
+   {
+    "ts": "vendor/pi-ai/test/devin-frame-cap.test.ts",
+    "rs": "crates/pi-ai/tests/suite/devin_frame_cap_test.rs",
+    "lines": 116
+   },
+   {
+    "ts": "vendor/pi-ai/test/devin-history.test.ts",
+    "rs": "crates/pi-ai/tests/suite/devin_history_test.rs",
+    "lines": 203
+   },
+   {
+    "ts": "vendor/pi-ai/test/devin-large-request-recovery.test.ts",
+    "rs": "crates/pi-ai/tests/suite/devin_large_request_recovery_test.rs",
+    "lines": 289
+   },
+   {
+    "ts": "vendor/pi-ai/test/devin-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/devin_login_test.rs",
+    "lines": 47
+   },
+   {
+    "ts": "vendor/pi-ai/test/devin-router.test.ts",
+    "rs": "crates/pi-ai/tests/suite/devin_router_test.rs",
+    "lines": 495
+   },
+   {
+    "ts": "vendor/pi-ai/test/devin-streaming-args.test.ts",
+    "rs": "crates/pi-ai/tests/suite/devin_streaming_args_test.rs",
+    "lines": 106
+   },
+   {
+    "ts": "vendor/pi-ai/test/devin-trailer-evidence.test.ts",
+    "rs": "crates/pi-ai/tests/suite/devin_trailer_evidence_test.rs",
+    "lines": 128
+   },
+   {
+    "ts": "vendor/pi-ai/test/devin-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/devin_usage_test.rs",
+    "lines": 67
+   },
+   {
+    "ts": "vendor/pi-ai/test/devin-windsurf-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/devin_windsurf_login_test.rs",
+    "lines": 91
+   },
+   {
+    "ts": "vendor/pi-ai/test/dialect-thinking.test.ts",
+    "rs": "crates/pi-ai/tests/suite/dialect_thinking_test.rs",
+    "lines": 246
+   }
+  ],
+  "id": 103,
+  "lines": 3167
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/duplicate-tool-results.test.ts",
+    "rs": "crates/pi-ai/tests/suite/duplicate_tool_results_test.rs",
+    "lines": 1691
+   },
+   {
+    "ts": "vendor/pi-ai/test/empty-completion-retry.test.ts",
+    "rs": "crates/pi-ai/tests/suite/empty_completion_retry_test.rs",
+    "lines": 523
+   },
+   {
+    "ts": "vendor/pi-ai/test/error-aierr.test.ts",
+    "rs": "crates/pi-ai/tests/suite/error_aierr_test.rs",
+    "lines": 239
+   },
+   {
+    "ts": "vendor/pi-ai/test/error-body-rate-limit.test.ts",
+    "rs": "crates/pi-ai/tests/suite/error_body_rate_limit_test.rs",
+    "lines": 322
+   }
+  ],
+  "id": 104,
+  "lines": 2775
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/error-id.test.ts",
+    "rs": "crates/pi-ai/tests/suite/error_id_test.rs",
+    "lines": 482
+   },
+   {
+    "ts": "vendor/pi-ai/test/error-transient-status-boundary.test.ts",
+    "rs": "crates/pi-ai/tests/suite/error_transient_status_boundary_test.rs",
+    "lines": 47
+   },
+   {
+    "ts": "vendor/pi-ai/test/eval-language-whitespace.test.ts",
+    "rs": "crates/pi-ai/tests/suite/eval_language_whitespace_test.rs",
+    "lines": 30
+   },
+   {
+    "ts": "vendor/pi-ai/test/event-stream.test.ts",
+    "rs": "crates/pi-ai/tests/suite/event_stream_test.rs",
+    "lines": 90
+   },
+   {
+    "ts": "vendor/pi-ai/test/exa-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/exa_login_test.rs",
+    "lines": 36
+   },
+   {
+    "ts": "vendor/pi-ai/test/factory-droid-anthropic.test.ts",
+    "rs": "crates/pi-ai/tests/suite/factory_droid_anthropic_test.rs",
+    "lines": 565
+   },
+   {
+    "ts": "vendor/pi-ai/test/factory-droid-completions-reasoning.test.ts",
+    "rs": "crates/pi-ai/tests/suite/factory_droid_completions_reasoning_test.rs",
+    "lines": 712
+   }
+  ],
+  "id": 105,
+  "lines": 1962
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/factory-droid-gemini.test.ts",
+    "rs": "crates/pi-ai/tests/suite/factory_droid_gemini_test.rs",
+    "lines": 1292
+   },
+   {
+    "ts": "vendor/pi-ai/test/factory-droid-images.test.ts",
+    "rs": "crates/pi-ai/tests/suite/factory_droid_images_test.rs",
+    "lines": 292
+   },
+   {
+    "ts": "vendor/pi-ai/test/factory-droid-native-parity.test.ts",
+    "rs": "crates/pi-ai/tests/suite/factory_droid_native_parity_test.rs",
+    "lines": 134
+   },
+   {
+    "ts": "vendor/pi-ai/test/factory-droid-oauth.test.ts",
+    "rs": "crates/pi-ai/tests/suite/factory_droid_oauth_test.rs",
+    "lines": 633
+   },
+   {
+    "ts": "vendor/pi-ai/test/factory-droid-provider.test.ts",
+    "rs": "crates/pi-ai/tests/suite/factory_droid_provider_test.rs",
+    "lines": 405
+   },
+   {
+    "ts": "vendor/pi-ai/test/factory-droid-responses.test.ts",
+    "rs": "crates/pi-ai/tests/suite/factory_droid_responses_test.rs",
+    "lines": 170
+   },
+   {
+    "ts": "vendor/pi-ai/test/factory-droid-stream.test.ts",
+    "rs": "crates/pi-ai/tests/suite/factory_droid_stream_test.rs",
+    "lines": 105
+   }
+  ],
+  "id": 106,
+  "lines": 3031
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/factory-droid-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/factory_droid_usage_test.rs",
+    "lines": 267
+   },
+   {
+    "ts": "vendor/pi-ai/test/firepass.live.ts",
+    "rs": "crates/pi-ai/tests/suite/firepass_live.rs",
+    "lines": 136
+   },
+   {
+    "ts": "vendor/pi-ai/test/firepass.test.ts",
+    "rs": "crates/pi-ai/tests/suite/firepass_test.rs",
+    "lines": 86
+   },
+   {
+    "ts": "vendor/pi-ai/test/fireworks-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/fireworks_login_test.rs",
+    "lines": 66
+   },
+   {
+    "ts": "vendor/pi-ai/test/fixtures/completion-retention.ts",
+    "rs": "crates/pi-ai/tests/suite/fixtures/completion_retention.rs",
+    "lines": 85
+   },
+   {
+    "ts": "vendor/pi-ai/test/fixtures/cursor-proxy-env.ts",
+    "rs": "crates/pi-ai/tests/suite/fixtures/cursor_proxy_env.rs",
+    "lines": 69
+   },
+   {
+    "ts": "vendor/pi-ai/test/fixtures/cursor-tls-reset.ts",
+    "rs": "crates/pi-ai/tests/suite/fixtures/cursor_tls_reset.rs",
+    "lines": 40
+   },
+   {
+    "ts": "vendor/pi-ai/test/fixtures/oauth-barrel-import.ts",
+    "rs": "crates/pi-ai/tests/suite/fixtures/oauth_barrel_import.rs",
+    "lines": 17
+   },
+   {
+    "ts": "vendor/pi-ai/test/fixtures/oauth-refresh-during-exit-child.ts",
+    "rs": "crates/pi-ai/tests/suite/fixtures/oauth_refresh_during_exit_child.rs",
+    "lines": 43
+   },
+   {
+    "ts": "vendor/pi-ai/test/fixtures/oauth-sigterm-child.ts",
+    "rs": "crates/pi-ai/tests/suite/fixtures/oauth_sigterm_child.rs",
+    "lines": 22
+   },
+   {
+    "ts": "vendor/pi-ai/test/fixtures/openai-responses-server.ts",
+    "rs": "crates/pi-ai/tests/suite/fixtures/openai_responses_server.rs",
+    "lines": 168
+   },
+   {
+    "ts": "vendor/pi-ai/test/flattened-array-properties.test.ts",
+    "rs": "crates/pi-ai/tests/suite/flattened_array_properties_test.rs",
+    "lines": 136
+   },
+   {
+    "ts": "vendor/pi-ai/test/foundation-models-schema.test.ts",
+    "rs": "crates/pi-ai/tests/suite/foundation_models_schema_test.rs",
+    "lines": 103
+   },
+   {
+    "ts": "vendor/pi-ai/test/gemini-gemma-dialect.test.ts",
+    "rs": "crates/pi-ai/tests/suite/gemini_gemma_dialect_test.rs",
+    "lines": 177
+   },
+   {
+    "ts": "vendor/pi-ai/test/github-copilot-anthropic-auth.test.ts",
+    "rs": "crates/pi-ai/tests/suite/github_copilot_anthropic_auth_test.rs",
+    "lines": 261
+   },
+   {
+    "ts": "vendor/pi-ai/test/github-copilot-anthropic-model-rejection.test.ts",
+    "rs": "crates/pi-ai/tests/suite/github_copilot_anthropic_model_rejection_test.rs",
+    "lines": 79
+   },
+   {
+    "ts": "vendor/pi-ai/test/github-copilot-error.test.ts",
+    "rs": "crates/pi-ai/tests/suite/github_copilot_error_test.rs",
+    "lines": 76
+   },
+   {
+    "ts": "vendor/pi-ai/test/github-copilot-headers.test.ts",
+    "rs": "crates/pi-ai/tests/suite/github_copilot_headers_test.rs",
+    "lines": 830
+   },
+   {
+    "ts": "vendor/pi-ai/test/github-copilot-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/github_copilot_login_test.rs",
+    "lines": 504
+   }
+  ],
+  "id": 107,
+  "lines": 3165
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/github-copilot-long-context-wire.test.ts",
+    "rs": "crates/pi-ai/tests/suite/github_copilot_long_context_wire_test.rs",
+    "lines": 279
+   },
+   {
+    "ts": "vendor/pi-ai/test/github-copilot-openai-base-url.test.ts",
+    "rs": "crates/pi-ai/tests/suite/github_copilot_openai_base_url_test.rs",
+    "lines": 422
+   },
+   {
+    "ts": "vendor/pi-ai/test/github-copilot-reasoning.test.ts",
+    "rs": "crates/pi-ai/tests/suite/github_copilot_reasoning_test.rs",
+    "lines": 71
+   },
+   {
+    "ts": "vendor/pi-ai/test/github-copilot-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/github_copilot_usage_test.rs",
+    "lines": 240
+   },
+   {
+    "ts": "vendor/pi-ai/test/gitlab-duo-cache-key.test.ts",
+    "rs": "crates/pi-ai/tests/suite/gitlab_duo_cache_key_test.rs",
+    "lines": 239
+   },
+   {
+    "ts": "vendor/pi-ai/test/gitlab-duo-workflow-oauth.test.ts",
+    "rs": "crates/pi-ai/tests/suite/gitlab_duo_workflow_oauth_test.rs",
+    "lines": 96
+   }
+  ],
+  "id": 108,
+  "lines": 1347
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/gitlab-duo-workflow-provider.test.ts",
+    "rs": "crates/pi-ai/tests/suite/gitlab_duo_workflow_provider_test.rs",
+    "lines": 5040,
+    "parts": null,
+    "part": {
+     "n": 1,
+     "start": 1,
+     "end": 5040
+    },
+    "rs_part": "crates/pi-ai/tests/suite/gitlab_duo_workflow_provider_test.rs.part1"
+   }
+  ],
+  "id": 109,
+  "lines": 5040
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/glm-5.2-reasoning-effort.test.ts",
+    "rs": "crates/pi-ai/tests/suite/glm_5_2_reasoning_effort_test.rs",
+    "lines": 121
+   },
+   {
+    "ts": "vendor/pi-ai/test/glm-5.3-reasoning-effort.test.ts",
+    "rs": "crates/pi-ai/tests/suite/glm_5_3_reasoning_effort_test.rs",
+    "lines": 102
+   },
+   {
+    "ts": "vendor/pi-ai/test/glyph-codec.test.ts",
+    "rs": "crates/pi-ai/tests/suite/glyph_codec_test.rs",
+    "lines": 384
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-antigravity-oauth.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_antigravity_oauth_test.rs",
+    "lines": 298
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-antigravity-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_antigravity_usage_test.rs",
+    "lines": 637
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-cached-content.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_cached_content_test.rs",
+    "lines": 381
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-empty-response-retry.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_empty_response_retry_test.rs",
+    "lines": 754
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-error-body-classification.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_error_body_classification_test.rs",
+    "lines": 84
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-function-calling-matching.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_function_calling_matching_test.rs",
+    "lines": 262
+   }
+  ],
+  "id": 110,
+  "lines": 3023
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/google-gemini-cli-3x-thinking.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_gemini_cli_3x_thinking_test.rs",
+    "lines": 185
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-gemini-cli-429.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_gemini_cli_429_test.rs",
+    "lines": 79
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-gemini-cli-alignment.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_gemini_cli_alignment_test.rs",
+    "lines": 1184
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-gemini-cli-claude-image-clamp.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_gemini_cli_claude_image_clamp_test.rs",
+    "lines": 162
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-gemini-cli-first-event-timeout.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_gemini_cli_first_event_timeout_test.rs",
+    "lines": 102
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-gemini-cli-variant-routing.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_gemini_cli_variant_routing_test.rs",
+    "lines": 513
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-gemini3-unsigned-tool-call.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_gemini3_unsigned_tool_call_test.rs",
+    "lines": 156
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-gemma-thinking.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_gemma_thinking_test.rs",
+    "lines": 50
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-oauth-hostname.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_oauth_hostname_test.rs",
+    "lines": 14
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-oauth-validation-url.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_oauth_validation_url_test.rs",
+    "lines": 107
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-pre-response-timeout.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_pre_response_timeout_test.rs",
+    "lines": 105
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-reasoning-off.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_reasoning_off_test.rs",
+    "lines": 68
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-sampling-penalty-strip.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_sampling_penalty_strip_test.rs",
+    "lines": 97
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-service-tier.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_service_tier_test.rs",
+    "lines": 123
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-system-prompt.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_system_prompt_test.rs",
+    "lines": 192
+   }
+  ],
+  "id": 111,
+  "lines": 3137
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/google-thinking-fence-strip.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_thinking_fence_strip_test.rs",
+    "lines": 128
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-thinking-output-cap.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_thinking_output_cap_test.rs",
+    "lines": 115
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-thinking-signature.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_thinking_signature_test.rs",
+    "lines": 36
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-tool-choice.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_tool_choice_test.rs",
+    "lines": 87
+   },
+   {
+    "ts": "vendor/pi-ai/test/google-tool-schema.test.ts",
+    "rs": "crates/pi-ai/tests/suite/google_tool_schema_test.rs",
+    "lines": 773
+   },
+   {
+    "ts": "vendor/pi-ai/test/handoff.test.ts",
+    "rs": "crates/pi-ai/tests/suite/handoff_test.rs",
+    "lines": 546
+   },
+   {
+    "ts": "vendor/pi-ai/test/harmony-leak.test.ts",
+    "rs": "crates/pi-ai/tests/suite/harmony_leak_test.rs",
+    "lines": 333
+   },
+   {
+    "ts": "vendor/pi-ai/test/helpers/bedrock-stream.ts",
+    "rs": "crates/pi-ai/tests/suite/helpers/bedrock_stream.rs",
+    "lines": 143
+   },
+   {
+    "ts": "vendor/pi-ai/test/helpers/factory-droid-native.ts",
+    "rs": "crates/pi-ai/tests/suite/helpers/factory_droid_native.rs",
+    "lines": 247
+   },
+   {
+    "ts": "vendor/pi-ai/test/helpers/factory-droid.ts",
+    "rs": "crates/pi-ai/tests/suite/helpers/factory_droid.rs",
+    "lines": 171
+   },
+   {
+    "ts": "vendor/pi-ai/test/helpers/fetch-mock.ts",
+    "rs": "crates/pi-ai/tests/suite/helpers/fetch_mock.rs",
+    "lines": 9
+   },
+   {
+    "ts": "vendor/pi-ai/test/helpers/index.ts",
+    "rs": "crates/pi-ai/tests/suite/helpers/mod.rs",
+    "lines": 168
+   },
+   {
+    "ts": "vendor/pi-ai/test/http-inspector.test.ts",
+    "rs": "crates/pi-ai/tests/suite/http_inspector_test.rs",
+    "lines": 284
+   }
+  ],
+  "id": 112,
+  "lines": 3040
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/image-input-validation.test.ts",
+    "rs": "crates/pi-ai/tests/suite/image_input_validation_test.rs",
+    "lines": 297
+   },
+   {
+    "ts": "vendor/pi-ai/test/image-tool-result.test.ts",
+    "rs": "crates/pi-ai/tests/suite/image_tool_result_test.rs",
+    "lines": 448
+   },
+   {
+    "ts": "vendor/pi-ai/test/image-url-parts.test.ts",
+    "rs": "crates/pi-ai/tests/suite/image_url_parts_test.rs",
+    "lines": 183
+   },
+   {
+    "ts": "vendor/pi-ai/test/inband-tools.test.ts",
+    "rs": "crates/pi-ai/tests/suite/inband_tools_test.rs",
+    "lines": 603
+   },
+   {
+    "ts": "vendor/pi-ai/test/inception-provider.test.ts",
+    "rs": "crates/pi-ai/tests/suite/inception_provider_test.rs",
+    "lines": 74
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-10690-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_10690_repro_test.rs",
+    "lines": 247
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-10966-synthetic-reasoning-filter.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_10966_synthetic_reasoning_filter_test.rs",
+    "lines": 99
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-10994-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_10994_repro_test.rs",
+    "lines": 70
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-11473-orphan-output-wedge.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_11473_orphan_output_wedge_test.rs",
+    "lines": 128
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-1203-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_1203_repro_test.rs",
+    "lines": 151
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-1207-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_1207_repro_test.rs",
+    "lines": 145
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-1227-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_1227_repro_test.rs",
+    "lines": 183
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-12525-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_12525_repro_test.rs",
+    "lines": 113
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-12562-custom-api-compat.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_12562_custom_api_compat_test.rs",
+    "lines": 104
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-1270-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_1270_repro_test.rs",
+    "lines": 104
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-1373-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_1373_repro_test.rs",
+    "lines": 140
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-1417-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_1417_repro_test.rs",
+    "lines": 66
+   }
+  ],
+  "id": 113,
+  "lines": 3155
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/issue-1701-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_1701_repro_test.rs",
+    "lines": 223
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-1776-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_1776_repro_test.rs",
+    "lines": 108
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-18312-assistant-rewrite-replay.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_18312_assistant_rewrite_replay_test.rs",
+    "lines": 114
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-1838-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_1838_repro_test.rs",
+    "lines": 272
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-2080-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_2080_repro_test.rs",
+    "lines": 244
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-2123-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_2123_repro_test.rs",
+    "lines": 109
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-2315-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_2315_repro_test.rs",
+    "lines": 142
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-2424-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_2424_repro_test.rs",
+    "lines": 178
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-2883-moonshot-base-url.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_2883_moonshot_base_url_test.rs",
+    "lines": 83
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-2996-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_2996_repro_test.rs",
+    "lines": 125
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-3124-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_3124_repro_test.rs",
+    "lines": 218
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-3434-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_3434_repro_test.rs",
+    "lines": 306
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-3528-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_3528_repro_test.rs",
+    "lines": 533
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-3555-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_3555_repro_test.rs",
+    "lines": 58
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-3593-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_3593_repro_test.rs",
+    "lines": 183
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-4085-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_4085_repro_test.rs",
+    "lines": 92
+   }
+  ],
+  "id": 114,
+  "lines": 2988
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/issue-4593-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_4593_repro_test.rs",
+    "lines": 272
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-4679-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_4679_repro_test.rs",
+    "lines": 105
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-5983-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_5983_repro_test.rs",
+    "lines": 77
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-6276-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_6276_repro_test.rs",
+    "lines": 188
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-6510-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_6510_repro_test.rs",
+    "lines": 80
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-6913-harmony-marker-escaping.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_6913_harmony_marker_escaping_test.rs",
+    "lines": 355
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-814-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_814_repro_test.rs",
+    "lines": 107
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-8248-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_8248_repro_test.rs",
+    "lines": 212
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-826-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_826_repro_test.rs",
+    "lines": 132
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-827-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_827_repro_test.rs",
+    "lines": 183
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-8328-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_8328_repro_test.rs",
+    "lines": 63
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-8789-responses-interleaved-message.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_8789_responses_interleaved_message_test.rs",
+    "lines": 143
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-883-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_883_repro_test.rs",
+    "lines": 120
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-8854-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_8854_repro_test.rs",
+    "lines": 108
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-911-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_911_repro_test.rs",
+    "lines": 144
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-912-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_912_repro_test.rs",
+    "lines": 107
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-931-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_931_repro_test.rs",
+    "lines": 74
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-9433-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_9433_repro_test.rs",
+    "lines": 104
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-945-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_945_repro_test.rs",
+    "lines": 80
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-955-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_955_repro_test.rs",
+    "lines": 46
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-957-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_957_repro_test.rs",
+    "lines": 123
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-959-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_959_repro_test.rs",
+    "lines": 125
+   }
+  ],
+  "id": 115,
+  "lines": 2948
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/issue-967-vision-guard.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_967_vision_guard_test.rs",
+    "lines": 312
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-969-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_969_repro_test.rs",
+    "lines": 78
+   },
+   {
+    "ts": "vendor/pi-ai/test/issue-976-repro.test.ts",
+    "rs": "crates/pi-ai/tests/suite/issue_976_repro_test.rs",
+    "lines": 40
+   },
+   {
+    "ts": "vendor/pi-ai/test/json-schema-typescript.test.ts",
+    "rs": "crates/pi-ai/tests/suite/json_schema_typescript_test.rs",
+    "lines": 112
+   },
+   {
+    "ts": "vendor/pi-ai/test/judgment-question-file.test.ts",
+    "rs": "crates/pi-ai/tests/suite/judgment_question_file_test.rs",
+    "lines": 28
+   },
+   {
+    "ts": "vendor/pi-ai/test/judgment.test.ts",
+    "rs": "crates/pi-ai/tests/suite/judgment_test.rs",
+    "lines": 1967
+   },
+   {
+    "ts": "vendor/pi-ai/test/kagi-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/kagi_login_test.rs",
+    "lines": 47
+   },
+   {
+    "ts": "vendor/pi-ai/test/kilo-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/kilo_login_test.rs",
+    "lines": 76
+   },
+   {
+    "ts": "vendor/pi-ai/test/kimi-multi-account.test.ts",
+    "rs": "crates/pi-ai/tests/suite/kimi_multi_account_test.rs",
+    "lines": 166
+   },
+   {
+    "ts": "vendor/pi-ai/test/kimi-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/kimi_usage_test.rs",
+    "lines": 203
+   }
+  ],
+  "id": 116,
+  "lines": 3029
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/leaked-thinking-stream.test.ts",
+    "rs": "crates/pi-ai/tests/suite/leaked_thinking_stream_test.rs",
+    "lines": 1371
+   },
+   {
+    "ts": "vendor/pi-ai/test/litellm-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/litellm_login_test.rs",
+    "lines": 36
+   },
+   {
+    "ts": "vendor/pi-ai/test/litellm-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/litellm_usage_test.rs",
+    "lines": 141
+   },
+   {
+    "ts": "vendor/pi-ai/test/max-effort-wire.test.ts",
+    "rs": "crates/pi-ai/tests/suite/max_effort_wire_test.rs",
+    "lines": 159
+   },
+   {
+    "ts": "vendor/pi-ai/test/meta-provider.test.ts",
+    "rs": "crates/pi-ai/tests/suite/meta_provider_test.rs",
+    "lines": 65
+   },
+   {
+    "ts": "vendor/pi-ai/test/minimax-code-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/minimax_code_login_test.rs",
+    "lines": 49
+   },
+   {
+    "ts": "vendor/pi-ai/test/minimax-token-plan-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/minimax_token_plan_usage_test.rs",
+    "lines": 367
+   },
+   {
+    "ts": "vendor/pi-ai/test/mistral-vibe-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/mistral_vibe_login_test.rs",
+    "lines": 217
+   },
+   {
+    "ts": "vendor/pi-ai/test/mock-provider.test.ts",
+    "rs": "crates/pi-ai/tests/suite/mock_provider_test.rs",
+    "lines": 330
+   },
+   {
+    "ts": "vendor/pi-ai/test/model-cache.test.ts",
+    "rs": "crates/pi-ai/tests/suite/model_cache_test.rs",
+    "lines": 142
+   },
+   {
+    "ts": "vendor/pi-ai/test/models-cost.test.ts",
+    "rs": "crates/pi-ai/tests/suite/models_cost_test.rs",
+    "lines": 216
+   },
+   {
+    "ts": "vendor/pi-ai/test/models-json-no-local-endpoints.test.ts",
+    "rs": "crates/pi-ai/tests/suite/models_json_no_local_endpoints_test.rs",
+    "lines": 66
+   }
+  ],
+  "id": 117,
+  "lines": 3159
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/muse-code-provider.test.ts",
+    "rs": "crates/pi-ai/tests/suite/muse_code_provider_test.rs",
+    "lines": 257
+   },
+   {
+    "ts": "vendor/pi-ai/test/muse-code-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/muse_code_usage_test.rs",
+    "lines": 305
+   },
+   {
+    "ts": "vendor/pi-ai/test/nanogpt-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/nanogpt_login_test.rs",
+    "lines": 45
+   },
+   {
+    "ts": "vendor/pi-ai/test/network-cause.test.ts",
+    "rs": "crates/pi-ai/tests/suite/network_cause_test.rs",
+    "lines": 219
+   },
+   {
+    "ts": "vendor/pi-ai/test/novita-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/novita_login_test.rs",
+    "lines": 103
+   },
+   {
+    "ts": "vendor/pi-ai/test/null-max-tokens-fallback.test.ts",
+    "rs": "crates/pi-ai/tests/suite/null_max_tokens_fallback_test.rs",
+    "lines": 220
+   },
+   {
+    "ts": "vendor/pi-ai/test/oauth-barrel-import.test.ts",
+    "rs": "crates/pi-ai/tests/suite/oauth_barrel_import_test.rs",
+    "lines": 17
+   },
+   {
+    "ts": "vendor/pi-ai/test/oauth-deepseek.test.ts",
+    "rs": "crates/pi-ai/tests/suite/oauth_deepseek_test.rs",
+    "lines": 74
+   },
+   {
+    "ts": "vendor/pi-ai/test/oauth-definitive-failure.test.ts",
+    "rs": "crates/pi-ai/tests/suite/oauth_definitive_failure_test.rs",
+    "lines": 68
+   },
+   {
+    "ts": "vendor/pi-ai/test/oauth-device-code.test.ts",
+    "rs": "crates/pi-ai/tests/suite/oauth_device_code_test.rs",
+    "lines": 73
+   },
+   {
+    "ts": "vendor/pi-ai/test/oauth-refresh-budget-keeps-rotated-token.test.ts",
+    "rs": "crates/pi-ai/tests/suite/oauth_refresh_budget_keeps_rotated_token_test.rs",
+    "lines": 367
+   },
+   {
+    "ts": "vendor/pi-ai/test/oauth.ts",
+    "rs": "crates/pi-ai/tests/suite/oauth.rs",
+    "lines": 102
+   },
+   {
+    "ts": "vendor/pi-ai/test/ollama-cache-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/ollama_cache_usage_test.rs",
+    "lines": 98
+   },
+   {
+    "ts": "vendor/pi-ai/test/ollama-cloud-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/ollama_cloud_login_test.rs",
+    "lines": 45
+   },
+   {
+    "ts": "vendor/pi-ai/test/ollama-no-user-turn.test.ts",
+    "rs": "crates/pi-ai/tests/suite/ollama_no_user_turn_test.rs",
+    "lines": 89
+   },
+   {
+    "ts": "vendor/pi-ai/test/ollama-reasoning-effort-backfill.test.ts",
+    "rs": "crates/pi-ai/tests/suite/ollama_reasoning_effort_backfill_test.rs",
+    "lines": 52
+   },
+   {
+    "ts": "vendor/pi-ai/test/ollama-stream-error.test.ts",
+    "rs": "crates/pi-ai/tests/suite/ollama_stream_error_test.rs",
+    "lines": 77
+   },
+   {
+    "ts": "vendor/pi-ai/test/ollama-thinking-disable.test.ts",
+    "rs": "crates/pi-ai/tests/suite/ollama_thinking_disable_test.rs",
+    "lines": 555
+   },
+   {
+    "ts": "vendor/pi-ai/test/ollama-tool-call-json-parse-error.test.ts",
+    "rs": "crates/pi-ai/tests/suite/ollama_tool_call_json_parse_error_test.rs",
+    "lines": 91
+   }
+  ],
+  "id": 118,
+  "lines": 2857
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/oneshot-retry.test.ts",
+    "rs": "crates/pi-ai/tests/suite/oneshot_retry_test.rs",
+    "lines": 460
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-array-tool-schema.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_array_tool_schema_test.rs",
+    "lines": 341
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-byok-reported-cost.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_byok_reported_cost_test.rs",
+    "lines": 95
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-codex-access-programs.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_codex_access_programs_test.rs",
+    "lines": 204
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-codex-call-id-length.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_codex_call_id_length_test.rs",
+    "lines": 239
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-codex-include.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_codex_include_test.rs",
+    "lines": 26
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-codex-live-steering.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_codex_live_steering_test.rs",
+    "lines": 717
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-codex-reset.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_codex_reset_test.rs",
+    "lines": 164
+   }
+  ],
+  "id": 119,
+  "lines": 2246
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/openai-codex-responses-lite.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_codex_responses_lite_test.rs",
+    "lines": 1269
+   }
+  ],
+  "id": 120,
+  "lines": 1269
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/openai-codex-stream.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_codex_stream_test.rs",
+    "lines": 8207,
+    "parts": null,
+    "part": {
+     "n": 1,
+     "start": 1,
+     "end": 8207
+    },
+    "rs_part": "crates/pi-ai/tests/suite/openai_codex_stream_test.rs.part1"
+   }
+  ],
+  "id": 121,
+  "lines": 8207
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/openai-codex-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_codex_usage_test.rs",
+    "lines": 690
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-codex-zstd.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_codex_zstd_test.rs",
+    "lines": 192
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-codex.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_codex_test.rs",
+    "lines": 418
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-compat-policy.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_compat_policy_test.rs",
+    "lines": 264
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-compat-user-agent.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_compat_user_agent_test.rs",
+    "lines": 171
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-completions-cache-affinity.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_completions_cache_affinity_test.rs",
+    "lines": 203
+   }
+  ],
+  "id": 122,
+  "lines": 1938
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/openai-completions-compat.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_completions_compat_test.rs",
+    "lines": 2864
+   }
+  ],
+  "id": 123,
+  "lines": 2864
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/openai-completions-disable-reasoning.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_completions_disable_reasoning_test.rs",
+    "lines": 378
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-completions-error-finish-reason.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_completions_error_finish_reason_test.rs",
+    "lines": 593
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-completions-generation-nan.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_completions_generation_nan_test.rs",
+    "lines": 77
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-completions-litellm-thinking-blocks.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_completions_litellm_thinking_blocks_test.rs",
+    "lines": 166
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-completions-on-payload.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_completions_on_payload_test.rs",
+    "lines": 90
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-completions-progress-chunk.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_completions_progress_chunk_test.rs",
+    "lines": 426
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-completions-reasoning-disable-dialects.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_completions_reasoning_disable_dialects_test.rs",
+    "lines": 202
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-completions-thought-signature.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_completions_thought_signature_test.rs",
+    "lines": 229
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-completions-tool-result-images.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_completions_tool_result_images_test.rs",
+    "lines": 601
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-completions-ttft.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_completions_ttft_test.rs",
+    "lines": 119
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-completions-upstream-provider.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_completions_upstream_provider_test.rs",
+    "lines": 74
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-completions-xai-root-union.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_completions_xai_root_union_test.rs",
+    "lines": 123
+   }
+  ],
+  "id": 124,
+  "lines": 3078
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/openai-computer-contract.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_computer_contract_test.rs",
+    "lines": 898
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-configuration-update.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_configuration_update_test.rs",
+    "lines": 495
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-data-uri.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_data_uri_test.rs",
+    "lines": 24
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-daybreak-effort.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_daybreak_effort_test.rs",
+    "lines": 41
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-disable-reasoning.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_disable_reasoning_test.rs",
+    "lines": 82
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-first-event-timeout.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_first_event_timeout_test.rs",
+    "lines": 966
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-images.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_images_test.rs",
+    "lines": 161
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-max-output-tokens-cap.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_max_output_tokens_cap_test.rs",
+    "lines": 340
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-output-token-policy.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_output_token_policy_test.rs",
+    "lines": 187
+   }
+  ],
+  "id": 125,
+  "lines": 3194
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/openai-reasoning-effort-fallback.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_reasoning_effort_fallback_test.rs",
+    "lines": 864
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-responses-cache-affinity.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_responses_cache_affinity_test.rs",
+    "lines": 932
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-responses-delta-input.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_responses_delta_input_test.rs",
+    "lines": 204
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-responses-developer-role.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_responses_developer_role_test.rs",
+    "lines": 94
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-responses-empty-tool-result.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_responses_empty_tool_result_test.rs",
+    "lines": 90
+   }
+  ],
+  "id": 126,
+  "lines": 2184
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/openai-responses-history-payload.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_responses_history_payload_test.rs",
+    "lines": 2412
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-responses-malformed-function-call-replay.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_responses_malformed_function_call_replay_test.rs",
+    "lines": 91
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-responses-omit-max-output-tokens.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_responses_omit_max_output_tokens_test.rs",
+    "lines": 70
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-responses-openrouter.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_responses_openrouter_test.rs",
+    "lines": 612
+   }
+  ],
+  "id": 127,
+  "lines": 3185
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/openai-responses-orphan-repair.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_responses_orphan_repair_test.rs",
+    "lines": 88
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-responses-parallel-tool-calls.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_responses_parallel_tool_calls_test.rs",
+    "lines": 745
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-responses-parallel-tool-result-images.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_responses_parallel_tool_result_images_test.rs",
+    "lines": 142
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-responses-repaired-function-call-replay.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_responses_repaired_function_call_replay_test.rs",
+    "lines": 158
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-responses-resume.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_responses_resume_test.rs",
+    "lines": 583
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-responses-sampling-params.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_responses_sampling_params_test.rs",
+    "lines": 80
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-responses-stateful.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_responses_stateful_test.rs",
+    "lines": 929
+   }
+  ],
+  "id": 128,
+  "lines": 2725
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/openai-responses-stream-retry.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_responses_stream_retry_test.rs",
+    "lines": 719
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-responses-stream-terminal.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_responses_stream_terminal_test.rs",
+    "lines": 1486
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-responses-system-prompt.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_responses_system_prompt_test.rs",
+    "lines": 140
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-responses-tool-quarantine.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_responses_tool_quarantine_test.rs",
+    "lines": 225
+   }
+  ],
+  "id": 129,
+  "lines": 2570
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/openai-responses-websocket.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_responses_websocket_test.rs",
+    "lines": 1445
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-stream-socket-retry.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_stream_socket_retry_test.rs",
+    "lines": 364
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-stream-terminal-close.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_stream_terminal_close_test.rs",
+    "lines": 248
+   },
+   {
+    "ts": "vendor/pi-ai/test/openai-tool-strict-mode.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openai_tool_strict_mode_test.rs",
+    "lines": 892
+   },
+   {
+    "ts": "vendor/pi-ai/test/opencode-go-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/opencode_go_usage_test.rs",
+    "lines": 215
+   }
+  ],
+  "id": 130,
+  "lines": 3164
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/opencode-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/opencode_login_test.rs",
+    "lines": 60
+   },
+   {
+    "ts": "vendor/pi-ai/test/opencode-session-header.test.ts",
+    "rs": "crates/pi-ai/tests/suite/opencode_session_header_test.rs",
+    "lines": 1014
+   },
+   {
+    "ts": "vendor/pi-ai/test/openrouter-error-metadata-raw.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openrouter_error_metadata_raw_test.rs",
+    "lines": 126
+   },
+   {
+    "ts": "vendor/pi-ai/test/openrouter-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openrouter_login_test.rs",
+    "lines": 85
+   },
+   {
+    "ts": "vendor/pi-ai/test/openrouter-native-finish-reason.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openrouter_native_finish_reason_test.rs",
+    "lines": 229
+   },
+   {
+    "ts": "vendor/pi-ai/test/openrouter-oauth.test.ts",
+    "rs": "crates/pi-ai/tests/suite/openrouter_oauth_test.rs",
+    "lines": 105
+   },
+   {
+    "ts": "vendor/pi-ai/test/overflow-utils.test.ts",
+    "rs": "crates/pi-ai/tests/suite/overflow_utils_test.rs",
+    "lines": 382
+   },
+   {
+    "ts": "vendor/pi-ai/test/owned-stream-fabrication.test.ts",
+    "rs": "crates/pi-ai/tests/suite/owned_stream_fabrication_test.rs",
+    "lines": 98
+   },
+   {
+    "ts": "vendor/pi-ai/test/owned-stream-native-toolcall.test.ts",
+    "rs": "crates/pi-ai/tests/suite/owned_stream_native_toolcall_test.rs",
+    "lines": 347
+   },
+   {
+    "ts": "vendor/pi-ai/test/perplexity-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/perplexity_login_test.rs",
+    "lines": 296
+   }
+  ],
+  "id": 131,
+  "lines": 2742
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/pi-native-client.test.ts",
+    "rs": "crates/pi-ai/tests/suite/pi_native_client_test.rs",
+    "lines": 609
+   },
+   {
+    "ts": "vendor/pi-ai/test/pre-response-timeout.test.ts",
+    "rs": "crates/pi-ai/tests/suite/pre_response_timeout_test.rs",
+    "lines": 64
+   },
+   {
+    "ts": "vendor/pi-ai/test/provider-disabled.test.ts",
+    "rs": "crates/pi-ai/tests/suite/provider_disabled_test.rs",
+    "lines": 112
+   },
+   {
+    "ts": "vendor/pi-ai/test/provider-fetch-override.test.ts",
+    "rs": "crates/pi-ai/tests/suite/provider_fetch_override_test.rs",
+    "lines": 128
+   },
+   {
+    "ts": "vendor/pi-ai/test/provider-inflight.test.ts",
+    "rs": "crates/pi-ai/tests/suite/provider_inflight_test.rs",
+    "lines": 772
+   },
+   {
+    "ts": "vendor/pi-ai/test/provider-login-warning.test.ts",
+    "rs": "crates/pi-ai/tests/suite/provider_login_warning_test.rs",
+    "lines": 67
+   },
+   {
+    "ts": "vendor/pi-ai/test/provider-registry.test.ts",
+    "rs": "crates/pi-ai/tests/suite/provider_registry_test.rs",
+    "lines": 145
+   },
+   {
+    "ts": "vendor/pi-ai/test/provider-response.test.ts",
+    "rs": "crates/pi-ai/tests/suite/provider_response_test.rs",
+    "lines": 113
+   },
+   {
+    "ts": "vendor/pi-ai/test/provider-session-release.test.ts",
+    "rs": "crates/pi-ai/tests/suite/provider_session_release_test.rs",
+    "lines": 102
+   },
+   {
+    "ts": "vendor/pi-ai/test/providers/google-auth.test.ts",
+    "rs": "crates/pi-ai/tests/suite/providers/google_auth_test.rs",
+    "lines": 308
+   },
+   {
+    "ts": "vendor/pi-ai/test/providers/keyless-auth-header.test.ts",
+    "rs": "crates/pi-ai/tests/suite/providers/keyless_auth_header_test.rs",
+    "lines": 51
+   },
+   {
+    "ts": "vendor/pi-ai/test/providers/kimi-code-thinking.test.ts",
+    "rs": "crates/pi-ai/tests/suite/providers/kimi_code_thinking_test.rs",
+    "lines": 616
+   },
+   {
+    "ts": "vendor/pi-ai/test/providers/openai-codex-error.test.ts",
+    "rs": "crates/pi-ai/tests/suite/providers/openai_codex_error_test.rs",
+    "lines": 108
+   }
+  ],
+  "id": 132,
+  "lines": 3195
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/proxy.test.ts",
+    "rs": "crates/pi-ai/tests/suite/proxy_test.rs",
+    "lines": 441
+   },
+   {
+    "ts": "vendor/pi-ai/test/race-with-signal.test.ts",
+    "rs": "crates/pi-ai/tests/suite/race_with_signal_test.rs",
+    "lines": 25
+   },
+   {
+    "ts": "vendor/pi-ai/test/rate-limit-utils.test.ts",
+    "rs": "crates/pi-ai/tests/suite/rate_limit_utils_test.rs",
+    "lines": 1154
+   },
+   {
+    "ts": "vendor/pi-ai/test/raw-sse-sdk-capture.test.ts",
+    "rs": "crates/pi-ai/tests/suite/raw_sse_sdk_capture_test.rs",
+    "lines": 284
+   },
+   {
+    "ts": "vendor/pi-ai/test/register-builtins.test.ts",
+    "rs": "crates/pi-ai/tests/suite/register_builtins_test.rs",
+    "lines": 320
+   },
+   {
+    "ts": "vendor/pi-ai/test/registry/oauth/muse-code.test.ts",
+    "rs": "crates/pi-ai/tests/suite/registry/oauth/muse_code_test.rs",
+    "lines": 348
+   },
+   {
+    "ts": "vendor/pi-ai/test/registry/oauth/openai-codex.test.ts",
+    "rs": "crates/pi-ai/tests/suite/registry/oauth/openai_codex_test.rs",
+    "lines": 77
+   },
+   {
+    "ts": "vendor/pi-ai/test/registry/oauth/xai-oauth.test.ts",
+    "rs": "crates/pi-ai/tests/suite/registry/oauth/xai_oauth_test.rs",
+    "lines": 518
+   }
+  ],
+  "id": 133,
+  "lines": 3167
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/remote-auth-store.test.ts",
+    "rs": "crates/pi-ai/tests/suite/remote_auth_store_test.rs",
+    "lines": 2302
+   },
+   {
+    "ts": "vendor/pi-ai/test/request-compression.test.ts",
+    "rs": "crates/pi-ai/tests/suite/request_compression_test.rs",
+    "lines": 226
+   },
+   {
+    "ts": "vendor/pi-ai/test/request-debug.test.ts",
+    "rs": "crates/pi-ai/tests/suite/request_debug_test.rs",
+    "lines": 340
+   },
+   {
+    "ts": "vendor/pi-ai/test/requires-effort.test.ts",
+    "rs": "crates/pi-ai/tests/suite/requires_effort_test.rs",
+    "lines": 176
+   },
+   {
+    "ts": "vendor/pi-ai/test/resolve-used-fraction.test.ts",
+    "rs": "crates/pi-ai/tests/suite/resolve_used_fraction_test.rs",
+    "lines": 86
+   }
+  ],
+  "id": 134,
+  "lines": 3130
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/responses-websocket-connection.test.ts",
+    "rs": "crates/pi-ai/tests/suite/responses_websocket_connection_test.rs",
+    "lines": 298
+   },
+   {
+    "ts": "vendor/pi-ai/test/sakana-provider.test.ts",
+    "rs": "crates/pi-ai/tests/suite/sakana_provider_test.rs",
+    "lines": 73
+   },
+   {
+    "ts": "vendor/pi-ai/test/sambanova-reasoning-replay-wire.test.ts",
+    "rs": "crates/pi-ai/tests/suite/sambanova_reasoning_replay_wire_test.rs",
+    "lines": 70
+   },
+   {
+    "ts": "vendor/pi-ai/test/same-model-reasoning-carry.test.ts",
+    "rs": "crates/pi-ai/tests/suite/same_model_reasoning_carry_test.rs",
+    "lines": 508
+   },
+   {
+    "ts": "vendor/pi-ai/test/sampling-params-model-wide.test.ts",
+    "rs": "crates/pi-ai/tests/suite/sampling_params_model_wide_test.rs",
+    "lines": 132
+   },
+   {
+    "ts": "vendor/pi-ai/test/schema-arktype.test.ts",
+    "rs": "crates/pi-ai/tests/suite/schema_arktype_test.rs",
+    "lines": 154
+   },
+   {
+    "ts": "vendor/pi-ai/test/schema-compatibility.test.ts",
+    "rs": "crates/pi-ai/tests/suite/schema_compatibility_test.rs",
+    "lines": 137
+   },
+   {
+    "ts": "vendor/pi-ai/test/schema-defines-property.test.ts",
+    "rs": "crates/pi-ai/tests/suite/schema_defines_property_test.rs",
+    "lines": 34
+   },
+   {
+    "ts": "vendor/pi-ai/test/schema-dereference.test.ts",
+    "rs": "crates/pi-ai/tests/suite/schema_dereference_test.rs",
+    "lines": 268
+   },
+   {
+    "ts": "vendor/pi-ai/test/schema-helpers.test.ts",
+    "rs": "crates/pi-ai/tests/suite/schema_helpers_test.rs",
+    "lines": 233
+   },
+   {
+    "ts": "vendor/pi-ai/test/schema-immutability.test.ts",
+    "rs": "crates/pi-ai/tests/suite/schema_immutability_test.rs",
+    "lines": 130
+   }
+  ],
+  "id": 135,
+  "lines": 2037
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/schema-normalization.test.ts",
+    "rs": "crates/pi-ai/tests/suite/schema_normalization_test.rs",
+    "lines": 1711
+   },
+   {
+    "ts": "vendor/pi-ai/test/schema-strict-mode.test.ts",
+    "rs": "crates/pi-ai/tests/suite/schema_strict_mode_test.rs",
+    "lines": 1150
+   }
+  ],
+  "id": 136,
+  "lines": 2861
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/schema-wire.test.ts",
+    "rs": "crates/pi-ai/tests/suite/schema_wire_test.rs",
+    "lines": 478
+   },
+   {
+    "ts": "vendor/pi-ai/test/service-tier-cost.test.ts",
+    "rs": "crates/pi-ai/tests/suite/service_tier_cost_test.rs",
+    "lines": 103
+   },
+   {
+    "ts": "vendor/pi-ai/test/service-tier-premium-requests.test.ts",
+    "rs": "crates/pi-ai/tests/suite/service_tier_premium_requests_test.rs",
+    "lines": 253
+   },
+   {
+    "ts": "vendor/pi-ai/test/snowflake-provider.test.ts",
+    "rs": "crates/pi-ai/tests/suite/snowflake_provider_test.rs",
+    "lines": 434
+   },
+   {
+    "ts": "vendor/pi-ai/test/sse-debug.test.ts",
+    "rs": "crates/pi-ai/tests/suite/sse_debug_test.rs",
+    "lines": 32
+   },
+   {
+    "ts": "vendor/pi-ai/test/stencil-oauth-callback.test.ts",
+    "rs": "crates/pi-ai/tests/suite/stencil_oauth_callback_test.rs",
+    "lines": 17
+   },
+   {
+    "ts": "vendor/pi-ai/test/stream-auth-retry.test.ts",
+    "rs": "crates/pi-ai/tests/suite/stream_auth_retry_test.rs",
+    "lines": 1112
+   }
+  ],
+  "id": 137,
+  "lines": 2429
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/stream-markup-healing.test.ts",
+    "rs": "crates/pi-ai/tests/suite/stream_markup_healing_test.rs",
+    "lines": 1550
+   },
+   {
+    "ts": "vendor/pi-ai/test/stream-timeout-defaults.test.ts",
+    "rs": "crates/pi-ai/tests/suite/stream_timeout_defaults_test.rs",
+    "lines": 356
+   }
+  ],
+  "id": 138,
+  "lines": 1906
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/stream.test.ts",
+    "rs": "crates/pi-ai/tests/suite/stream_test.rs",
+    "lines": 1865
+   },
+   {
+    "ts": "vendor/pi-ai/test/synthetic-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/synthetic_login_test.rs",
+    "lines": 28
+   },
+   {
+    "ts": "vendor/pi-ai/test/synthetic-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/synthetic_usage_test.rs",
+    "lines": 187
+   }
+  ],
+  "id": 139,
+  "lines": 2080
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/thinking-loop.test.ts",
+    "rs": "crates/pi-ai/tests/suite/thinking_loop_test.rs",
+    "lines": 1365
+   },
+   {
+    "ts": "vendor/pi-ai/test/todo-op-whitespace.test.ts",
+    "rs": "crates/pi-ai/tests/suite/todo_op_whitespace_test.rs",
+    "lines": 214
+   },
+   {
+    "ts": "vendor/pi-ai/test/tokens.test.ts",
+    "rs": "crates/pi-ai/tests/suite/tokens_test.rs",
+    "lines": 266
+   }
+  ],
+  "id": 140,
+  "lines": 1845
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/tool-argument-coercion.test.ts",
+    "rs": "crates/pi-ai/tests/suite/tool_argument_coercion_test.rs",
+    "lines": 2601
+   },
+   {
+    "ts": "vendor/pi-ai/test/tool-call-finalization.test.ts",
+    "rs": "crates/pi-ai/tests/suite/tool_call_finalization_test.rs",
+    "lines": 77
+   },
+   {
+    "ts": "vendor/pi-ai/test/tool-call-loop-guard.test.ts",
+    "rs": "crates/pi-ai/tests/suite/tool_call_loop_guard_test.rs",
+    "lines": 431
+   }
+  ],
+  "id": 141,
+  "lines": 3109
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/tool-call-without-result.test.ts",
+    "rs": "crates/pi-ai/tests/suite/tool_call_without_result_test.rs",
+    "lines": 292
+   },
+   {
+    "ts": "vendor/pi-ai/test/tool-examples.test.ts",
+    "rs": "crates/pi-ai/tests/suite/tool_examples_test.rs",
+    "lines": 202
+   },
+   {
+    "ts": "vendor/pi-ai/test/tool-inventory.test.ts",
+    "rs": "crates/pi-ai/tests/suite/tool_inventory_test.rs",
+    "lines": 77
+   },
+   {
+    "ts": "vendor/pi-ai/test/total-tokens.test.ts",
+    "rs": "crates/pi-ai/tests/suite/total_tokens_test.rs",
+    "lines": 565
+   },
+   {
+    "ts": "vendor/pi-ai/test/transcript-render.test.ts",
+    "rs": "crates/pi-ai/tests/suite/transcript_render_test.rs",
+    "lines": 135
+   },
+   {
+    "ts": "vendor/pi-ai/test/transform-messages-anthropic-tool-call-id.test.ts",
+    "rs": "crates/pi-ai/tests/suite/transform_messages_anthropic_tool_call_id_test.rs",
+    "lines": 104
+   },
+   {
+    "ts": "vendor/pi-ai/test/transform-messages-dedup.test.ts",
+    "rs": "crates/pi-ai/tests/suite/transform_messages_dedup_test.rs",
+    "lines": 159
+   },
+   {
+    "ts": "vendor/pi-ai/test/transform-messages-malformed-tool-calls.test.ts",
+    "rs": "crates/pi-ai/tests/suite/transform_messages_malformed_tool_calls_test.rs",
+    "lines": 407
+   },
+   {
+    "ts": "vendor/pi-ai/test/transform-messages-redact-sensitive.test.ts",
+    "rs": "crates/pi-ai/tests/suite/transform_messages_redact_sensitive_test.rs",
+    "lines": 220
+   },
+   {
+    "ts": "vendor/pi-ai/test/transform-messages-thinking-dialect.test.ts",
+    "rs": "crates/pi-ai/tests/suite/transform_messages_thinking_dialect_test.rs",
+    "lines": 239
+   },
+   {
+    "ts": "vendor/pi-ai/test/transport-fetch-gate.test.ts",
+    "rs": "crates/pi-ai/tests/suite/transport_fetch_gate_test.rs",
+    "lines": 37
+   },
+   {
+    "ts": "vendor/pi-ai/test/typesafe-base-url-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/typesafe_base_url_login_test.rs",
+    "lines": 49
+   },
+   {
+    "ts": "vendor/pi-ai/test/umans-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/umans_login_test.rs",
+    "lines": 72
+   },
+   {
+    "ts": "vendor/pi-ai/test/umans-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/umans_usage_test.rs",
+    "lines": 443
+   }
+  ],
+  "id": 142,
+  "lines": 3001
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/unicode-surrogate.test.ts",
+    "rs": "crates/pi-ai/tests/suite/unicode_surrogate_test.rs",
+    "lines": 757
+   },
+   {
+    "ts": "vendor/pi-ai/test/usage-attribution.test.ts",
+    "rs": "crates/pi-ai/tests/suite/usage_attribution_test.rs",
+    "lines": 444
+   },
+   {
+    "ts": "vendor/pi-ai/test/usage-report-notes-schema.test.ts",
+    "rs": "crates/pi-ai/tests/suite/usage_report_notes_schema_test.rs",
+    "lines": 124
+   },
+   {
+    "ts": "vendor/pi-ai/test/utils-responses-id.test.ts",
+    "rs": "crates/pi-ai/tests/suite/utils_responses_id_test.rs",
+    "lines": 70
+   },
+   {
+    "ts": "vendor/pi-ai/test/vercel-gateway-attribution.test.ts",
+    "rs": "crates/pi-ai/tests/suite/vercel_gateway_attribution_test.rs",
+    "lines": 64
+   },
+   {
+    "ts": "vendor/pi-ai/test/vercel-gateway-cache-controls.test.ts",
+    "rs": "crates/pi-ai/tests/suite/vercel_gateway_cache_controls_test.rs",
+    "lines": 218
+   },
+   {
+    "ts": "vendor/pi-ai/test/wafer.live.ts",
+    "rs": "crates/pi-ai/tests/suite/wafer_live.rs",
+    "lines": 94
+   },
+   {
+    "ts": "vendor/pi-ai/test/x-should-retry.test.ts",
+    "rs": "crates/pi-ai/tests/suite/x_should_retry_test.rs",
+    "lines": 56
+   },
+   {
+    "ts": "vendor/pi-ai/test/xai-base-url-env.test.ts",
+    "rs": "crates/pi-ai/tests/suite/xai_base_url_env_test.rs",
+    "lines": 76
+   },
+   {
+    "ts": "vendor/pi-ai/test/xai-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/xai_login_test.rs",
+    "lines": 137
+   },
+   {
+    "ts": "vendor/pi-ai/test/xai-oauth-effort-strip.test.ts",
+    "rs": "crates/pi-ai/tests/suite/xai_oauth_effort_strip_test.rs",
+    "lines": 170
+   },
+   {
+    "ts": "vendor/pi-ai/test/xai-oauth-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/xai_oauth_usage_test.rs",
+    "lines": 514
+   },
+   {
+    "ts": "vendor/pi-ai/test/xhigh.test.ts",
+    "rs": "crates/pi-ai/tests/suite/xhigh_test.rs",
+    "lines": 71
+   },
+   {
+    "ts": "vendor/pi-ai/test/xiaomi-oauth.test.ts",
+    "rs": "crates/pi-ai/tests/suite/xiaomi_oauth_test.rs",
+    "lines": 100
+   },
+   {
+    "ts": "vendor/pi-ai/test/xiaomi-tp-login-integration.test.ts",
+    "rs": "crates/pi-ai/tests/suite/xiaomi_tp_login_integration_test.rs",
+    "lines": 275
+   }
+  ],
+  "id": 143,
+  "lines": 3170
+ },
+ {
+  "label": "tests",
+  "files": [
+   {
+    "ts": "vendor/pi-ai/test/yolo-auto-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/yolo_auto_login_test.rs",
+    "lines": 91
+   },
+   {
+    "ts": "vendor/pi-ai/test/yolo-auto-thinking.test.ts",
+    "rs": "crates/pi-ai/tests/suite/yolo_auto_thinking_test.rs",
+    "lines": 62
+   },
+   {
+    "ts": "vendor/pi-ai/test/zai-block-healing.test.ts",
+    "rs": "crates/pi-ai/tests/suite/zai_block_healing_test.rs",
+    "lines": 158
+   },
+   {
+    "ts": "vendor/pi-ai/test/zai-oauth.test.ts",
+    "rs": "crates/pi-ai/tests/suite/zai_oauth_test.rs",
+    "lines": 522
+   },
+   {
+    "ts": "vendor/pi-ai/test/zai-usage.test.ts",
+    "rs": "crates/pi-ai/tests/suite/zai_usage_test.rs",
+    "lines": 258
+   },
+   {
+    "ts": "vendor/pi-ai/test/zenmux-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/zenmux_login_test.rs",
+    "lines": 71
+   },
+   {
+    "ts": "vendor/pi-ai/test/zhipu-coding-plan-login.test.ts",
+    "rs": "crates/pi-ai/tests/suite/zhipu_coding_plan_login_test.rs",
+    "lines": 41
+   }
+  ],
+  "id": 144,
+  "lines": 1203
+ }
+]
