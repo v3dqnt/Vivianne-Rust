@@ -50,8 +50,8 @@ impl Default for ModelRef {
     }
 }
 
-/// The model background work (summaries, memory upkeep) should use. Cost-aware routing is not part
-/// of the new app yet, so this is the model it was given.
+/// The model background work (summaries, memory upkeep) should use. This is the model it was given;
+/// `inference::routing::route` is the async, cost-aware choice for callers that can await.
 #[must_use]
 pub fn background_model(model: &ModelRef) -> ModelRef {
     model.clone()

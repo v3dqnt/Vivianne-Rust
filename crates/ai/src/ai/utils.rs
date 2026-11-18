@@ -232,12 +232,15 @@ pub fn format_provider_error(norm: &NormalizedProviderError, prefix: Option<&str
     }
 }
 
+/// `text` cut to at most `max_chars` characters, with a note of how much was dropped. Cuts on
+/// character boundaries (the old version sliced bytes and panicked on non-ASCII text).
 pub fn truncate_error_text(text: &str, max_chars: usize) -> String {
-    if text.len() <= max_chars {
-        text.to_string()
-    } else {
-        format!("{}... [truncated {} chars]", &text[..max_chars], text.len() - max_chars)
+    let total = text.chars().count();
+    if total <= max_chars {
+        return text.to_string();
     }
+    let kept: String = text.chars().take(max_chars).collect();
+    format!("{kept}... [truncated {} chars]", total - max_chars)
 }
 
 /// Strip a tool-call-shaped JSON object a model sometimes leaks into its
@@ -682,5 +685,21 @@ mod think_tag_parser_tests {
         let mut p = ThinkTagParser::default();
         let out = p.feed("<think>never finishes");
         assert_eq!(out, vec![(true, "never finishes".to_string())]);
+    }
+}
+
+#[cfg(test)]
+mod truncate_tests {
+    use super::truncate_error_text;
+
+    #[test]
+    fn short_text_is_left_alone() {
+        assert_eq!(truncate_error_text("abc", 3), "abc");
+    }
+
+    #[test]
+    fn long_text_is_cut_on_a_character_boundary() {
+        // Each "é" is two bytes: a byte cut at 3 would split one in half.
+        assert_eq!(truncate_error_text("ééééé", 3), "ééé... [truncated 2 chars]");
     }
 }

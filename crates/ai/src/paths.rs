@@ -15,6 +15,13 @@ pub fn viv_home() -> Result<PathBuf, String> {
     Ok(home.join(".viv"))
 }
 
+/// `~/.viv/agent` (settings, usage and sessions), created if missing.
+pub fn viv_agent_dir() -> Result<PathBuf, String> {
+    let dir = viv_home()?.join("agent");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create config directory: {e}"))?;
+    Ok(dir)
+}
+
 /// A path under `~/.viv`, e.g. `viv_home_path(&["chatgpt"])`.
 #[must_use]
 pub fn viv_home_path(parts: &[&str]) -> PathBuf {

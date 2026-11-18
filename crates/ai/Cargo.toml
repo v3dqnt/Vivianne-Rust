@@ -34,5 +34,9 @@ zip = "4.2"
 tract-onnx = "0.23"
 tokenizers = { version = "0.21", default-features = false, features = ["fancy-regex"] }
 
+[target.'cfg(windows)'.dependencies]
+# Local models: how much memory and VRAM this computer has.
+windows = { version = "0.61.3", features = ["Win32_Foundation", "Win32_System_SystemInformation", "Win32_Graphics_Dxgi"] }
+
 [lints.clippy]
 all = { level = "warn", priority = -1 }

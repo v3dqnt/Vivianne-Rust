@@ -3,12 +3,14 @@
 //! One turn: stream the model, run the tools it asks for, feed results back,
 //! repeat until it answers without tools. No UI types here: callers watch
 //! [`AgentEvent`]s on a channel. Retry, compaction and repetition guards from
-//! the old loop are ported on top of this in later steps.
+//! the old loop are ported on top of this in later steps. Retrying, backing off and falling back to
+//! other models live in [`resilience`].
 
 mod agent;
 mod event;
+pub mod resilience;
 
-pub use agent::{Agent, AgentError};
+pub use agent::{Agent, AgentError, Target};
 pub use event::AgentEvent;
 
 /// Default instructions for the coding agent.

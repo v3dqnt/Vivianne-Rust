@@ -8,15 +8,19 @@ rust-version.workspace = true
 
 [dependencies]
 vivianne-core.workspace = true
+vivianne-ai.workspace = true
 vivianne-providers.workspace = true
 vivianne-tools.workspace = true
 futures.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tokio-util = "0.7"
+rand = "0.9"
 
 [dev-dependencies]
 async-trait.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

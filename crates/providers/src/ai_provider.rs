@@ -390,6 +390,9 @@ fn finish(token: StreamTokenEvent) -> (Result<ChatEvent, ProviderError>, Option<
     if let Some(reason) = token.message.as_ref().and_then(failure_of) {
         return (Err(ProviderError::Failed(reason)), None);
     }
+    if let Some(message) = &token.message {
+        record_usage(message);
+    }
     let mut events = Vec::new();
     if !token.delta.is_empty() {
         events.push(ChatEvent::Text(token.delta));
@@ -403,6 +406,16 @@ fn finish(token: StreamTokenEvent) -> (Result<ChatEvent, ProviderError>, Option<
     let mut events = events.into_iter();
     let first = events.next().unwrap_or(ChatEvent::Done);
     (Ok(first), Some(Phase::Finishing(events)))
+}
+
+/// Adds a finished turn's tokens and cost to the usage the app keeps. It runs on the side: a failed
+/// write never holds up the reply.
+fn record_usage(message: &AssistantMessage) {
+    let Ok(runtime) = tokio::runtime::Handle::try_current() else { return };
+    let (usage, provider, model) = (message.usage.clone(), message.provider.clone(), message.model.clone());
+    runtime.spawn(async move {
+        vivianne_ai::inference::usage_store::record_usage(&usage, &provider, &model).await;
+    });
 }
 
 /// The tool calls a finished message holds, then `Done`.

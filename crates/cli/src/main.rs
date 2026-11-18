@@ -71,5 +71,10 @@ fn print_event(event: &AgentEvent) {
         } => eprintln!("[failed] {output}"),
         AgentEvent::ToolEnd { .. } | AgentEvent::Done => {}
         AgentEvent::StepLimit => eprintln!("\n[stopped: step limit]"),
+        AgentEvent::Stopped => eprintln!("\n[stopped]"),
+        AgentEvent::Retrying { attempt, max_attempts, delay, reason } => {
+            eprintln!("\n[retry {attempt}/{max_attempts} in {}s] {reason}", delay.as_secs());
+        }
+        AgentEvent::Fallback { to, reason, .. } => eprintln!("\n[switched to {to}] {reason}"),
     }
 }

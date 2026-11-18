@@ -8577,6 +8577,7 @@ dependencies = [
  "url",
  "uuid",
  "which 7.0.3",
+ "windows 0.61.3",
  "zip 4.6.1",
 ]
 
@@ -8630,9 +8631,12 @@ version = "0.0.1"
 dependencies = [
  "async-trait",
  "futures",
+ "rand 0.9.5",
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
+ "tokio-util",
+ "vivianne-ai",
  "vivianne-core",
  "vivianne-providers",
  "vivianne-tools",

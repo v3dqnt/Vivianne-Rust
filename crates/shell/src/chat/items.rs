@@ -81,7 +81,11 @@ pub fn apply(items: &mut Vec<Item>, event: &AgentEvent) -> Change {
             items.push(Item::Notice("Stopped: step limit reached.".to_owned()));
             Change::Appended
         }
-        AgentEvent::Done => Change::Nothing,
+        AgentEvent::Fallback { to, reason, .. } => {
+            items.push(Item::Notice(format!("Switched to {to}: {reason}")));
+            Change::Appended
+        }
+        AgentEvent::Retrying { .. } | AgentEvent::Stopped | AgentEvent::Done => Change::Nothing,
     }
 }
 

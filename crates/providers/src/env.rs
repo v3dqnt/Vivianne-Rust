@@ -66,6 +66,31 @@ pub fn selection() -> Result<Selection, String> {
         .ok_or_else(|| "set VIV_MODEL, or pick a model with a saved key in Vivianne".to_owned())
 }
 
+/// The models to fall back to, in order, from the old app's settings (`fallbackModel`, then the
+/// `fallbackModels` list). Entries whose provider has no key are left out.
+pub fn fallbacks() -> Vec<Selection> {
+    fallbacks_from(&settings_blocking()).into_iter().filter(|s| is_usable(&s.provider)).collect()
+}
+
+/// Whether passing failures are retried (`autoRetryEnabled`, on unless the user turned it off).
+pub fn auto_retry() -> bool {
+    settings_blocking().get("autoRetryEnabled").and_then(Value::as_bool).unwrap_or(true)
+}
+
+fn fallbacks_from(settings: &Value) -> Vec<Selection> {
+    let single = settings.get("fallbackModel").into_iter();
+    let list = settings.get("fallbackModels").and_then(Value::as_array).into_iter().flatten();
+    let mut chain: Vec<Selection> = Vec::new();
+    for entry in single.chain(list) {
+        if let Some(found) = pair(entry.get("provider"), entry.get("id"))
+            && !chain.contains(&found)
+        {
+            chain.push(found);
+        }
+    }
+    chain
+}
+
 fn missing_provider() -> String {
     "set VIV_PROVIDER and a key (for example ANTHROPIC_API_KEY)".to_owned()
 }
@@ -122,6 +147,17 @@ mod tests {
         );
         assert_eq!(pair(s.get("defaultProvider"), s.get("defaultModel")), None);
         assert_eq!(pair(Some(&json!("")), Some(&json!("m"))), None);
+    }
+
+    #[test]
+    fn the_fallback_chain_reads_the_single_entry_first_then_the_list_without_repeats() {
+        let s = json!({
+            "fallbackModel": {"provider": "openai", "id": "a"},
+            "fallbackModels": [{"provider": "openai", "id": "a"}, {"provider": "google", "id": "b"}, {"id": "no-provider"}, null]
+        });
+        let got: Vec<_> = fallbacks_from(&s).into_iter().map(|f| (f.provider, f.model)).collect();
+        assert_eq!(got, [("openai".to_owned(), "a".to_owned()), ("google".to_owned(), "b".to_owned())]);
+        assert!(fallbacks_from(&json!({})).is_empty());
     }
 
     #[test]
