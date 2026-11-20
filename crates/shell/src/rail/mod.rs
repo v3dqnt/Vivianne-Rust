@@ -22,8 +22,8 @@ use self::git::{ChangeKind, Snapshot};
 use self::terminal::TerminalView;
 use crate::theme::{self, color};
 
-/// Width of the rail, and the gap between it and the chat.
-pub const WIDTH: f32 = 420.0;
+/// Width of the rail, and the space around it.
+pub const WIDTH: f32 = 380.0;
 pub const GAP: f32 = 12.0;
 
 /// Longest preview shown, so a big file cannot stall the UI.
@@ -123,7 +123,8 @@ impl Rail {
     fn tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let selected = TABS.iter().position(|(tab, _)| *tab == self.tab).unwrap_or(0);
         TabBar::new("rail-tabs")
-            .underline()
+            .segmented()
+            .small()
             .selected_index(selected)
             .on_click(cx.listener(|rail, index: &usize, window, cx| {
                 if let Some((tab, _)) = TABS.get(*index) {
@@ -152,22 +153,13 @@ impl Rail {
     /// The newest run's files with an Undo button, or nothing when it changed none.
     fn last_run(&self, cx: &mut Context<Self>) -> Option<gpui_kit::AnyElement> {
         let run = self.changes.as_ref().filter(|run| !run.files.is_empty())?;
-        let mut lines = vec![
-            div()
-                .flex()
-                .items_center()
-                .justify_between()
-                .child(muted(format!("{} {}", run.files.len(), if run.files.len() == 1 { "file" } else { "files" })))
-                .child(
-                    Button::new("undo-run")
-                        .ghost()
-                        .small()
-                        .label("Undo")
-                        .tooltip("Put the project back the way it was before this run")
-                        .on_click(cx.listener(|_rail, _event, _window, cx| cx.emit(RailEvent::UndoLastRun))),
-                )
-                .into_any_element(),
-        ];
+        let undo = Button::new("undo-run")
+            .ghost()
+            .xsmall()
+            .label("Undo")
+            .tooltip("Put the project back the way it was before this run")
+            .on_click(cx.listener(|_rail, _event, _window, cx| cx.emit(RailEvent::UndoLastRun)));
+        let mut lines = Vec::new();
         lines.extend(run.files.iter().take(12).map(|(path, status)| {
             let hex = match status {
                 'A' => theme::OK,
@@ -178,14 +170,15 @@ impl Rail {
                 .flex()
                 .items_center()
                 .gap(px(8.0))
-                .child(div().w(px(14.0)).flex_none().text_size(px(11.0)).text_color(color(hex)).child(status.to_string()))
-                .child(div().min_w_0().overflow_hidden().child(path.clone()))
+                .child(div().w(px(14.0)).flex_none().font_family(theme::MONO).text_size(px(theme::TEXT_XS)).text_color(color(hex)).child(status.to_string()))
+                .child(div().min_w_0().truncate().child(path.clone()))
                 .into_any_element()
         }));
         if run.files.len() > 12 {
             lines.push(muted(format!("and {} more", run.files.len() - 12)).into_any_element());
         }
-        Some(section("Last run", lines).into_any_element())
+        let title = format!("Last run · {} {}", run.files.len(), if run.files.len() == 1 { "file" } else { "files" });
+        Some(section_with(&title, Some(undo.into_any_element()), lines).into_any_element())
     }
 
     /// Start or stop the project's dev server, and watch it until it has said where it is or has failed.
@@ -224,20 +217,13 @@ impl Rail {
             Status::Running { .. } => ("Running".to_owned(), true),
             Status::Crashed { error } => (error.clone(), false),
         };
+        let switch = Button::new("dev-server")
+            .ghost()
+            .xsmall()
+            .label(if running { "Stop" } else { "Start" })
+            .on_click(cx.listener(|rail, _event, _window, cx| rail.toggle_dev_server(cx)));
         let mut lines = vec![
-            div()
-                .flex()
-                .items_center()
-                .justify_between()
-                .child(div().font_family(theme::MONO).text_size(px(12.0)).child(command))
-                .child(
-                    Button::new("dev-server")
-                        .ghost()
-                        .small()
-                        .label(if running { "Stop" } else { "Start" })
-                        .on_click(cx.listener(|rail, _event, _window, cx| rail.toggle_dev_server(cx))),
-                )
-                .into_any_element(),
+            div().font_family(theme::MONO).text_size(px(theme::TEXT_SM)).child(command).into_any_element(),
             muted(state).into_any_element(),
         ];
         if let Status::Running { url } = status {
@@ -247,30 +233,18 @@ impl Rail {
                     .flex()
                     .items_center()
                     .justify_between()
-                    .child(pill(url))
-                    .child(Button::new("dev-open").ghost().small().label("Open").on_click(cx.listener(move |_rail, _event, _window, cx| cx.open_url(&open))))
+                    .child(div().font_family(theme::MONO).text_size(px(theme::TEXT_SM)).text_color(color(theme::ACCENT_TEXT)).child(url))
+                    .child(Button::new("dev-open").ghost().xsmall().label("Open").on_click(cx.listener(move |_rail, _event, _window, cx| cx.open_url(&open))))
                     .into_any_element(),
             );
         }
-        Some(section("Dev server", lines).into_any_element())
+        Some(section_with("Dev server", Some(switch.into_any_element()), lines).into_any_element())
     }
 
     fn overview(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let folder = self.root.file_name().map_or_else(
-            || self.root.display().to_string(),
-            |name| name.to_string_lossy().into_owned(),
-        );
         div()
             .flex()
             .flex_col()
-            .gap(px(16.0))
-            .child(section(
-                "Project",
-                [
-                    div().text_size(px(15.0)).font_weight(gpui_kit::FontWeight::SEMIBOLD).child(folder).into_any_element(),
-                    div().font_family(theme::MONO).text_size(px(11.0)).text_color(color(theme::MUTED)).child(self.root.display().to_string()).into_any_element(),
-                ],
-            ))
             .children(self.context.as_ref().map(context::card))
             .children(self.last_run(cx))
             .children(self.dev_server(cx))
@@ -281,9 +255,20 @@ impl Rail {
         let Some(branch) = &self.git.branch else {
             return section("Version control", [muted("Not a git repository").into_any_element()]).into_any_element();
         };
-        let mut lines = vec![div().flex().items_center().gap(px(8.0)).child(muted("Branch")).child(pill(branch.clone())).into_any_element()];
+        let mut lines = vec![field("Branch", div().font_family(theme::MONO).text_size(px(theme::TEXT_SM)).child(branch.clone()))];
         if let Some(commit) = &self.git.last_commit {
-            lines.push(muted(format!("Last commit: {commit}")).into_any_element());
+            // "8eca991 Offer Vivianne's own tools..." reads as a hash, then the message.
+            let (hash, message) = commit.split_once(' ').unwrap_or((commit.as_str(), ""));
+            lines.push(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(2.0))
+                    .child(div().text_size(px(theme::TEXT_XS)).text_color(color(theme::FAINT)).child("Last commit"))
+                    .child(div().text_color(color(theme::TEXT)).child(message.to_owned()))
+                    .child(div().font_family(theme::MONO).text_size(px(theme::TEXT_XS)).text_color(color(theme::FAINT)).child(hash.to_owned()))
+                    .into_any_element(),
+            );
         }
         let count = self.git.changes.len();
         lines.push(if count == 0 {
@@ -291,7 +276,10 @@ impl Rail {
         } else {
             muted(format!("{count} changed {}", if count == 1 { "file" } else { "files" })).into_any_element()
         });
-        let rows = self.git.changes.iter().enumerate().map(|(index, change)| {
+        // A long list of changes is the version control tool's job; here, the first few and how many more.
+        const SHOWN: usize = 8;
+        let more = self.git.changes.len().saturating_sub(SHOWN);
+        let rows = self.git.changes.iter().take(SHOWN).enumerate().map(|(index, change)| {
             let path = self.git.top.as_ref().map_or_else(|| PathBuf::from(&change.path), |top| top.join(&change.path));
             div()
                 .id(("change", index))
@@ -309,11 +297,14 @@ impl Rail {
                 .child(change_mark(change.kind))
                 .child(div().min_w_0().overflow_hidden().child(change.path.clone()))
         });
-        let refresh = Button::new("refresh-git").label("Refresh").ghost().small().on_click(cx.listener(|rail, _event, _window, cx| {
+        let refresh = Button::new("refresh-git").label("Refresh").ghost().xsmall().on_click(cx.listener(|rail, _event, _window, cx| {
             rail.refresh();
             cx.notify();
         }));
-        section("Version control", lines).child(div().flex().flex_col().children(rows)).child(div().flex().child(refresh)).into_any_element()
+        section_with("Version control", Some(refresh.into_any_element()), lines)
+            .child(div().flex().flex_col().children(rows))
+            .when(more > 0, |section| section.child(muted(format!("and {more} more"))))
+            .into_any_element()
     }
 
     fn files(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -427,19 +418,21 @@ impl Render for Rail {
             .size_full()
             .flex()
             .flex_col()
-            .rounded(px(theme::RADIUS_SURFACE))
+            .rounded(px(theme::RADIUS_PANEL))
             .border_1()
-            .border_color(color(theme::BORDER))
+            .border_color(color(theme::HAIRLINE))
             .bg(color(theme::PANEL))
-            .child(div().px(px(8.0)).child(self.tab_bar(cx)))
+            .overflow_hidden()
+            .child(div().p(px(10.0)).child(self.tab_bar(cx)))
             .child(
                 div()
                     .id("rail-content")
                     .flex_1()
                     .min_h_0()
                     .when(!terminal_tab, gpui_kit::StatefulInteractiveElement::overflow_y_scroll)
-                    .p(px(12.0))
-                    .text_size(px(13.0))
+                    .px(px(18.0))
+                    .py(px(if terminal_tab { 0.0 } else { 4.0 }))
+                    .text_size(px(theme::TEXT_SM + 0.5))
                     .child(content),
             )
     }
@@ -454,40 +447,43 @@ fn change_mark(kind: ChangeKind) -> impl IntoElement {
     div().w(px(14.0)).flex_none().text_size(px(11.0)).text_color(color(hex)).child(kind.letter())
 }
 
-/// A titled card: a small spaced label with an accent bar, then its lines.
+/// A section of the panel: a title in the panel's own voice (sentence case, no decoration), then its lines.
+/// Sections are told apart by space and a hairline between them, not by boxes.
 fn section(title: &str, lines: impl IntoIterator<Item = gpui_kit::AnyElement>) -> gpui_kit::Div {
+    section_with(title, None, lines)
+}
+
+/// A section with an action (a button) at the right of its title.
+fn section_with(title: &str, action: Option<gpui_kit::AnyElement>, lines: impl IntoIterator<Item = gpui_kit::AnyElement>) -> gpui_kit::Div {
     div()
         .flex()
         .flex_col()
-        .gap(px(6.0))
-        .p(px(12.0))
-        .rounded(px(theme::RADIUS_SURFACE))
-        .border_1()
-        .border_color(color(theme::BORDER))
-        .bg(color(theme::SURFACE))
+        .gap(px(10.0))
+        .py(px(16.0))
+        .border_b_1()
+        .border_color(color(theme::HAIRLINE))
         .child(
             div()
                 .flex()
                 .items_center()
-                .gap(px(7.0))
-                .child(div().w(px(3.0)).h(px(11.0)).flex_none().rounded_full().bg(color(theme::ACCENT)))
-                .child(div().text_size(px(11.0)).text_color(color(theme::MUTED)).child(title.to_uppercase())),
+                .justify_between()
+                .h(px(22.0))
+                .child(div().text_size(px(theme::TEXT_SM)).font_weight(gpui_kit::FontWeight::SEMIBOLD).child(title.to_owned()))
+                .children(action),
         )
         .children(lines)
 }
 
-/// A short value shown as a pill: the branch name, a count.
-fn pill(text: String) -> gpui_kit::Div {
+/// A label and its value on one line, the label quiet.
+fn field(label: &str, value: impl IntoElement) -> gpui_kit::AnyElement {
     div()
-        .px(px(8.0))
-        .py(px(2.0))
-        .rounded_full()
-        .bg(color(theme::ACCENT_SOFT))
-        .border_1()
-        .border_color(color(theme::ACCENT_LINE))
-        .text_size(px(12.0))
-        .text_color(color(theme::ACCENT_TEXT))
-        .child(text)
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap(px(12.0))
+        .child(div().text_color(color(theme::MUTED)).child(label.to_owned()))
+        .child(value)
+        .into_any_element()
 }
 
 fn muted(text: impl Into<SharedString>) -> gpui_kit::Div {

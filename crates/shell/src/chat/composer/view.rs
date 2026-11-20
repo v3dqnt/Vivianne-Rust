@@ -37,42 +37,28 @@ pub fn render(
     let can_send = !input.value().trim().is_empty() || !composer.attachments.is_empty();
 
     div()
-        .px(px(theme::SIDE_PAD))
-        .pb(px(10.0))
+        .id("composer")
+        .w_full()
+        .max_w(px(theme::COLUMN_MAX))
         .flex()
-        .justify_center()
-        .child(
-            div()
-                .id("composer")
-                .w_full()
-                .max_w(px(theme::COLUMN_MAX))
-                .flex()
-                .flex_col()
-                .gap(px(6.0))
-                .px(px(12.0))
-                .pt(px(10.0))
-                .pb(px(8.0))
-                .rounded(px(theme::RADIUS_COMPOSER))
-                .border_1()
-                .border_color(color(if focused {
-                    theme::ACCENT
-                } else {
-                    theme::BORDER
-                }))
-                .bg(color(theme::SURFACE))
-                .shadow_lg()
-                .drag_over::<ExternalPaths>(|style, _, _, _| {
-                    style.border_color(color(theme::ACCENT))
-                })
-                .on_drop(cx.listener(|chat, paths: &ExternalPaths, _window, cx| {
-                    chat.attach_paths(paths.paths(), cx);
-                }))
-                .when(!composer.attachments.is_empty(), |card| {
-                    card.child(chips(chat, cx))
-                })
-                .child(Textarea::new(&composer.input).appearance(false))
-                .child(toolbar(chat, can_send, cx)),
-        )
+        .flex_col()
+        .gap(px(4.0))
+        .px(px(14.0))
+        .pt(px(12.0))
+        .pb(px(8.0))
+        .rounded(px(theme::RADIUS_COMPOSER))
+        .border_1()
+        // Focus lifts the edge a step rather than painting it blue: the caret already says where typing goes.
+        .border_color(color(if focused { theme::FOCUS_EDGE } else { theme::BORDER }))
+        .bg(color(theme::SURFACE))
+        .shadow_md()
+        .drag_over::<ExternalPaths>(|style, _, _, _| style.border_color(color(theme::ACCENT)))
+        .on_drop(cx.listener(|chat, paths: &ExternalPaths, _window, cx| {
+            chat.attach_paths(paths.paths(), cx);
+        }))
+        .when(!composer.attachments.is_empty(), |card| card.child(chips(chat, cx)))
+        .child(Textarea::new(&composer.input).appearance(false))
+        .child(toolbar(chat, can_send, cx))
 }
 
 fn chips(chat: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElement {
@@ -111,26 +97,26 @@ fn toolbar(chat: &ChatView, can_send: bool, cx: &mut Context<ChatView>) -> impl 
                 .child(
                     Button::new("attach")
                         .ghost()
-                        .small()
+                        .xsmall()
                         .icon(IconName::Plus)
                         .tooltip("Attach files")
                         .on_click(
                             cx.listener(|_chat, _event, _window, cx| ChatView::pick_files(cx)),
                         ),
                 )
-                .child(mode_menu(chat, cx))
-                .child(thinking_menu(chat, cx))
-                .child(model_menu(chat)),
+                .child(mode_menu(chat, cx)),
         )
         .child(
             div()
                 .flex()
                 .items_center()
-                .gap(px(4.0))
+                .gap(px(2.0))
+                .child(thinking_menu(chat, cx))
+                .child(model_menu(chat))
                 .child(
                     Button::new("voice")
                         .ghost()
-                        .small()
+                        .xsmall()
                         .icon(IconName::Mic)
                         .tooltip("Voice input is not available yet")
                         .disabled(true),
@@ -144,7 +130,7 @@ fn mode_menu(chat: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElement {
     let current = chat.composer.mode;
     Button::new("mode")
         .ghost()
-        .small()
+        .xsmall()
         .label(current.label())
         .dropdown_caret(true)
         .tooltip(current.hint())
@@ -167,11 +153,10 @@ fn thinking_menu(chat: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElemen
     let current = chat.composer.thinking;
     Button::new("thinking")
         .ghost()
-        .small()
-        .label(format!("Thinking: {}", thinking_label(current)))
-        .dropdown_caret(true)
-        .tooltip("How much the model thinks before answering")
-        .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _window, _cx| {
+        .xsmall()
+        .label(thinking_label(current))
+        .tooltip("Thinking: how much the model thinks before answering")
+        .dropdown_menu_with_anchor(Anchor::BottomRight, move |menu, _window, _cx| {
             Thinking::ALL.iter().fold(menu, |menu, &level| {
                 let me = me.clone();
                 menu.item(
@@ -195,7 +180,7 @@ fn model_menu(chat: &ChatView) -> impl IntoElement {
         .appearance(false)
         .empty(|_window, _cx| div().p_3().text_sm().child("No models found. Save a provider key in Settings."))
         .render_trigger(move |_trigger, _window, _cx| {
-            Button::new("model").ghost().small().label(label.clone()).dropdown_caret(true).tooltip("Model")
+            Button::new("model").ghost().xsmall().label(label.clone()).tooltip("Model")
         })
         .footer(|_window, _cx| {
             Button::new("manage-models")

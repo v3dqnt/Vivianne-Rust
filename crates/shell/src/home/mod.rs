@@ -124,8 +124,9 @@ impl HomeView {
                     .py(px(7.0))
                     .rounded(px(theme::RADIUS_CONTROL))
                     .cursor_pointer()
-                    .when(selected, |row| row.bg(color(theme::SURFACE)))
-                    .hover(|style| style.bg(color(theme::SURFACE)))
+                    .text_color(color(if selected { theme::TEXT } else { theme::MUTED }))
+                    .when(selected, |row| row.bg(color(theme::RAISED)))
+                    .hover(|style| style.bg(color(theme::SURFACE)).text_color(color(theme::TEXT)))
                     .on_click(cx.listener(move |home, _event, _window, cx| {
                         home.selected_project = index;
                         cx.notify();
@@ -169,7 +170,7 @@ impl HomeView {
                         div()
                             .flex()
                             .flex_col()
-                            .child(div().text_size(px(20.0)).child(heading))
+                            .child(div().text_size(px(theme::TEXT_TITLE - 2.0)).font_weight(gpui_kit::FontWeight::SEMIBOLD).child(heading))
                             .child(
                                 div()
                                     .text_size(px(12.0))
@@ -203,7 +204,7 @@ impl HomeView {
         div()
             .flex()
             .flex_col()
-            .gap(px(8.0))
+            .gap(px(2.0))
             .children(rows.into_iter().map(|(index, row)| {
                 let status = match (&row.saved, row.running) {
                     (Some(_), _) => "Saved",
@@ -216,13 +217,11 @@ impl HomeView {
                     .flex()
                     .items_center()
                     .justify_between()
+                    .h(px(40.0))
                     .px(px(12.0))
-                    .py(px(10.0))
-                    .rounded(px(theme::RADIUS_SURFACE))
-                    .border_1()
-                    .border_color(color(theme::BORDER))
-                    .bg(color(theme::SURFACE))
+                    .rounded(px(theme::RADIUS_CONTROL))
                     .cursor_pointer()
+                    .hover(|style| style.bg(color(theme::SURFACE)))
                     .on_click(cx.listener(move |_home, _event, _window, cx| {
                         cx.emit(match &saved {
                             Some(id) => HomeEvent::OpenSaved(id.clone()),

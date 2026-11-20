@@ -127,7 +127,7 @@ impl TerminalView {
         }
         let Ok(session) = &mut self.session else { return };
         let height = f32::from(window.viewport_size().height);
-        let columns = (crate::rail::WIDTH - crate::rail::GAP - SIDE_CHROME) / CELL_WIDTH;
+        let columns = (crate::rail::WIDTH - SIDE_CHROME) / CELL_WIDTH;
         let lines = (height - TOP_CHROME) / LINE_HEIGHT;
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         session.resize(columns.max(2.0) as u16, lines.max(1.0) as u16);

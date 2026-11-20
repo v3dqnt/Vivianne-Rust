@@ -704,25 +704,24 @@ impl ChatView {
     }
 
     /// Small status line under the composer.
-    fn status_line(&self) -> impl IntoElement {
-        let (status, dot) = if self.running { ("Working", theme::ACCENT) } else { ("Ready", theme::OK) };
+    /// What the thread has used, quietly under the composer. The model is on the composer already, and the send
+    /// button says when the agent is working, so this is the one thing left to say.
+    fn usage_line(&self) -> impl IntoElement {
         div()
-            .pb(px(10.0))
+            .w_full()
+            .max_w(px(theme::COLUMN_MAX))
+            .h(px(18.0))
             .flex()
-            .justify_center()
-            .items_center()
-            .gap(px(7.0))
-            .text_size(px(11.0))
-            .text_color(color(theme::MUTED))
-            .child(div().size(px(6.0)).flex_none().rounded_full().bg(color(dot)))
-            .child(match self.thread_usage.as_ref().and_then(thread_usage::line) {
-                Some(used) => format!("{}  ·  {status}  ·  {used}", self.selection.model),
-                None => format!("{}  ·  {status}", self.selection.model),
-            })
+            .justify_end()
+            .px(px(4.0))
+            .text_size(px(theme::TEXT_XS))
+            .text_color(color(theme::FAINT))
+            .children(self.thread_usage.as_ref().and_then(thread_usage::line))
     }
 
-    /// The screen before the first message: a question and a few starting points.
-    fn empty_state(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    /// The screen before the first message: the question, the composer right under it (where the eye already is),
+    /// and a few starting points as small choices beneath. Once something is said, the composer moves to the bottom.
+    fn empty_state(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex_1()
             .min_h_0()
@@ -731,40 +730,45 @@ impl ChatView {
             .items_center()
             .justify_center()
             .px(px(theme::SIDE_PAD))
+            .pb(px(72.0))
             .child(
                 div()
                     .w_full()
                     .max_w(px(theme::COLUMN_MAX))
                     .flex()
                     .flex_col()
-                    .gap(px(6.0))
+                    .gap(px(18.0))
                     .child(
                         div()
-                            .text_size(px(26.0))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child("What are we working on?"),
+                            .flex()
+                            .flex_col()
+                            .gap(px(6.0))
+                            .px(px(4.0))
+                            .child(div().text_size(px(theme::TEXT_TITLE)).font_weight(FontWeight::SEMIBOLD).child("What are we working on?"))
+                            .child(div().text_color(color(theme::MUTED)).child(format!("Ask about {}, or have the agent change something in it.", self.project))),
                     )
-                    .child(div().text_color(color(theme::MUTED)).child(format!(
-                        "Working in {}. Ask a question, or have the agent change something.",
-                        self.project
-                    )))
-                    .child(div().h(px(14.0)))
-                    .children(SUGGESTIONS.iter().enumerate().map(|(index, text)| {
-                        div()
-                            .id(("suggestion", index))
-                            .px(px(14.0))
-                            .py(px(10.0))
-                            .rounded(px(theme::RADIUS_SURFACE))
-                            .border_1()
-                            .border_color(color(theme::BORDER))
-                            .cursor_pointer()
-                            .text_size(px(13.0))
-                            .hover(|row| row.bg(color(theme::SURFACE)))
-                            .on_click(cx.listener(move |chat, _event, window, cx| {
-                                chat.prefill(SUGGESTIONS[index], window, cx);
-                            }))
-                            .child(*text)
-                    })),
+                    .child(composer::render(self, window, cx))
+                    .child(
+                        div().flex().flex_wrap().gap(px(8.0)).px(px(2.0)).children(SUGGESTIONS.iter().enumerate().map(|(index, text)| {
+                            div()
+                                .id(("suggestion", index))
+                                .h(px(30.0))
+                                .px(px(12.0))
+                                .flex()
+                                .items_center()
+                                .rounded(px(theme::RADIUS_CONTROL))
+                                .border_1()
+                                .border_color(color(theme::BORDER))
+                                .cursor_pointer()
+                                .text_size(px(theme::TEXT_SM))
+                                .text_color(color(theme::MUTED))
+                                .hover(|chip| chip.bg(color(theme::RAISED)).text_color(color(theme::TEXT)))
+                                .on_click(cx.listener(move |chat, _event, window, cx| {
+                                    chat.prefill(SUGGESTIONS[index], window, cx);
+                                }))
+                                .child(*text)
+                        })),
+                    ),
             )
     }
 
@@ -808,13 +812,24 @@ impl Render for ChatView {
             .bg(color(theme::BG))
             .text_color(color(theme::TEXT))
             .text_size(px(14.0))
-            .child(if self.items.is_empty() {
-                self.empty_state(cx).into_any_element()
-            } else {
-                self.transcript(cx).into_any_element()
+            .text_size(px(theme::TEXT_BASE))
+            .map(|screen| {
+                if self.items.is_empty() {
+                    screen.child(self.empty_state(window, cx))
+                } else {
+                    screen.child(self.transcript(cx)).child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .gap(px(4.0))
+                            .px(px(theme::SIDE_PAD))
+                            .pb(px(10.0))
+                            .child(composer::render(self, window, cx))
+                            .child(self.usage_line()),
+                    )
+                }
             })
-            .child(composer::render(self, window, cx))
-            .child(self.status_line())
     }
 }
 

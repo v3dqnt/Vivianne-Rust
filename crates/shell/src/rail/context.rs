@@ -5,7 +5,7 @@ use gpui_kit::{AnyElement, div, px, relative};
 use vivianne_core::Mode;
 use vivianne_runtime::context::Breakdown;
 
-use super::{muted, pill, section};
+use super::{muted, section};
 use crate::theme::{self, color};
 
 /// Above this share of the window the figure turns amber: the model is about to start losing the oldest turns.
@@ -29,19 +29,24 @@ fn share(part: u32, whole: Option<u32>) -> f32 {
 
 /// `12400` as `12.4k`.
 fn compact(tokens: u32) -> String {
-    if tokens < 1000 { tokens.to_string() } else { format!("{:.1}k", tokens as f32 / 1000.0) }
+    let (value, unit) = match tokens {
+        0..1_000 => return tokens.to_string(),
+        1_000..1_000_000 => (f64::from(tokens) / 1_000.0, "k"),
+        _ => (f64::from(tokens) / 1_000_000.0, "M"),
+    };
+    // 1.0M reads better as 1M; 12.4k keeps its decimal.
+    let text = format!("{value:.1}");
+    format!("{}{unit}", text.strip_suffix(".0").unwrap_or(&text))
 }
 
-const COLORS: [u32; 5] = [theme::ACCENT, theme::WARN, theme::ACCENT_TEXT, theme::OK, theme::MUTED];
+/// The parts are told apart by shade, not hue: a bar of five colours reads as a chart legend to decode, and the
+/// accent is kept for what is selected.
+const COLORS: [u32; 5] = [0x00dd_e1e8, 0x00a9_b0bc, 0x0078_808d, 0x0057_5e6a, 0x003d_434d];
 
 pub fn card(view: &ContextView) -> AnyElement {
     let used = view.breakdown.total();
     let full = share(used, view.window);
-    let headline = match view.window {
-        Some(window) => format!("{} of {} tokens", compact(used), compact(window)),
-        None => format!("{} tokens", compact(used)),
-    };
-    let rows = [
+        let rows = [
         view.breakdown.system,
         view.breakdown.tools,
         view.breakdown.user,
@@ -49,18 +54,15 @@ pub fn card(view: &ContextView) -> AnyElement {
         view.breakdown.tool_results,
     ];
     let labels = ["System prompt", "Tool definitions", "You", "Assistant", "Tool results"];
-    let mut lines = vec![
-        div()
-            .flex()
-            .items_center()
-            .justify_between()
-            .child(div().text_color(color(if full >= WARN_AT { theme::WARN } else { theme::TEXT })).child(headline))
-            .child(pill(view.mode.label().to_owned()))
-            .into_any_element(),
-    ];
+    let share_label = view.window.map(|_| if full < 0.1 { format!("{:.1}%", full * 100.0) } else { format!("{:.0}%", full * 100.0) });
+    let mut lines = vec![muted(match view.window {
+        Some(window) => format!("{} of {}", compact(used), compact(window)),
+        None => format!("{} tokens", compact(used)),
+    })
+    .into_any_element()];
     // The bar only means something against a known window.
     if view.window.is_some() {
-        let bar = div().flex().w_full().h(px(6.0)).rounded_full().overflow_hidden().bg(color(theme::CODE_BG));
+        let bar = div().flex().w_full().h(px(4.0)).rounded_full().overflow_hidden().bg(color(theme::RAISED));
         let bar = rows.iter().zip(COLORS).fold(bar, |bar, (&tokens, hue)| bar.child(div().h_full().w(relative(share(tokens, view.window))).bg(color(hue))));
         lines.push(bar.into_any_element());
     }
@@ -73,13 +75,18 @@ pub fn card(view: &ContextView) -> AnyElement {
                 .flex()
                 .items_center()
                 .gap(px(8.0))
-                .child(div().size(px(7.0)).flex_none().rounded_full().bg(color(hue)))
+                .child(div().size(px(8.0)).flex_none().rounded(px(2.0)).bg(color(hue)))
                 .child(muted(*label).flex_1())
-                .child(muted(compact(tokens)))
+                .child(div().font_family(theme::MONO).text_size(px(theme::TEXT_SM)).child(compact(tokens)))
                 .into_any_element(),
         );
     }
-    section("Context", lines).into_any_element()
+    super::section_with(
+        "Context",
+        share_label.map(|share| div().text_color(color(if full >= WARN_AT { theme::WARN } else { theme::TEXT })).child(share).into_any_element()),
+        lines,
+    )
+    .into_any_element()
 }
 
 #[cfg(test)]
@@ -93,5 +100,7 @@ mod tests {
         assert!(share(5, None) == 0.0 && share(5, Some(0)) == 0.0);
         assert_eq!(compact(950), "950");
         assert_eq!(compact(12_400), "12.4k");
+        assert_eq!(compact(1_000_000), "1M");
+        assert_eq!(compact(128_000), "128k");
     }
 }

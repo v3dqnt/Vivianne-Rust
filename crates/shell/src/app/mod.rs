@@ -203,6 +203,8 @@ impl AppView {
                         div()
                             .w(px(crate::rail::WIDTH))
                             .flex_none()
+                            .h_full()
+                            .pt(px(4.0))
                             .pr(px(crate::rail::GAP))
                             .pb(px(crate::rail::GAP))
                             .child(self.rail.clone()),
