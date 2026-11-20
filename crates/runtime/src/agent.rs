@@ -1,22 +1,29 @@
 //! The turn loop.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use futures::StreamExt;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
-use vivianne_core::{Message, Mode, Thinking, ToolCall};
+use vivianne_core::{Message, Mode, Role, Thinking, ToolCall};
 use vivianne_providers::{ChatEvent, ChatRequest, EventStream, Provider, ProviderError, Spent, ToolSpec};
 use vivianne_tools::{ToolResult, Toolbox};
 
+use crate::attempts::Attempts;
+use crate::compact;
 use crate::context::{self, Breakdown};
+use crate::history;
 use crate::AgentEvent;
 use crate::resilience::{Chain, Failure, RetryPolicy, Stopped, retry};
 
 /// Same ceiling the old app used for chats.
 const DEFAULT_MAX_STEPS: usize = 100;
+
+/// Longest the call that writes a checkpoint may take.
+const SUMMARY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(40);
 
 /// What a tool that was cut short tells the model, so every call it made has an answer.
 const CANCELLED_TOOL: &str = "error: cancelled by the user before this finished";
@@ -67,6 +74,8 @@ pub struct Agent {
     mode: Mutex<Mode>,
     /// Tool calls waiting for the user's yes or no, by call id.
     asking: Mutex<HashMap<String, oneshot::Sender<bool>>>,
+    /// How many tokens the chosen model can hold, 0 when its provider does not say.
+    window: AtomicU32,
 }
 
 /// The first thing a stream said, and the rest of it.
@@ -88,12 +97,19 @@ impl Agent {
             // A library caller has nobody to ask; an app that has sets `Mode::Ask`.
             mode: Mutex::new(Mode::Auto),
             asking: Mutex::default(),
+            window: AtomicU32::new(0),
         }
     }
 
     /// Changes what the agent is for: its instructions and the tools it may use.
     pub fn set_mode(&self, mode: Mode) {
         *self.mode.lock().unwrap_or_else(PoisonError::into_inner) = mode;
+    }
+
+    /// Tells the agent how large the model's context window is, so it can condense the conversation before the
+    /// window fills. `None` when unknown: it then only condenses after a provider says a request was too large.
+    pub fn set_context_window(&self, tokens: Option<u32>) {
+        self.window.store(tokens.unwrap_or(0), Ordering::Relaxed);
     }
 
     /// The user's answer to an [`AgentEvent::Approval`]. `false` if nothing is waiting on `id` any more.
@@ -186,26 +202,58 @@ impl Agent {
         thinking: Thinking,
         cancel: &CancellationToken,
     ) -> Result<(), AgentError> {
+        let mut attempts = Attempts::default();
+        let mut condensed_for_overflow = false;
         for _ in 0..self.max_steps {
-            let streamed = tokio::select! {
+            // A run that was cut off earlier may have left calls without results, which a provider refuses.
+            history::repair(history);
+            let made_room = tokio::select! {
                 () = cancel.cancelled() => None,
-                streamed = self.stream_step(history, events, thinking, cancel) => Some(streamed?),
+                made = self.make_room(history, events, false) => Some(made),
             };
-            let Some((text, calls, spent)) = streamed else {
+            if made_room.is_none() {
                 send(events, AgentEvent::Stopped);
                 return Ok(());
+            }
+            history::mask_old_results(history);
+            let streamed = tokio::select! {
+                () = cancel.cancelled() => None,
+                streamed = self.stream_step(history, events, thinking, cancel) => Some(streamed),
+            };
+            let Some(streamed) = streamed else {
+                send(events, AgentEvent::Stopped);
+                return Ok(());
+            };
+            let (text, calls, spent) = match streamed {
+                Ok(step) => {
+                    condensed_for_overflow = false;
+                    step
+                }
+                // The request was too big for the window: condense the conversation and ask again, once.
+                Err(AgentError::Provider(error))
+                    if !condensed_for_overflow
+                        && Failure::from(&error).is_context_overflow()
+                        && self.make_room(history, events, true).await =>
+                {
+                    condensed_for_overflow = true;
+                    continue;
+                }
+                Err(error) => return Err(error),
             };
             if let Some(spent) = spent {
                 send(events, usage_event(spent));
             }
             let finished = calls.is_empty();
+            let calls = unique_ids(calls, history.len());
             history.push(Message::assistant(text, calls.clone()));
             if finished {
                 send(events, AgentEvent::Done);
                 return Ok(());
             }
-            let stopped = self.run_tools(&calls, history, events, cancel).await;
+            let stopped = self.run_tools(&calls, history, events, cancel, &mut attempts).await;
             if stopped {
+                // Nobody will answer what was still being asked.
+                self.asking.lock().unwrap_or_else(PoisonError::into_inner).clear();
                 send(events, AgentEvent::Stopped);
                 return Ok(());
             }
@@ -222,6 +270,7 @@ impl Agent {
         history: &mut Vec<Message>,
         events: &UnboundedSender<AgentEvent>,
         cancel: &CancellationToken,
+        attempts: &mut Attempts,
     ) -> bool {
         let mut stopped = false;
         for call in calls {
@@ -234,7 +283,17 @@ impl Agent {
                 }
             };
             stopped |= answer.is_none();
-            history.push(answer.unwrap_or_else(|| Message::tool_result(&call.id, CANCELLED_TOOL.to_owned())));
+            let mut answer = answer.unwrap_or_else(|| Message::tool_result(&call.id, CANCELLED_TOOL.to_owned()));
+            if !stopped {
+                if let Some(error) = answer.text.strip_prefix("error: ") {
+                    if let Some(note) = attempts.failed(call, error) {
+                        answer.text.push_str(&note);
+                    }
+                } else {
+                    attempts.succeeded(call);
+                }
+            }
+            history.push(answer);
         }
         stopped
     }
@@ -306,6 +365,55 @@ impl Agent {
             // The caller's own select ends the step at once; this is only reached if it raced us.
             Err(Stopped::Cancelled) => Err(ProviderError::Failed("cancelled".to_owned())),
         }
+    }
+
+    /// Condenses the older part of the conversation into one summary when it fills the window (or, with `force`,
+    /// because the provider said it does not fit). `true` if it did. The newest part stays word for word.
+    async fn make_room(&self, history: &mut Vec<Message>, events: &UnboundedSender<AgentEvent>, force: bool) -> bool {
+        let window = self.window.load(Ordering::Relaxed);
+        let total = compact::tokens_of(history);
+        if !force && (window == 0 || (total as f32) < window as f32 * compact::THRESHOLD) {
+            return false;
+        }
+        let basis = if window == 0 { total } else { window };
+        let cut = history::pick_cut(history, (basis as f32 * compact::KEEP) as u32, compact::MIN_MESSAGES);
+        if cut == 0 {
+            return false;
+        }
+        let Some(summary) = self.summarise(&history[..cut], events).await else { return false };
+        if !compact::shrinks(&summary, compact::tokens_of(&history[..cut])) {
+            return false;
+        }
+        compact::replace_head(history, cut, &summary);
+        send(events, AgentEvent::Compacted { before: total, after: compact::tokens_of(history) });
+        true
+    }
+
+    /// Asks the first model for a checkpoint of `part`: once with more of each tool result, once with less (a
+    /// call that failed on size gets a second go). `None` if neither gives one.
+    async fn summarise(&self, part: &[Message], events: &UnboundedSender<AgentEvent>) -> Option<String> {
+        let target = &self.targets[self.chain.order()[0]];
+        for preview in compact::PREVIEW_CHARS {
+            let request = ChatRequest {
+                model: target.model.clone(),
+                system: Some(compact::INSTRUCTION.to_owned()),
+                messages: vec![Message::new(Role::User, compact::render_transcript(part, preview))],
+                tools: Vec::new(),
+                thinking: Thinking::Off,
+            };
+            // What the summariser says is not part of the conversation, so its text goes nowhere.
+            let (sink, _unread) = tokio::sync::mpsc::unbounded_channel();
+            let asked = async { collect(open(target, &request).await?, &sink).await };
+            if let Ok(Ok((text, _, spent))) = tokio::time::timeout(SUMMARY_TIMEOUT, asked).await {
+                if let Some(spent) = spent {
+                    send(events, usage_event(spent));
+                }
+                if !text.trim().is_empty() {
+                    return Some(text);
+                }
+            }
+        }
+        None
     }
 
     async fn run_tool(&self, call: &ToolCall, events: &UnboundedSender<AgentEvent>) -> Message {
@@ -389,6 +497,19 @@ fn usage_event(spent: Spent) -> AgentEvent {
         cache_write: spent.cache_write,
         cost: spent.cost,
     }
+}
+
+/// Gives a call an id of its own when the provider sent none, or the same one as an earlier call in the step:
+/// results and approvals are matched by id.
+fn unique_ids(mut calls: Vec<ToolCall>, position: usize) -> Vec<ToolCall> {
+    let mut seen = std::collections::HashSet::new();
+    for (i, call) in calls.iter_mut().enumerate() {
+        if call.id.is_empty() || !seen.insert(call.id.clone()) {
+            call.id = format!("call_{position}_{i}");
+            seen.insert(call.id.clone());
+        }
+    }
+    calls
 }
 
 /// A closed channel means nobody is watching; the run still finishes.
@@ -616,6 +737,69 @@ mod tests {
             let history = task.await.unwrap();
             assert_eq!(history[2].text.contains("did not allow"), !ran, "{}", history[2].text);
         }
+    }
+
+    /// A conversation of `n` messages of about 100 tokens each, ending on the user's turn.
+    fn long_history(n: usize) -> Vec<Message> {
+        (0..n).map(|i| Message::new(if i % 2 == 0 { Role::User } else { Role::Assistant }, "x".repeat(400))).collect()
+    }
+
+    fn said(text: &str) -> Vec<ChatEvent> {
+        vec![ChatEvent::Text(text.to_owned()), ChatEvent::Done]
+    }
+
+    #[tokio::test]
+    async fn a_conversation_that_fills_the_window_is_condensed_before_the_next_call() {
+        let provider = Scripted::new(vec![said("SUMMARY"), said("answer")]);
+        let agent = Agent::new(provider.clone(), "m", None, toolbox());
+        agent.set_context_window(Some(1_000));
+        let (tx, rx) = unbounded_channel();
+        let mut history = long_history(9);
+        agent.run(&mut history, &tx, Thinking::default()).await.unwrap();
+        drop(tx);
+        let seen = provider.seen.lock().unwrap();
+        assert_eq!(seen.len(), 2, "one call to summarise, one to answer");
+        assert_eq!(seen[0].system.as_deref(), Some(compact::INSTRUCTION));
+        assert!(seen[1].messages[0].text.starts_with(compact::OPEN) && seen[1].messages[0].text.contains("SUMMARY"));
+        assert!(seen[1].messages.len() < 9, "the older messages are gone from what is sent");
+        assert!(matches!(history.last(), Some(m) if m.text == "answer"));
+        assert!(futures::executor::block_on(drain(rx)).iter().any(|e| matches!(e, AgentEvent::Compacted { .. })));
+    }
+
+    #[tokio::test]
+    async fn a_request_the_provider_says_is_too_large_is_condensed_and_asked_again_once() {
+        let provider = Scripted::named(
+            "scripted",
+            vec![Reply::Refuse("400: maximum context length is 8192 tokens"), Reply::Events(said("SUMMARY")), Reply::Events(said("answer"))],
+        );
+        let agent = Agent::new(provider.clone(), "m", None, toolbox());
+        let (tx, _rx) = unbounded_channel();
+        let mut history = long_history(9);
+        agent.run(&mut history, &tx, Thinking::default()).await.unwrap();
+        assert_eq!(provider.calls(), 3);
+        assert!(matches!(history.last(), Some(m) if m.text == "answer"));
+    }
+
+    #[tokio::test]
+    async fn a_history_with_an_unanswered_call_is_repaired_before_it_is_sent() {
+        let provider = Scripted::new(vec![said("ok")]);
+        let agent = Agent::new(provider.clone(), "m", None, toolbox());
+        let (tx, _rx) = unbounded_channel();
+        let mut history = vec![
+            Message::new(Role::User, "go"),
+            Message::assistant("", vec![ToolCall { id: "c".into(), name: "echo".into(), args: json!({}) }]),
+            Message::new(Role::User, "hello?"),
+        ];
+        agent.run(&mut history, &tx, Thinking::default()).await.unwrap();
+        let sent = &provider.seen.lock().unwrap()[0].messages;
+        assert_eq!(sent[2].tool_call_id.as_deref(), Some("c"), "the call has an answer right after it");
+    }
+
+    #[test]
+    fn calls_with_no_id_or_a_repeated_id_get_their_own() {
+        let call = |id: &str| ToolCall { id: id.into(), name: "read".into(), args: json!({}) };
+        let ids: Vec<_> = unique_ids(vec![call(""), call("a"), call("a"), call("")], 7).into_iter().map(|c| c.id).collect();
+        assert_eq!(ids, ["call_7_0", "a", "call_7_2", "call_7_3"]);
     }
 
     #[test]

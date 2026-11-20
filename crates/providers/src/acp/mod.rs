@@ -30,7 +30,6 @@ use std::process::Stdio;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-use serde_json::json;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -332,6 +331,5 @@ mod tests {
     #[test]
     fn the_providers_own_name_is_harness() {
         assert_eq!(PROVIDER, "harness");
-        let _ = json!({});
     }
 }

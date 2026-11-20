@@ -105,6 +105,10 @@ pub fn apply(items: &mut Vec<Item>, event: &AgentEvent) -> Change {
             items.push(Item::Notice(format!("Switched to {to}: {reason}")));
             Change::Appended
         }
+        AgentEvent::Compacted { before, after } => {
+            items.push(Item::Notice(format!("Condensed the earlier conversation to make room ({before} to {after} tokens).")));
+            Change::Appended
+        }
         AgentEvent::Retrying { .. } | AgentEvent::Usage { .. } | AgentEvent::Stopped | AgentEvent::Done => Change::Nothing,
     }
 }

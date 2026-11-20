@@ -4,8 +4,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, LazyLock, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Instant;
 
 use serde_json::json;
@@ -19,13 +18,6 @@ use vivianne_core::{Message, Mode, Role, Thinking};
 use vivianne_providers::acp::{Acp, AcpEvent, Line, Outcome, PermissionRequest, PromptPart, TurnRequest};
 use vivianne_runtime::context::Breakdown;
 use vivianne_runtime::{Agent, AgentEvent};
-
-static NEXT_THREAD: AtomicU64 = AtomicU64::new(1);
-
-/// When this run of the app started, in seconds. Thread names carry it, so a thread of this run is never
-/// mistaken for one of an earlier run that had the same number: usage is kept per thread name, for days.
-static LAUNCH: LazyLock<u64> =
-    LazyLock::new(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()));
 
 /// What answers the conversation.
 enum Engine {
@@ -73,7 +65,7 @@ impl Session {
         Self {
             engine: Engine::Own(Arc::new(agent)),
             runtime,
-            thread: format!("thread-{:x}-{}", *LAUNCH, NEXT_THREAD.fetch_add(1, Ordering::SeqCst)),
+            thread: uuid::Uuid::new_v4().to_string(),
             history: Some(Vec::new()),
             before_run: None,
             task: None,
@@ -108,8 +100,9 @@ impl Session {
     }
 
     /// Answer from now on with `agent` (another model); the conversation so far is kept.
-    pub fn switch_agent(&mut self, agent: Agent) {
+    pub fn switch_agent(&mut self, agent: Agent, window: Option<u32>) {
         agent.set_mode(self.mode);
+        agent.set_context_window(window);
         self.engine = Engine::Own(Arc::new(agent));
     }
 
@@ -201,6 +194,25 @@ impl Session {
         }
         let request = self.approvals.lock().unwrap_or_else(PoisonError::into_inner).remove(id);
         request.map(|r| r.answer(allow)).is_some()
+    }
+
+    /// The run ended without reporting (its task panicked). The conversation goes back to before the run, and the
+    /// session can be used again.
+    pub fn lost(&mut self) -> String {
+        self.task = None;
+        self.stop = None;
+        self.approvals.lock().unwrap_or_else(PoisonError::into_inner).clear();
+        if let Some(before) = self.before_run.take() {
+            self.history = Some(before);
+        }
+        "The reply stopped unexpectedly. Your message was not kept; send it again.".to_owned()
+    }
+
+    /// Tell our own agent how large the model's window is.
+    pub fn set_context_window(&self, tokens: Option<u32>) {
+        if let Engine::Own(agent) = &self.engine {
+            agent.set_context_window(tokens);
+        }
     }
 
     /// Take back the history after a run.
@@ -402,7 +414,7 @@ impl HarnessTurn {
             }],
             AcpEvent::Permission(request) => {
                 let title = request.why.clone().unwrap_or_else(|| format!("The coding agent wants to use {}", request.tool.name));
-                let id = format!("ask-{}-{}", request.tool.id, NEXT_THREAD.fetch_add(1, Ordering::SeqCst));
+                let id = format!("ask-{}", uuid::Uuid::new_v4());
                 self.approvals.lock().unwrap_or_else(PoisonError::into_inner).insert(id.clone(), request);
                 vec![AgentEvent::Approval { id, title }]
             }

@@ -157,6 +157,7 @@ impl ChatView {
         cx: &mut Context<Self>,
     ) {
         self.models = choices(discovered, agents);
+        self.refresh_context();
         let current = ModelChoice::value_of(&self.selection.provider, &self.selection.model);
         let items = SearchableVec::new(self.models.clone());
         self.picker.update(cx, |picker, cx| {
@@ -312,7 +313,7 @@ impl ChatView {
 
     fn use_agent(&mut self, agent: vivianne_runtime::Agent, choice: &ModelChoice, cx: &mut Context<Self>) {
         match self.session.as_mut() {
-            Ok(session) => session.switch_agent(agent),
+            Ok(session) => session.switch_agent(agent, choice.context_window),
             Err(_) => self.session = Ok(Session::new(agent, self.host.runtime.clone())),
         }
         self.selection = Selection { provider: choice.provider.clone(), model: choice.id.clone() };
@@ -379,18 +380,21 @@ impl ChatView {
                 }
                 cx.background_executor().timer(EVENT_BATCH_INTERVAL).await;
             }
-            if let Ok(finished) = done.await {
-                this.update(cx, |chat, cx| chat.finish(finished, cx)).ok();
-            }
+            // No answer means the run's task died; the chat must not stay "working" for ever.
+            let finished = done.await.ok();
+            this.update(cx, |chat, cx| chat.finish(finished, cx)).ok();
         })
         .detach();
         cx.notify();
     }
 
-    fn finish(&mut self, finished: Finished, cx: &mut Context<Self>) {
+    fn finish(&mut self, finished: Option<Finished>, cx: &mut Context<Self>) {
         self.running = false;
         if let Ok(session) = self.session.as_mut()
-            && let Some(error) = session.finish(finished)
+            && let Some(error) = match finished {
+                Some(finished) => session.finish(finished),
+                None => Some(session.lost()),
+            }
         {
             self.push_item(Item::Notice(format!("Error: {error}")), cx);
         }
@@ -401,21 +405,24 @@ impl ChatView {
 
     /// Works out where the context window goes. Kept as it was while a run owns the history.
     fn refresh_context(&mut self) {
-        if let Ok(session) = &self.session
-            && let Some(parts) = session.breakdown()
-        {
-            self.context = Some(parts);
+        let window = self.window();
+        if let Ok(session) = &self.session {
+            session.set_context_window(window);
+            if let Some(parts) = session.breakdown() {
+                self.context = Some(parts);
+            }
         }
+    }
+
+    /// How many tokens the chosen model holds, when its provider says.
+    fn window(&self) -> Option<u32> {
+        self.models.iter().find(|m| m.provider == self.selection.provider && m.id == self.selection.model).and_then(|m| m.context_window)
     }
 
     /// What the side panel shows about the window. `None` for a coding agent, which keeps its own conversation.
     #[must_use]
     pub fn context(&self) -> Option<crate::rail::ContextView> {
-        let window = self
-            .models
-            .iter()
-            .find(|m| m.provider == self.selection.provider && m.id == self.selection.model)
-            .and_then(|m| m.context_window);
+        let window = self.window();
         let own = self.selection.provider != models::AGENT_PROVIDER;
         self.context.filter(|_| own).map(|breakdown| crate::rail::ContextView { breakdown, window, mode: self.composer.mode })
     }

@@ -14,6 +14,14 @@ pub fn estimate_tokens(text: &str) -> u32 {
     u32::try_from(text.chars().count().div_ceil(4)).unwrap_or(u32::MAX)
 }
 
+/// Context tokens for one message: its text, and for an assistant message the name and arguments of its calls.
+#[must_use]
+pub fn message_tokens(message: &Message) -> u32 {
+    message.tool_calls.iter().fold(estimate_tokens(&message.text), |sum, call| {
+        sum.saturating_add(estimate_tokens(&call.name)).saturating_add(estimate_tokens(&call.args.to_string()))
+    })
+}
+
 /// The window's fill, by what is in it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Breakdown {
@@ -55,17 +63,13 @@ pub fn breakdown(system: &str, tools: &[Value], history: &[Message]) -> Breakdow
         ..Breakdown::default()
     };
     for message in history {
-        let mut tokens = estimate_tokens(&message.text);
-        let (slot, calls) = match message.role {
-            Role::Assistant => (&mut parts.assistant, &message.tool_calls[..]),
-            Role::Tool => (&mut parts.tool_results, &[][..]),
+        let slot = match message.role {
+            Role::Assistant => &mut parts.assistant,
+            Role::Tool => &mut parts.tool_results,
             // The system role is part of what the user (or the app) put in.
-            Role::User | Role::System => (&mut parts.user, &[][..]),
+            Role::User | Role::System => &mut parts.user,
         };
-        for call in calls {
-            tokens = tokens.saturating_add(estimate_tokens(&call.name)).saturating_add(estimate_tokens(&call.args.to_string()));
-        }
-        *slot = slot.saturating_add(tokens);
+        *slot = slot.saturating_add(message_tokens(message));
     }
     parts
 }

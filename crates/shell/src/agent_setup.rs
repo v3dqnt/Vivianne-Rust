@@ -7,7 +7,7 @@ use tokio::runtime::Runtime;
 use vivianne_providers::env::{self, Selection};
 use vivianne_providers::Provider;
 use vivianne_runtime::resilience::RetryPolicy;
-use vivianne_runtime::{Agent, CODING_SYSTEM_PROMPT, Target};
+use vivianne_runtime::{Agent, Target, coding_system_prompt};
 use vivianne_tools::Toolbox;
 
 use crate::chat::ChatSession;
@@ -43,7 +43,7 @@ pub fn placeholder_agent(workspace: &std::path::Path) -> Result<Agent, String> {
 
 fn build_agent(provider: Arc<dyn Provider>, model: &str, workspace: &std::path::Path, fallbacks: Vec<Target>) -> Agent {
     let retry = if env::auto_retry() { RetryPolicy::default() } else { RetryPolicy::once() };
-    Agent::new(provider, model, Some(CODING_SYSTEM_PROMPT.to_owned()), Toolbox::coding(workspace))
+    Agent::new(provider, model, Some(coding_system_prompt(workspace)), Toolbox::coding(workspace))
         .with_fallbacks(fallbacks)
         .with_retry(retry)
 }

@@ -4,10 +4,19 @@ The single agent loop for chats and (later) 24/7 agents. `Agent::run` streams th
 tools it asks for, feeds results back, and stops when the model answers without tools or hits the
 100-step ceiling. Callers watch `AgentEvent`s on a channel; there are no UI or Tauri types here.
 
-`context.rs` splits a request into system prompt, tool definitions, you, assistant and tool results with one
-token estimate (four characters), so the parts add up. `Agent::set_mode`: Plan offers only tools that look (and refuses any other even if asked); Ask emits
-`AgentEvent::Approval` and waits for `Agent::answer` before a tool that changes things; Auto (the default here,
-since a library caller has nobody to ask) just runs.
+- `agent.rs`: the loop. Retries, fallback models, the mode (`set_mode`: Plan offers only tools that look, Ask
+  emits `AgentEvent::Approval` and waits for `Agent::answer`, Auto runs; the default here is Auto since a library
+  caller has nobody to ask) and condensing the conversation when it fills the window.
+- `history.rs`: keeps the history fit to send: every call answered (`repair`), old bulky tool output masked in
+  batches (`mask_old_results`), and balanced cuts for condensing (`pick_cut`).
+- `compact.rs`: the checkpoint summary (fixed sections, an earlier checkpoint merged forward, discarded if not
+  smaller). Starts at 80% of the window (`set_context_window`) or when a provider says a request was too large.
+- `attempts.rs`: remembers failing calls so a retry-with-small-variations is shown what already failed.
+- `context.rs`: splits a request into system prompt, tool definitions, you, assistant and tool results with one
+  token estimate (four characters), so the parts add up.
+- `prompt.rs`: the coding agent's standing instructions (the old directive without the tools and teams this app
+  lacks).
+- `resilience/`: retry, backoff and the fallback chain.
 
-Still to port from the old loop: retry with backoff, context-overflow compaction, repetition guards,
-key rotation, long-task ledger (the 24/7 mode), permission prompts.
+Not ported from the old loop: key rotation, the long-task ledger (24/7 mode), hooks, the "done means checked"
+verification nudge.

@@ -51,6 +51,12 @@ pub enum AgentEvent {
         /// `None` when the model has no known price: unknown, never zero.
         cost: Option<f64>,
     },
+    /// The older part of the conversation was condensed into a summary to make room, from `before` tokens to
+    /// `after`.
+    Compacted {
+        before: u32,
+        after: u32,
+    },
     /// The step ceiling was hit before the model finished.
     StepLimit,
     /// The run was stopped by the user.

@@ -19,6 +19,7 @@ name = "spike_terminal"
 path = "src/bin/spike_terminal.rs"
 
 [dependencies]
+uuid = { version = "1", features = ["v4"] }
 vivianne-core.workspace = true
 vivianne-ai.workspace = true
 vivianne-telemetry.workspace = true

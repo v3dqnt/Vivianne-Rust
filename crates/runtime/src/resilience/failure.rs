@@ -46,6 +46,16 @@ impl Failure {
         self.kind != FailureKind::Permanent || mentions_credentials(&self.message)
     }
 
+    /// Whether the request did not fit the model's context window: a different model of the same size fails the
+    /// same way, but a shorter conversation works.
+    #[must_use]
+    pub fn is_context_overflow(&self) -> bool {
+        let lower = self.message.to_lowercase();
+        ["context length", "context_length", "context window", "maximum context", "prompt is too long", "too many tokens", "request too large", "exceeds the limit"]
+            .iter()
+            .any(|needle| lower.contains(needle))
+    }
+
     /// The message cut short enough to show.
     #[must_use]
     pub fn short(&self) -> String {
@@ -85,6 +95,13 @@ mod tests {
         let failure = Failure::from_message("400 invalid request: messages must not be empty");
         assert_eq!(failure.kind, FailureKind::Permanent);
         assert!(!failure.is_worth_another_target());
+    }
+
+    #[test]
+    fn a_request_that_does_not_fit_the_window_is_recognised() {
+        assert!(Failure::from_message("400: This model's maximum context length is 8192 tokens").is_context_overflow());
+        assert!(Failure::from_message("prompt is too long: 250000 tokens > 200000 maximum").is_context_overflow());
+        assert!(!Failure::from_message("429 rate limit exceeded").is_context_overflow());
     }
 
     #[test]

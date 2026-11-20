@@ -8658,6 +8658,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-util",
+ "uuid",
  "vivianne-ai",
  "vivianne-core",
  "vivianne-providers",

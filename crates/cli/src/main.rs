@@ -7,7 +7,7 @@ use std::io::{BufRead, Write};
 use tokio::sync::mpsc::unbounded_channel;
 use vivianne_core::{Message, Role, Thinking};
 use vivianne_providers::env;
-use vivianne_runtime::{Agent, AgentEvent, CODING_SYSTEM_PROMPT};
+use vivianne_runtime::{Agent, AgentEvent, coding_system_prompt};
 use vivianne_tools::Toolbox;
 
 #[tokio::main]
@@ -24,7 +24,7 @@ async fn run() -> Result<(), String> {
     let agent = Agent::new(
         env::provider()?,
         &model,
-        Some(CODING_SYSTEM_PROMPT.to_owned()),
+        Some(coding_system_prompt(&workdir)),
         Toolbox::coding(&workdir),
     );
     let mut history = Vec::new();
@@ -77,5 +77,6 @@ fn print_event(event: &AgentEvent) {
             eprintln!("\n[retry {attempt}/{max_attempts} in {}s] {reason}", delay.as_secs());
         }
         AgentEvent::Fallback { to, reason, .. } => eprintln!("\n[switched to {to}] {reason}"),
+        AgentEvent::Compacted { before, after } => eprintln!("\n[condensed the conversation: {before} to {after} tokens]"),
     }
 }
