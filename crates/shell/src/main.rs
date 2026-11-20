@@ -9,6 +9,7 @@ mod backend;
 mod chat;
 mod demo;
 mod home;
+mod notify;
 mod rail;
 mod settings;
 mod signin;

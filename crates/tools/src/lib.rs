@@ -155,4 +155,6 @@ pub mod ai;
 pub mod mods;
 #[rustfmt::skip]
 pub mod proc;
+pub mod open_apps;
+pub mod dev_server;
 mod tauri;

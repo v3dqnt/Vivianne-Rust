@@ -9,6 +9,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::tab::{Tab, TabBar};
 use gpui_kit::component::text::TextView;
 use gpui_kit::component::{Icon, IconName, Sizable as _};
@@ -70,13 +71,18 @@ pub struct Rail {
     context: Option<ContextView>,
     /// What the newest run changed, with the means to undo it.
     changes: Option<vivianne_runtime::checkpoints::LastRun>,
+    /// The editors on this machine, looked up once.
+    open_apps: Vec<vivianne_tools::open_apps::OpenApp>,
+    /// How the project's dev server starts, when it has one.
+    dev_command: Option<String>,
 }
 
 impl Rail {
     #[must_use]
     pub fn new(root: PathBuf) -> Self {
         let git = Snapshot::read(&root);
-        Self { root, tab: RailTab::Overview, expanded: HashSet::new(), preview: None, git, terminal: None, context: None, changes: None }
+        let dev_command = vivianne_tools::dev_server::detect_command(&root);
+        Self { root, tab: RailTab::Overview, expanded: HashSet::new(), preview: None, git, terminal: None, context: None, changes: None, open_apps: vivianne_tools::open_apps::list(), dev_command }
     }
 
     fn refresh(&mut self) {
@@ -182,6 +188,73 @@ impl Rail {
         Some(section("Last run", lines).into_any_element())
     }
 
+    /// Start or stop the project's dev server, and watch it until it has said where it is or has failed.
+    fn toggle_dev_server(&mut self, cx: &mut Context<Self>) {
+        use vivianne_tools::dev_server::{DEV_SERVERS, Status};
+        let id = self.root.display().to_string();
+        if DEV_SERVERS.status(&id) == Status::Stopped || matches!(DEV_SERVERS.status(&id), Status::Crashed { .. }) {
+            let Some(command) = self.dev_command.clone() else { return };
+            // A server that cannot start shows as crashed below, so there is nothing more to say here.
+            let _ = crate::backend::start_dev_server(&id, &id, &command);
+            cx.spawn(async move |rail, cx| {
+                // What it prints arrives on its own time, so look every half second until it is settled.
+                while DEV_SERVERS.status(&id) == Status::Starting {
+                    cx.background_executor().timer(std::time::Duration::from_millis(500)).await;
+                    if rail.update(cx, |_, cx| cx.notify()).is_err() {
+                        return;
+                    }
+                }
+                rail.update(cx, |_, cx| cx.notify()).ok();
+            })
+            .detach();
+        } else {
+            DEV_SERVERS.stop(&id);
+        }
+        cx.notify();
+    }
+
+    /// The dev server card: the command, what state it is in, and the address once it has printed one.
+    fn dev_server(&self, cx: &mut Context<Self>) -> Option<gpui_kit::AnyElement> {
+        use vivianne_tools::dev_server::{DEV_SERVERS, Status};
+        let command = self.dev_command.clone()?;
+        let status = DEV_SERVERS.status(&self.root.display().to_string());
+        let (state, running) = match &status {
+            Status::Stopped => ("Stopped".to_owned(), false),
+            Status::Starting => ("Starting…".to_owned(), true),
+            Status::Running { .. } => ("Running".to_owned(), true),
+            Status::Crashed { error } => (error.clone(), false),
+        };
+        let mut lines = vec![
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .child(div().font_family(theme::MONO).text_size(px(12.0)).child(command))
+                .child(
+                    Button::new("dev-server")
+                        .ghost()
+                        .small()
+                        .label(if running { "Stop" } else { "Start" })
+                        .on_click(cx.listener(|rail, _event, _window, cx| rail.toggle_dev_server(cx))),
+                )
+                .into_any_element(),
+            muted(state).into_any_element(),
+        ];
+        if let Status::Running { url } = status {
+            let open = url.clone();
+            lines.push(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .child(pill(url))
+                    .child(Button::new("dev-open").ghost().small().label("Open").on_click(cx.listener(move |_rail, _event, _window, cx| cx.open_url(&open))))
+                    .into_any_element(),
+            );
+        }
+        Some(section("Dev server", lines).into_any_element())
+    }
+
     fn overview(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let folder = self.root.file_name().map_or_else(
             || self.root.display().to_string(),
@@ -200,6 +273,7 @@ impl Rail {
             ))
             .children(self.context.as_ref().map(context::card))
             .children(self.last_run(cx))
+            .children(self.dev_server(cx))
             .child(self.version_control(cx))
     }
 
@@ -279,6 +353,17 @@ impl Rail {
         };
         let name = preview.path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
         let copy_path = preview.path.display().to_string();
+        let open_path = copy_path.clone();
+        let apps = self.open_apps.clone();
+        let open_in = Button::new("open-in").label("Open in").ghost().small().dropdown_caret(true).dropdown_menu_with_anchor(gpui_kit::Anchor::BottomRight, move |menu, _window, _cx| {
+            apps.iter().fold(menu, |menu, app| {
+                let (id, path) = (app.id.clone(), open_path.clone());
+                menu.item(PopupMenuItem::new(app.label.clone()).on_click(move |_event, _window, _app| {
+                    // A launcher that fails to start has nowhere to say so here; the file simply does not open.
+                    let _ = vivianne_tools::open_apps::open_in(&path, &id, None);
+                }))
+            })
+        });
         let copy = Button::new("copy-path").label("Copy path").ghost().small().on_click(cx.listener(move |_rail, _event, _window, cx| {
             cx.write_to_clipboard(ClipboardItem::new_string(copy_path.clone()));
         }));
@@ -286,7 +371,7 @@ impl Rail {
             .flex()
             .flex_col()
             .gap(px(8.0))
-            .child(div().flex().items_center().justify_between().child(div().child(name)).child(copy))
+            .child(div().flex().items_center().justify_between().child(div().child(name)).child(div().flex().gap(px(4.0)).child(open_in).child(copy)))
             .child(preview_body(preview))
             .into_any_element()
     }

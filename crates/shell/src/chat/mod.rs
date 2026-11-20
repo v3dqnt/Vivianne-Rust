@@ -70,6 +70,8 @@ pub struct ChatView {
     title: Option<(String, &'static str)>,
     /// What the newest run changed in the project, for the side panel and for undoing it.
     changes: Option<vivianne_runtime::checkpoints::LastRun>,
+    /// What the person picks on a notification arrives here, from whatever thread the system uses.
+    toasts: futures::channel::mpsc::UnboundedSender<(String, crate::notify::Choice)>,
     _input_events: Subscription,
     _picker_events: Subscription,
 }
@@ -117,6 +119,16 @@ impl ChatView {
             }
         });
         Self::look_up_models(&host, window, cx);
+        let (toasts, mut toast_choices) = futures::channel::mpsc::unbounded::<(String, crate::notify::Choice)>();
+        cx.spawn_in(window, async move |chat, cx| {
+            use futures::StreamExt as _;
+            while let Some((id, choice)) = toast_choices.next().await {
+                if chat.update_in(cx, |chat, window, cx| chat.answer_from_notification(&id, choice, window, cx)).is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
         let context = session.as_ref().ok().and_then(Session::breakdown);
         Self {
             items: Vec::new(),
@@ -134,6 +146,7 @@ impl ChatView {
             context,
             title: None,
             changes: None,
+            toasts,
             _input_events: input_events,
             _picker_events: picker_events,
         }
@@ -308,6 +321,8 @@ impl ChatView {
 
     /// The user's answer to a coding agent's request.
     fn answer_approval(&mut self, id: &str, allow: bool, cx: &mut Context<Self>) {
+        // Answered here, so the notification asking the same thing is taken down.
+        crate::notify::withdraw(id);
         if let Ok(session) = &self.session {
             session.answer(id, allow);
         }
@@ -340,6 +355,16 @@ impl ChatView {
     /// Fold a batch of agent events in, telling the list only which rows changed.
     fn apply_events(&mut self, events: &[vivianne_runtime::AgentEvent], cx: &mut Context<Self>) {
         for event in events {
+            // Something waiting on you while the window is not in front: say so where you will see it.
+            if let vivianne_runtime::AgentEvent::Approval { id, title } = event
+                && cx.active_window().is_none()
+            {
+                let toasts = self.toasts.clone();
+                let tag = id.clone();
+                crate::notify::show(id, "Vivianne needs your approval", title, crate::notify::Quick::ApproveReject, move |choice| {
+                    let _ = toasts.unbounded_send((tag.clone(), choice));
+                });
+            }
             match apply(&mut self.items, event) {
                 Change::Nothing => {}
                 Change::Appended => {
@@ -398,6 +423,39 @@ impl ChatView {
         cx.notify();
     }
 
+    /// What the person chose on a notification.
+    fn answer_from_notification(&mut self, id: &str, choice: crate::notify::Choice, window: &mut Window, cx: &mut Context<Self>) {
+        use crate::notify::Choice;
+        match choice {
+            Choice::Approve => self.answer_approval(id, true, cx),
+            Choice::Reject => self.answer_approval(id, false, cx),
+            Choice::Reply(text) => {
+                self.composer.input.update(cx, |input, cx| input.set_value(text, window, cx));
+                self.send(window, cx);
+                window.activate_window();
+            }
+            Choice::Open => window.activate_window(),
+        }
+    }
+
+    /// A finished reply, said on the desktop when the window is not in front and the person asked for it
+    /// (`notifications.enabled` in settings.json, as in the old app; off by default).
+    fn notify_finished(&self, cx: &mut Context<Self>) {
+        let Ok(session) = &self.session else { return };
+        let Some(history) = session.history() else { return };
+        let body = crate::notify::last_reply(history);
+        let toasts = self.toasts.clone();
+        crate::backend::run(cx, async { vivianne_ai::host::read_settings_json().await }, move |settings, _cx| {
+            if settings["notifications"]["enabled"].as_bool() == Some(true) {
+                let tag = uuid::Uuid::new_v4().to_string();
+                let reply_tag = tag.clone();
+                crate::notify::show(&tag, "Vivianne", &body, crate::notify::Quick::Reply, move |choice| {
+                    let _ = toasts.unbounded_send((reply_tag.clone(), choice));
+                });
+            }
+        });
+    }
+
     fn finish(&mut self, finished: Option<Finished>, cx: &mut Context<Self>) {
         self.running = false;
         if let Ok(session) = self.session.as_mut()
@@ -412,6 +470,9 @@ impl ChatView {
         self.refresh_context();
         self.refresh_changes(cx);
         self.save();
+        if cx.active_window().is_none() {
+            self.notify_finished(cx);
+        }
         cx.notify();
     }
 

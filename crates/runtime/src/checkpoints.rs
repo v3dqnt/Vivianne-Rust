@@ -124,7 +124,9 @@ pub fn batch_paths(paths: &[String]) -> Vec<Vec<String>> {
             size = 0;
         }
         size += p.len() + 1;
-        groups.last_mut().unwrap().push(p.clone());
+        if let Some(group) = groups.last_mut() {
+            group.push(p.clone());
+        }
     }
     groups
 }

@@ -39,7 +39,7 @@ tokio-util = "0.7"
 
 [target.'cfg(windows)'.dependencies]
 # Win32 calls for the overlay spike.
-windows = { version = "0.61.3", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.61.3", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "UI_Notifications", "Data_Xml_Dom", "Foundation", "Foundation_Collections"] }
 
 [lints]
 workspace = true

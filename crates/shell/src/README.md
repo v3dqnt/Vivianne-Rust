@@ -11,3 +11,7 @@
 - `settings/`: the Settings dialog.
 - `bin/`: throwaway spike binaries.
 - `backend.rs`: the key store and coding-agent manager opened at start, and `run` to do async work from the UI.
+
+- `notify.rs`: desktop notifications when the window is not in front: a toast with Approve and Reject for something
+  waiting on you, and a toast with a reply box for a finished reply (only when `notifications.enabled` is true in
+  `~/.viv/agent/settings.json`, as in the old app). Windows only; elsewhere nothing is shown.

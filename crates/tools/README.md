@@ -38,3 +38,9 @@ originals are copied as well. Their writes stay inside the project folder (`work
 
 Not copied: the web search tests, the other tools in `builtin.rs`, desktop control, GitHub, documents
 editing. Dependency versions match the original backend.
+
+- `src/open_apps.rs`: the editors on this machine (found on PATH), and opening a file in one at a line, in the
+  system's default app, or shown in its folder. Used by the rail's Preview "Open in".
+- `src/dev_server.rs`: starts the project's dev server (`dev_server::detect_command` reads package.json and the
+  lockfile) and picks the local address out of its output; a server that exits before printing one is reported as
+  crashed. Stopped when the app quits.

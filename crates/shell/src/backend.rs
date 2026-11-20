@@ -34,10 +34,20 @@ pub fn get() -> Option<&'static Backend> {
     BACKEND.get()
 }
 
+/// Starts a dev server. It is a child process watched by tasks on the async runtime, so it is started with that
+/// runtime entered.
+pub fn start_dev_server(id: &str, cwd: &str, command: &str) -> Result<(), String> {
+    let backend = get().ok_or("The background services did not start.")?;
+    let _entered = backend.handle.enter();
+    vivianne_tools::dev_server::DEV_SERVERS.start(id, cwd, command)
+}
+
 /// Writes the usage still in memory when the app quits. GPUI waits for this a moment (a fraction of a second),
 /// and writing a few small files takes far less.
 pub fn flush_on_quit(cx: &mut App) {
     cx.on_app_quit(|_cx| async {
+        // A dev server started from the app would otherwise outlive it.
+        vivianne_tools::dev_server::DEV_SERVERS.stop_all();
         if let Some(flushed) = spawn(usage_store::flush_all()) {
             let _ = flushed.await;
         }
