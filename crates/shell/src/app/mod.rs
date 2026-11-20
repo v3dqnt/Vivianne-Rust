@@ -13,7 +13,7 @@ use vivianne_providers::env::Selection;
 use crate::agent_setup;
 use crate::chat::{ChatHost, ChatView};
 use crate::home::{HomeEvent, HomeView, ThreadRow};
-use crate::rail::Rail;
+use crate::rail::{Rail, RailEvent};
 use crate::theme::{self, color};
 
 
@@ -39,6 +39,7 @@ pub struct AppView {
     /// Threads kept on disk for this project, read when Home is shown.
     saved: Vec<vivianne_runtime::store::Summary>,
     _home_events: Subscription,
+    _rail_events: Subscription,
 }
 
 impl AppView {
@@ -56,6 +57,9 @@ impl AppView {
                 HomeEvent::OpenThread(index) => app.open_thread(*index, window, cx),
                 HomeEvent::OpenSaved(id) => app.open_saved(id, window, cx),
             });
+        let rail_events = cx.subscribe(&rail, |app, _rail, event, cx| match event {
+            RailEvent::UndoLastRun => app.undo_last_run(cx),
+        });
         let mut app = Self {
             runtime,
             workspace,
@@ -66,6 +70,7 @@ impl AppView {
             rail_open: true,
             saved: Vec::new(),
             _home_events: home_events,
+            _rail_events: rail_events,
         };
         app.reload_saved();
         app.new_thread(window, cx);
@@ -104,6 +109,15 @@ impl AppView {
         self.new_thread(window, cx);
         if let Some(thread) = self.threads.last() {
             thread.chat.update(cx, |chat, cx| chat.restore(saved, cx));
+        }
+    }
+
+    /// The open thread's newest run is undone.
+    fn undo_last_run(&mut self, cx: &mut Context<Self>) {
+        if let Page::Thread(index) = self.page
+            && let Some(thread) = self.threads.get(index)
+        {
+            thread.chat.update(cx, ChatView::undo_last_run);
         }
     }
 
@@ -206,8 +220,14 @@ impl Render for AppView {
         if let Page::Thread(index) = self.page
             && let Some(thread) = self.threads.get(index)
         {
-            let context = thread.chat.read(cx).context();
-            self.rail.update(cx, |rail, cx| rail.set_context(context, cx));
+            let (context, changes) = {
+                let chat = thread.chat.read(cx);
+                (chat.context(), chat.changes().cloned())
+            };
+            self.rail.update(cx, |rail, cx| {
+                rail.set_context(context, cx);
+                rail.set_changes(changes, cx);
+            });
         }
         div()
             .size_full()

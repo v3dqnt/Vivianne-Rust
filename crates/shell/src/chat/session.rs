@@ -16,6 +16,7 @@ use vivianne_ai::ai::types::{CostBreakdown, Usage};
 use vivianne_ai::inference::usage_store;
 use vivianne_core::{Message, Mode, Role, Thinking};
 use vivianne_providers::acp::{Acp, AcpEvent, Line, Outcome, PermissionRequest, PromptPart, TurnRequest};
+use vivianne_runtime::checkpoints;
 use vivianne_runtime::context::Breakdown;
 use vivianne_runtime::{Agent, AgentEvent};
 
@@ -45,6 +46,8 @@ pub struct Session {
     /// Requests from the coding agent waiting for the user.
     approvals: Approvals,
     mode: Mode,
+    /// The project folder the agent works in: what is checkpointed around each run.
+    folder: PathBuf,
 }
 
 /// A started run: events as they happen, then the final state.
@@ -60,7 +63,7 @@ pub struct Finished {
 
 impl Session {
     #[must_use]
-    pub fn new(agent: Agent, runtime: Arc<Runtime>) -> Self {
+    pub fn new(agent: Agent, runtime: Arc<Runtime>, folder: PathBuf) -> Self {
         agent.set_mode(Mode::default());
         Self {
             engine: Engine::Own(Arc::new(agent)),
@@ -72,7 +75,14 @@ impl Session {
             stop: None,
             approvals: Approvals::default(),
             mode: Mode::default(),
+            folder,
         }
+    }
+
+    /// The project folder.
+    #[must_use]
+    pub fn folder(&self) -> &std::path::Path {
+        &self.folder
     }
 
     /// What the agent is for from the next message on.
@@ -144,9 +154,13 @@ impl Session {
             Engine::Own(agent) => {
                 let agent = agent.clone();
                 let (events_tx, watcher) = watch_turn(self.runtime.handle(), self.thread.clone(), events_tx);
+                let (folder, thread) = (self.folder.display().to_string(), self.thread.clone());
                 self.task = Some(self.runtime.spawn(async move {
                     let started = Instant::now();
+                    // A baseline to compare the run against, and a snapshot of what it left, so it can be undone.
+                    checkpoints::before_turn(&folder, &thread).await;
                     let result = agent.run(&mut history, &events_tx, thinking).await;
+                    checkpoints::after_turn(&folder, &thread).await;
                     drop(events_tx);
                     let error = result.err().map(|e| e.to_string());
                     watcher.finish(started, error.as_deref()).await;
@@ -170,9 +184,12 @@ impl Session {
                     plan_mode: self.mode == Mode::Plan,
                     bypass: self.mode == Mode::Auto,
                 };
+                let (folder, thread) = (self.folder.display().to_string(), self.thread.clone());
                 self.task = Some(self.runtime.spawn(async move {
                     let started = Instant::now();
+                    checkpoints::before_turn(&folder, &thread).await;
                     let (reply, error) = turn.run(&events_tx, &stop).await;
+                    checkpoints::after_turn(&folder, &thread).await;
                     drop(events_tx);
                     watcher.finish(started, error.as_deref()).await;
                     if !reply.is_empty() {

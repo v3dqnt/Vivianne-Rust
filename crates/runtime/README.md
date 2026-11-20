@@ -19,6 +19,10 @@ tools it asks for, feeds results back, and stops when the model answers without 
 - `store.rs`: threads kept on disk (`~/.viv/agent/threads/<id>.json`), listed per project folder.
 - `title.rs`: a thread's title: the cleaned first sentence, replaced by a model-written one (`Agent::title`); a
   name the user gave is never replaced.
+- `checkpoints.rs`: a snapshot of the whole working tree after each run, as hidden git refs (`refs/viv/checkpoints/...`;
+  the user's branch, index and stash are never touched). Gives a run's changed files, its diff, and a rollback that
+  restores changed files and removes created ones (a safety checkpoint is taken first, so a rollback can be undone).
+  Shell-made changes are included; ignored files are not.
 - `prompt.rs`: the coding agent's standing instructions (the old directive without the tools and teams this app
   lacks).
 - `resilience/`: retry, backoff and the fallback chain.

@@ -27,7 +27,7 @@ pub fn new_session(runtime: &Arc<Runtime>, workspace: &std::path::Path) -> Setup
     };
     let fallbacks = if selection.provider == "demo" { Vec::new() } else { fallback_targets(&selection) };
     let agent = build_agent(provider, &selection.model, workspace, fallbacks);
-    Ok((ChatSession::new(agent, runtime.clone()), selection))
+    Ok((ChatSession::new(agent, runtime.clone(), workspace.to_path_buf()), selection))
 }
 
 /// An agent for `model` of `provider`, for switching a thread to another model.

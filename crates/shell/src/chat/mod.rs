@@ -68,6 +68,8 @@ pub struct ChatView {
     context: Option<vivianne_runtime::context::Breakdown>,
     /// The thread's name and who gave it (`user` or `auto`); `None` until something has been said.
     title: Option<(String, &'static str)>,
+    /// What the newest run changed in the project, for the side panel and for undoing it.
+    changes: Option<vivianne_runtime::checkpoints::LastRun>,
     _input_events: Subscription,
     _picker_events: Subscription,
 }
@@ -131,6 +133,7 @@ impl ChatView {
             thread_usage: None,
             context,
             title: None,
+            changes: None,
             _input_events: input_events,
             _picker_events: picker_events,
         }
@@ -292,7 +295,7 @@ impl ChatView {
             Ok(session) => session.use_harness(&choice.id, backend.acp.clone(), workspace),
             Err(_) => {
                 let Ok(agent) = crate::agent_setup::placeholder_agent(&self.host.workspace) else { return };
-                let mut session = Session::new(agent, self.host.runtime.clone());
+                let mut session = Session::new(agent, self.host.runtime.clone(), self.host.workspace.clone());
                 session.use_harness(&choice.id, backend.acp.clone(), workspace);
                 self.session = Ok(session);
             }
@@ -317,7 +320,7 @@ impl ChatView {
     fn use_agent(&mut self, agent: vivianne_runtime::Agent, choice: &ModelChoice, cx: &mut Context<Self>) {
         match self.session.as_mut() {
             Ok(session) => session.switch_agent(agent, choice.context_window),
-            Err(_) => self.session = Ok(Session::new(agent, self.host.runtime.clone())),
+            Err(_) => self.session = Ok(Session::new(agent, self.host.runtime.clone(), self.host.workspace.clone())),
         }
         self.selection = Selection { provider: choice.provider.clone(), model: choice.id.clone() };
         vivianne_telemetry::track("model.switch", serde_json::json!({ "provider": choice.provider, "model": choice.id }));
@@ -407,8 +410,51 @@ impl ChatView {
         }
         self.refresh_thread_usage(cx);
         self.refresh_context();
+        self.refresh_changes(cx);
         self.save();
         cx.notify();
+    }
+
+    /// What the newest run changed, read from the checkpoints taken around it.
+    #[must_use]
+    pub fn changes(&self) -> Option<&vivianne_runtime::checkpoints::LastRun> {
+        self.changes.as_ref()
+    }
+
+    fn refresh_changes(&mut self, cx: &mut Context<Self>) {
+        let Ok(session) = &self.session else { return };
+        let (folder, thread) = (session.folder().to_path_buf(), session.thread_id().to_owned());
+        let chat = cx.entity().downgrade();
+        crate::backend::run(cx, async move { vivianne_runtime::checkpoints::last_run(&folder, &thread).await }, move |found, cx| {
+            chat.update(cx, |chat, cx| {
+                chat.changes = found.ok().flatten();
+                cx.notify();
+            })
+            .ok();
+        });
+    }
+
+    /// Puts the project back the way it was before the newest run. The files the run changed are restored and the
+    /// ones it created are removed; a safety checkpoint is taken first, so this can itself be undone.
+    pub fn undo_last_run(&mut self, cx: &mut Context<Self>) {
+        let (Ok(session), Some(run)) = (&self.session, &self.changes) else { return };
+        if self.running {
+            self.push_item(Item::Notice("Wait for the reply to finish, or stop it, before undoing it.".to_owned()), cx);
+            return;
+        }
+        let (folder, thread, before) = (session.folder().to_path_buf(), session.thread_id().to_owned(), run.before);
+        let chat = cx.entity().downgrade();
+        crate::backend::run(cx, async move { vivianne_runtime::checkpoints::rollback(&folder, &thread, before).await }, move |result, cx| {
+            chat.update(cx, |chat, cx| {
+                let notice = match result {
+                    Ok(report) => format!("Undid the last run: restored {} files, removed {}.", report.restored.len(), report.removed.len()),
+                    Err(problem) => format!("Couldn't undo the last run: {problem}"),
+                };
+                chat.push_item(Item::Notice(notice), cx);
+                chat.refresh_changes(cx);
+            })
+            .ok();
+        });
     }
 
     /// Works out where the context window goes. Kept as it was while a run owns the history.

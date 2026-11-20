@@ -49,6 +49,15 @@ struct Preview {
     content: Content,
 }
 
+/// What the rail asks the app to do.
+#[derive(Debug, Clone, Copy)]
+pub enum RailEvent {
+    /// Put the project back the way it was before the newest run.
+    UndoLastRun,
+}
+
+impl gpui_kit::EventEmitter<RailEvent> for Rail {}
+
 pub struct Rail {
     root: PathBuf,
     tab: RailTab,
@@ -59,13 +68,15 @@ pub struct Rail {
     terminal: Option<Entity<TerminalView>>,
     /// The active chat's context window, pushed in by the app; `None` when there is nothing to show.
     context: Option<ContextView>,
+    /// What the newest run changed, with the means to undo it.
+    changes: Option<vivianne_runtime::checkpoints::LastRun>,
 }
 
 impl Rail {
     #[must_use]
     pub fn new(root: PathBuf) -> Self {
         let git = Snapshot::read(&root);
-        Self { root, tab: RailTab::Overview, expanded: HashSet::new(), preview: None, git, terminal: None, context: None }
+        Self { root, tab: RailTab::Overview, expanded: HashSet::new(), preview: None, git, terminal: None, context: None, changes: None }
     }
 
     fn refresh(&mut self) {
@@ -124,6 +135,53 @@ impl Rail {
         }
     }
 
+    /// Shows what the newest run changed. Redraws only when it changed.
+    pub fn set_changes(&mut self, changes: Option<vivianne_runtime::checkpoints::LastRun>, cx: &mut Context<Self>) {
+        if self.changes != changes {
+            self.changes = changes;
+            cx.notify();
+        }
+    }
+
+    /// The newest run's files with an Undo button, or nothing when it changed none.
+    fn last_run(&self, cx: &mut Context<Self>) -> Option<gpui_kit::AnyElement> {
+        let run = self.changes.as_ref().filter(|run| !run.files.is_empty())?;
+        let mut lines = vec![
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .child(muted(format!("{} {}", run.files.len(), if run.files.len() == 1 { "file" } else { "files" })))
+                .child(
+                    Button::new("undo-run")
+                        .ghost()
+                        .small()
+                        .label("Undo")
+                        .tooltip("Put the project back the way it was before this run")
+                        .on_click(cx.listener(|_rail, _event, _window, cx| cx.emit(RailEvent::UndoLastRun))),
+                )
+                .into_any_element(),
+        ];
+        lines.extend(run.files.iter().take(12).map(|(path, status)| {
+            let hex = match status {
+                'A' => theme::OK,
+                'D' => theme::DANGER,
+                _ => theme::ACCENT,
+            };
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .child(div().w(px(14.0)).flex_none().text_size(px(11.0)).text_color(color(hex)).child(status.to_string()))
+                .child(div().min_w_0().overflow_hidden().child(path.clone()))
+                .into_any_element()
+        }));
+        if run.files.len() > 12 {
+            lines.push(muted(format!("and {} more", run.files.len() - 12)).into_any_element());
+        }
+        Some(section("Last run", lines).into_any_element())
+    }
+
     fn overview(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let folder = self.root.file_name().map_or_else(
             || self.root.display().to_string(),
@@ -141,6 +199,7 @@ impl Rail {
                 ],
             ))
             .children(self.context.as_ref().map(context::card))
+            .children(self.last_run(cx))
             .child(self.version_control(cx))
     }
 
