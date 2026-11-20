@@ -19,6 +19,9 @@ pub struct Values {
     pub usage_mode: u8,
     /// Usage-by-model range: "7", "30" or "all".
     pub usage_range: String,
+    /// The usage has been read from where it is kept.
+    pub usage_loaded: bool,
+    pub usage_loading: bool,
 
     // Providers: read from where the keys and settings live.
     pub providers: ProviderState,
@@ -113,6 +116,10 @@ pub struct Values {
     // Diagnostics.
     pub share_diagnostics: bool,
     pub share_endpoint: String,
+    /// Settings and the recorded events have been read.
+    pub diag_loaded: bool,
+    pub diag_loading: bool,
+    pub report_sending: bool,
     pub diag_events: u32,
     pub diag_since: String,
     pub diag_kinds: Vec<(String, u32)>,
@@ -155,7 +162,10 @@ pub struct UsageDay {
     pub requests: u32,
     pub input: u64,
     pub output: u64,
+    /// `None` when none of the day's requests could be priced: unknown, never $0.
     pub cost: Option<f64>,
+    /// At least one request had no known price, so `cost` is only part of the spend.
+    pub unpriced: bool,
 }
 
 /// Tokens and spend attributed to one model over the selected range.
@@ -167,6 +177,8 @@ pub struct ModelUsage {
     pub input: u64,
     pub output: u64,
     pub cost: Option<f64>,
+    /// At least one request had no known price, so `cost` is only part of the spend.
+    pub unpriced: bool,
 }
 
 /// A model served by llama.cpp or mistral.rs on this machine.
@@ -391,8 +403,9 @@ pub struct ComponentEntry {
 }
 
 /// Where the Updates page stands.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum UpdateStatus {
+    #[default]
     Idle,
     Checking,
     Available(String),
@@ -404,12 +417,6 @@ pub struct Release {
     pub version: String,
     pub date: String,
     pub notes: Vec<String>,
-}
-
-impl Default for UpdateStatus {
-    fn default() -> Self {
-        Self::Idle
-    }
 }
 
 impl Values {

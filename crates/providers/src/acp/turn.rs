@@ -23,6 +23,7 @@ use super::permission::{Disposition, call_id, cancelled_outcome, disposition, pe
 use super::registry::Harness;
 use super::session::{DELEGATE, Line, digest, explain_start_failure, forget_session, looks_unauthenticated, save_session, session_key};
 use super::stderr;
+use crate::Spent;
 
 /// How long `session/close` gets to answer after a session-wide Stop.
 const STOP_CLOSE_TIMEOUT: Duration = Duration::from_secs(10);
@@ -43,6 +44,8 @@ pub enum AcpEvent {
     Notice { title: String, text: String, is_error: bool },
     /// The agent wants to do something and asks first. It waits until this is answered.
     Permission(PermissionRequest),
+    /// What the turn used, sent once as it ends, when the agent said. Whoever knows the thread records it.
+    Usage(Spent),
 }
 
 /// A tool call as it is shown when asking.
@@ -714,9 +717,11 @@ pub(super) async fn run(
     }
 
     let outcome = outcome_of(conn, harness, &answer, &updates, stopped_at.is_some()).await;
-    // This turn's tokens and cost, recorded against the agent.
-    if let Ok(result) = &answer {
-        record_usage(conn, harness, result, updates.cost).await;
+    // This turn's tokens and cost, reported for whoever knows the thread to record.
+    if let Ok(result) = &answer
+        && let Some(spent) = turn_spent(conn, harness, result, updates.cost)
+    {
+        let _ = events.send(AcpEvent::Usage(spent));
     }
     // What it has seen of the thread now: everything up to and including this exchange.
     let seen = request.earlier.len() + 1 + usize::from(!reply.is_empty());
@@ -783,17 +788,25 @@ async fn with_stderr(conn: &Conn, mut said: String) -> String {
     said
 }
 
-/// This turn's share of the session's cost, and its tokens, recorded against the agent.
-async fn record_usage(conn: &Conn, harness: &Harness, result: &Value, cost_now: Option<f64>) {
-    let spent = cost_now.map(|now| {
+/// This turn's share of the session's cost, and its tokens, as what the agent spent. `None` when it reported
+/// neither. The cost is `None` when the agent gave no figure: unknown, not zero.
+fn turn_spent(conn: &Conn, harness: &Harness, result: &Value, cost_now: Option<f64>) -> Option<Spent> {
+    let share = cost_now.map(|now| {
         let mut last = conn.cost.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let share = (now - *last).max(0.0);
         *last = now;
         share
     });
-    if let Some(usage) = turn_usage(result, spent) {
-        vivianne_ai::inference::usage_store::record_usage(&usage, super::PROVIDER, &harness.id).await;
-    }
+    let usage = turn_usage(result, share)?;
+    Some(Spent {
+        provider: super::PROVIDER.to_owned(),
+        model: harness.id.clone(),
+        input: u64::from(usage.input),
+        output: u64::from(usage.output),
+        cache_read: u64::from(usage.cache_read),
+        cache_write: u64::from(usage.cache_write),
+        cost: usage.cost.map(|c| c.total),
+    })
 }
 
 #[cfg(test)]

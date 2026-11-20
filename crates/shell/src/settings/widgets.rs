@@ -198,7 +198,7 @@ struct KeyedTextarea {
     _subscription: Subscription,
 }
 
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn keyed_state(
     key: &'static str,
     values: &Shared,
@@ -236,7 +236,7 @@ fn keyed_state(
 
 /// The textarea twin of [`keyed_state`]: a multi-line input that grows
 /// between `rows.0` and `rows.1` lines, bound to a string in `Values`.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn keyed_textarea_state(
     key: &'static str,
     values: &Shared,
@@ -308,6 +308,7 @@ pub fn keyed_secret(
 
 /// An inline multi-line textarea bound to a string in `Values`, growing
 /// between `rows.0` and `rows.1` lines.
+#[allow(clippy::too_many_arguments)]
 pub fn keyed_textarea(
     key: &'static str,
     values: &Shared,

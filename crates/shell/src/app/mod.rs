@@ -80,6 +80,7 @@ impl AppView {
         let chat = cx.new(|cx| ChatView::new(session, selection, project, host, window, cx));
         // Redraw the tab title and status whenever the chat changes.
         cx.observe(&chat, |_app, _chat, cx| cx.notify()).detach();
+        vivianne_telemetry::track("thread.new", serde_json::json!({}));
         self.threads.push(Thread { chat });
         self.open_thread(self.threads.len() - 1, window, cx);
     }

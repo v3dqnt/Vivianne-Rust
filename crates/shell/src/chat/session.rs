@@ -5,18 +5,26 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
+use std::time::Instant;
 
 use serde_json::json;
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
+use vivianne_ai::ai::types::{CostBreakdown, Usage};
+use vivianne_ai::inference::usage_store;
 use vivianne_core::{Message, Role, Thinking};
 use vivianne_providers::acp::{Acp, AcpEvent, Line, Outcome, PermissionRequest, PromptPart, TurnRequest};
 use vivianne_runtime::{Agent, AgentEvent};
 
 static NEXT_THREAD: AtomicU64 = AtomicU64::new(1);
+
+/// When this run of the app started, in seconds. Thread names carry it, so a thread of this run is never
+/// mistaken for one of an earlier run that had the same number: usage is kept per thread name, for days.
+static LAUNCH: LazyLock<u64> =
+    LazyLock::new(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()));
 
 /// What answers the conversation.
 enum Engine {
@@ -62,13 +70,19 @@ impl Session {
         Self {
             engine: Engine::Own(Arc::new(agent)),
             runtime,
-            thread: format!("thread-{}", NEXT_THREAD.fetch_add(1, Ordering::SeqCst)),
+            thread: format!("thread-{:x}-{}", *LAUNCH, NEXT_THREAD.fetch_add(1, Ordering::SeqCst)),
             history: Some(Vec::new()),
             before_run: None,
             task: None,
             stop: None,
             approvals: Approvals::default(),
         }
+    }
+
+    /// The name usage is recorded under (`main:<this>`).
+    #[must_use]
+    pub fn thread_id(&self) -> &str {
+        &self.thread
     }
 
     /// Answer from now on with `agent` (another model); the conversation so far is kept.
@@ -91,10 +105,13 @@ impl Session {
         match &self.engine {
             Engine::Own(agent) => {
                 let agent = agent.clone();
+                let (events_tx, watcher) = watch_turn(self.runtime.handle(), self.thread.clone(), events_tx);
                 self.task = Some(self.runtime.spawn(async move {
+                    let started = Instant::now();
                     let result = agent.run(&mut history, &events_tx, thinking).await;
                     drop(events_tx);
                     let error = result.err().map(|e| e.to_string());
+                    watcher.finish(started, error.as_deref()).await;
                     let _ = done_tx.send(Finished { history, error });
                 }));
             }
@@ -103,6 +120,7 @@ impl Session {
                 self.stop = Some(stop.clone());
                 // What was said before this message, for an agent that wasn't there for it.
                 let earlier: Vec<Line> = self.before_run.as_deref().map(lines_of).unwrap_or_default();
+                let (events_tx, watcher) = watch_turn(self.runtime.handle(), self.thread.clone(), events_tx);
                 let turn = HarnessTurn {
                     acp: acp.clone(),
                     id: id.clone(),
@@ -113,8 +131,10 @@ impl Session {
                     approvals: self.approvals.clone(),
                 };
                 self.task = Some(self.runtime.spawn(async move {
+                    let started = Instant::now();
                     let (reply, error) = turn.run(&events_tx, &stop).await;
                     drop(events_tx);
+                    watcher.finish(started, error.as_deref()).await;
                     if !reply.is_empty() {
                         history.push(Message::assistant(reply, Vec::new()));
                     }
@@ -163,6 +183,100 @@ impl Session {
         self.stop = None;
         finished.error
     }
+}
+
+/// What a turn did, as the watcher saw it go by.
+#[derive(Debug, Default)]
+struct TurnStats {
+    tools: u32,
+    /// The provider and model that answered last (a fallback may have answered), from its usage.
+    model: Option<(String, String)>,
+}
+
+/// Sits between a turn and the chat: records each model call's usage against `thread` (so it is on disk before
+/// the chat hears of it), counts tool calls and notes them, and passes every event on. Returns the sender the
+/// turn writes to, and the watcher to finish once the turn is over.
+fn watch_turn(runtime: &tokio::runtime::Handle, thread: String, chat: mpsc::UnboundedSender<AgentEvent>) -> (mpsc::UnboundedSender<AgentEvent>, Watcher) {
+    let (tx, mut rx) = mpsc::unbounded_channel::<AgentEvent>();
+    let task = runtime.spawn(async move {
+        let mut stats = TurnStats::default();
+        while let Some(event) = rx.recv().await {
+            match &event {
+                AgentEvent::Usage { provider, model, .. } => {
+                    stats.model = Some((provider.clone(), model.clone()));
+                    record_usage(&thread, &event).await;
+                }
+                AgentEvent::ToolEnd { name, is_error, .. } => {
+                    stats.tools += 1;
+                    vivianne_telemetry::track("tool.call", json!({ "tool": name, "ok": !is_error }));
+                }
+                _ => {}
+            }
+            // A chat that has gone away must not stop the rest being recorded.
+            let _ = chat.send(event);
+        }
+        stats
+    });
+    (tx, Watcher(task))
+}
+
+/// The watcher's task: ends once every sender is dropped and everything sent has been recorded.
+struct Watcher(JoinHandle<TurnStats>);
+
+impl Watcher {
+    /// Waits for the last events to be recorded, then notes the finished turn. `error` is why it failed, if it did.
+    async fn finish(self, started: Instant, error: Option<&str>) {
+        let stats = self.0.await.unwrap_or_default();
+        let mut props = json!({
+            "outcome": error.map_or("ok", error_kind),
+            "ms": u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            "tools": stats.tools,
+        });
+        if let (Some((provider, model)), Some(object)) = (stats.model, props.as_object_mut()) {
+            object.insert("provider".to_owned(), json!(provider));
+            object.insert("model".to_owned(), json!(model));
+        }
+        vivianne_telemetry::track("turn.complete", props);
+    }
+}
+
+/// A coarse, content-free name for why a turn failed. The message itself is never recorded.
+fn error_kind(error: &str) -> &'static str {
+    let error = error.to_lowercase();
+    let has = |words: &[&str]| words.iter().any(|word| error.contains(word));
+    if has(&["401", "403", "unauthorized", "api key", "sign in", "signed in", "authentication"]) {
+        "auth"
+    } else if has(&["429", "rate limit", "quota"]) {
+        "rate_limit"
+    } else if has(&["timed out", "timeout"]) {
+        "timeout"
+    } else if has(&["connect", "dns", "network", "unreachable"]) {
+        "network"
+    } else {
+        "error"
+    }
+}
+
+/// A usage event as what the usage store takes, with the provider and model it names.
+fn usage_of(event: &AgentEvent) -> Option<(Usage, &str, &str)> {
+    let AgentEvent::Usage { provider, model, input, output, cache_read, cache_write, cost } = event else { return None };
+    let clamp = |n: u64| u32::try_from(n).unwrap_or(u32::MAX);
+    let usage = Usage {
+        input: clamp(*input),
+        output: clamp(*output),
+        cache_read: clamp(*cache_read),
+        cache_write: clamp(*cache_write),
+        total_tokens: clamp(input.saturating_add(*output)),
+        cost: cost.map(|total| CostBreakdown { total, ..CostBreakdown::default() }),
+    };
+    Some((usage, provider, model))
+}
+
+/// Records a model call's usage for the day, the model and the thread (`main:<thread>`).
+async fn record_usage(thread: &str, event: &AgentEvent) {
+    let Some((usage, provider, model)) = usage_of(event) else { return };
+    usage_store::record_usage(&usage, provider, model).await;
+    usage_store::record_usage_tagged(&usage, provider, model, &format!("main:{thread}")).await;
 }
 
 /// One turn with a coding agent, and how its events become the chat's.
@@ -246,6 +360,15 @@ impl HarnessTurn {
                     AgentEvent::ToolEnd { id, name: "todo_write".to_owned(), output: text, is_error: false, details: None, args: None },
                 ]
             }
+            AcpEvent::Usage(spent) => vec![AgentEvent::Usage {
+                provider: spent.provider,
+                model: spent.model,
+                input: spent.input,
+                output: spent.output,
+                cache_read: spent.cache_read,
+                cache_write: spent.cache_write,
+                cost: spent.cost,
+            }],
             AcpEvent::Permission(request) => {
                 let title = request.why.clone().unwrap_or_else(|| format!("The coding agent wants to use {}", request.tool.name));
                 let id = format!("ask-{}-{}", request.tool.id, NEXT_THREAD.fetch_add(1, Ordering::SeqCst));
@@ -271,6 +394,41 @@ fn lines_of(history: &[Message]) -> Vec<Line> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_usage_event_becomes_the_stores_usage_and_an_unknown_cost_stays_unknown() {
+        let event = |cost| AgentEvent::Usage { provider: "p".into(), model: "m".into(), input: 100, output: 20, cache_read: 3, cache_write: 4, cost };
+        let with_cost = event(Some(0.5));
+        let (usage, provider, model) = usage_of(&with_cost).unwrap();
+        assert_eq!((usage.input, usage.output, usage.cache_read, usage.cache_write, usage.total_tokens), (100, 20, 3, 4, 120));
+        assert_eq!(usage.cost.map(|c| c.total), Some(0.5));
+        assert_eq!((provider, model), ("p", "m"));
+        let unknown = event(None);
+        assert_eq!(usage_of(&unknown).unwrap().0.cost, None);
+        assert!(usage_of(&AgentEvent::Done).is_none());
+    }
+
+    #[test]
+    fn a_failed_turn_is_noted_by_kind_and_never_by_message() {
+        assert_eq!(error_kind("401 Unauthorized: bad key sk-secret"), "auth");
+        assert_eq!(error_kind("429 Too Many Requests"), "rate_limit");
+        assert_eq!(error_kind("request timed out"), "timeout");
+        assert_eq!(error_kind("something odd in /home/me/project"), "error");
+    }
+
+    #[tokio::test]
+    async fn the_watcher_passes_every_event_on_and_counts_the_tools() {
+        let (chat, mut seen) = mpsc::unbounded_channel();
+        let (tx, watcher) = watch_turn(&tokio::runtime::Handle::current(), "thread-test".to_owned(), chat);
+        tx.send(AgentEvent::Text("hi".into())).unwrap();
+        tx.send(AgentEvent::Done).unwrap();
+        drop(tx);
+        let stats = watcher.0.await.unwrap();
+        assert_eq!(stats.tools, 0);
+        assert_eq!(seen.recv().await, Some(AgentEvent::Text("hi".into())));
+        assert_eq!(seen.recv().await, Some(AgentEvent::Done));
+        assert_eq!(seen.recv().await, None, "the chat's channel closes when the turn's does");
+    }
 
     #[test]
     fn a_late_agent_is_told_what_the_user_and_assistant_said_and_nothing_else() {

@@ -8662,9 +8662,21 @@ dependencies = [
  "vivianne-core",
  "vivianne-providers",
  "vivianne-runtime",
+ "vivianne-telemetry",
  "vivianne-tools",
  "which 7.0.3",
  "windows 0.61.3",
+]
+
+[[package]]
+name = "vivianne-telemetry"
+version = "0.0.1"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+ "tokio",
+ "vivianne-ai",
 ]
 
 [[package]]

@@ -24,6 +24,8 @@ use tokio::runtime::Runtime;
 use app::AppView;
 
 fn main() {
+    // First, so a panic anywhere after this leaves a crash record.
+    vivianne_telemetry::install_panic_hook(env!("CARGO_PKG_VERSION"));
     // The agent and its HTTP calls need tokio; the UI runs on GPUI's own executor.
     let runtime = match Runtime::new() {
         Ok(runtime) => Arc::new(runtime),
@@ -33,6 +35,7 @@ fn main() {
         }
     };
     backend::init(&runtime);
+    vivianne_telemetry::track("app.start", serde_json::json!({ "version": env!("CARGO_PKG_VERSION"), "os": std::env::consts::OS }));
     let workspace = match std::env::current_dir() {
         Ok(dir) => dir,
         Err(error) => {
@@ -45,6 +48,7 @@ fn main() {
     let assets = gpui_kit::assets::Assets::new("");
     gpui_kit::application().with_assets(assets).run(move |cx| {
         gpui_kit::init(cx);
+        backend::flush_on_quit(cx);
         theme::apply(cx);
         let bounds = Bounds::centered(None, size(px(1100.0), px(680.0)), cx);
         let options = WindowOptions {

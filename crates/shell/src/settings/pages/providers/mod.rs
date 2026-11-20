@@ -143,11 +143,11 @@ fn chatgpt_row(values: &Shared) -> impl IntoElement + use<> {
     if connected {
         buttons = buttons
             .child(Button::new("chatgpt-manage").label("Manage usage").on_click(move |_, _, cx| {
-                if let Some(backend) = backend::get() {
-                    if let Err(why) = backend.hub.chatgpt_manage_usage() {
-                        manage.borrow_mut().providers.error = Some(why);
-                        cx.refresh_windows();
-                    }
+                if let Some(backend) = backend::get()
+                    && let Err(why) = backend.hub.chatgpt_manage_usage()
+                {
+                    manage.borrow_mut().providers.error = Some(why);
+                    cx.refresh_windows();
                 }
             }))
             .child(Button::new("chatgpt-out").label("Sign out").ghost().on_click(move |_, _, cx| {

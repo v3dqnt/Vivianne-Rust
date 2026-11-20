@@ -18,7 +18,7 @@ use vivianne_ai::ai::types::{
 use vivianne_ai::events::{Event, Events};
 use vivianne_core::{Message, Role, Thinking, ToolCall};
 
-use crate::{ChatEvent, ChatRequest, EventStream, Provider, ProviderError, ToolSpec};
+use crate::{ChatEvent, ChatRequest, EventStream, Provider, ProviderError, Spent, ToolSpec};
 
 const STREAM_TOKEN_EVENT: &str = "ai-stream-token";
 
@@ -390,9 +390,6 @@ fn finish(token: StreamTokenEvent) -> (Result<ChatEvent, ProviderError>, Option<
     if let Some(reason) = token.message.as_ref().and_then(failure_of) {
         return (Err(ProviderError::Failed(reason)), None);
     }
-    if let Some(message) = &token.message {
-        record_usage(message);
-    }
     let mut events = Vec::new();
     if !token.delta.is_empty() {
         events.push(ChatEvent::Text(token.delta));
@@ -408,18 +405,28 @@ fn finish(token: StreamTokenEvent) -> (Result<ChatEvent, ProviderError>, Option<
     (Ok(first), Some(Phase::Finishing(events)))
 }
 
-/// Adds a finished turn's tokens and cost to the usage the app keeps. It runs on the side: a failed
-/// write never holds up the reply.
-fn record_usage(message: &AssistantMessage) {
-    let Ok(runtime) = tokio::runtime::Handle::try_current() else { return };
-    let (usage, provider, model) = (message.usage.clone(), message.provider.clone(), message.model.clone());
-    runtime.spawn(async move {
-        vivianne_ai::inference::usage_store::record_usage(&usage, &provider, &model).await;
-    });
+/// What a finished message used. `None` when it reports nothing, so a call that counted no tokens is not
+/// shown as a spend.
+fn spent_by(message: &AssistantMessage) -> Option<Spent> {
+    let usage = &message.usage;
+    if usage.input == 0 && usage.output == 0 && usage.total_tokens == 0 {
+        return None;
+    }
+    let cost = usage.cost.as_ref().map(|c| c.total).or_else(|| vivianne_ai::ai::pricing::compute_cost(&message.provider, &message.model, usage));
+    Some(Spent {
+        provider: message.provider.clone(),
+        model: message.model.clone(),
+        input: u64::from(usage.input),
+        output: u64::from(usage.output),
+        cache_read: u64::from(usage.cache_read),
+        cache_write: u64::from(usage.cache_write),
+        cost,
+    })
 }
 
-/// The tool calls a finished message holds, then `Done`.
+/// What a finished message used, the tool calls it holds, then `Done`.
 fn finishing_events(message: &AssistantMessage) -> Vec<ChatEvent> {
+    let usage = spent_by(message).map(ChatEvent::Usage);
     let calls = message.content.iter().filter_map(|block| match block {
         MessageContent::ToolCall(call) => Some(ChatEvent::ToolCall(ToolCall {
             id: call.id.clone(),
@@ -428,7 +435,7 @@ fn finishing_events(message: &AssistantMessage) -> Vec<ChatEvent> {
         })),
         _ => None,
     });
-    calls.chain([ChatEvent::Done]).collect()
+    usage.into_iter().chain(calls).chain([ChatEvent::Done]).collect()
 }
 
 /// Why a finished message counts as a failure, if it does.
@@ -532,6 +539,19 @@ mod tests {
                 ChatEvent::Done
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn a_finished_call_reports_what_it_used_and_a_call_with_no_tokens_reports_nothing() {
+        let mut counted = message("stop", vec![], None);
+        counted.usage = Usage { input: 100, output: 20, cache_read: 5, cache_write: 1, total_tokens: 120, cost: None };
+        let events = Events::new();
+        let got = collect(&events, vec![token("a", "hi", true, Some(counted))]).await;
+        let got: Vec<_> = got.into_iter().map(Result::unwrap).collect();
+        let [ChatEvent::Text(_), ChatEvent::Usage(spent), ChatEvent::Done] = got.as_slice() else { panic!("unexpected events: {got:?}") };
+        assert_eq!((spent.input, spent.output, spent.cache_read, spent.cache_write), (100, 20, 5, 1));
+        assert_eq!((spent.provider.as_str(), spent.model.as_str()), ("p", "m"));
+        assert_eq!(spent.cost, None, "a model with no known price is unknown, not free");
     }
 
     #[tokio::test]

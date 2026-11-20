@@ -4,6 +4,7 @@
 mod defaults;
 mod pages;
 mod provider_state;
+mod usage_data;
 mod values;
 mod widgets;
 
@@ -26,6 +27,8 @@ pub fn open(window: &mut Window, cx: &mut App) {
     // Created once per opening, so edits survive the dialog being rebuilt.
     let values = Rc::new(RefCell::new(Values::default()));
     defaults::fill(&mut values.borrow_mut());
+    // The dialog opens on the first page, Account; the sidebar does not say when another is picked.
+    vivianne_telemetry::track("settings.open", serde_json::json!({ "page": "account" }));
     window.open_dialog(cx, move |dialog, _window, _cx| {
         let settings = Settings::new("settings")
             .sidebar_width(px(SIDEBAR_WIDTH))

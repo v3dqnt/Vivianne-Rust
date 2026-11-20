@@ -6,7 +6,7 @@ use futures::StreamExt;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::sync::CancellationToken;
 use vivianne_core::{Message, Thinking, ToolCall};
-use vivianne_providers::{ChatEvent, ChatRequest, EventStream, Provider, ProviderError, ToolSpec};
+use vivianne_providers::{ChatEvent, ChatRequest, EventStream, Provider, ProviderError, Spent, ToolSpec};
 use vivianne_tools::{ToolResult, Toolbox};
 
 use crate::AgentEvent;
@@ -125,10 +125,13 @@ impl Agent {
                 () = cancel.cancelled() => None,
                 streamed = self.stream_step(history, events, thinking, cancel) => Some(streamed?),
             };
-            let Some((text, calls)) = streamed else {
+            let Some((text, calls, spent)) = streamed else {
                 send(events, AgentEvent::Stopped);
                 return Ok(());
             };
+            if let Some(spent) = spent {
+                send(events, usage_event(spent));
+            }
             let finished = calls.is_empty();
             history.push(Message::assistant(text, calls.clone()));
             if finished {
@@ -178,7 +181,7 @@ impl Agent {
         events: &UnboundedSender<AgentEvent>,
         thinking: Thinking,
         cancel: &CancellationToken,
-    ) -> Result<(String, Vec<ToolCall>), AgentError> {
+    ) -> Result<Step, AgentError> {
         let mut last_error: Option<ProviderError> = None;
         let order = self.chain.order();
         for (turn, &index) in order.iter().enumerate() {
@@ -285,11 +288,15 @@ async fn open(target: &Target, request: &ChatRequest) -> Result<Opened, Provider
     Ok(Opened { first, rest })
 }
 
-/// Reads a stream to its end, sending text on as it arrives.
-async fn collect(opened: Opened, events: &UnboundedSender<AgentEvent>) -> Result<(String, Vec<ToolCall>), ProviderError> {
+/// What one model call came to: its text, the tool calls it asked for, and what it used.
+type Step = (String, Vec<ToolCall>, Option<Spent>);
+
+/// Reads a stream to its end, sending text on as it arrives. What the call used is summed, so a stream that
+/// reports it in pieces still counts as one call.
+async fn collect(opened: Opened, events: &UnboundedSender<AgentEvent>) -> Result<Step, ProviderError> {
     let Opened { first, rest } = opened;
     let mut stream = futures::stream::iter(first.map(Ok)).chain(rest);
-    let (mut text, mut calls) = (String::new(), Vec::new());
+    let (mut text, mut calls, mut spent) = (String::new(), Vec::new(), None::<Spent>);
     while let Some(event) = stream.next().await {
         match event? {
             ChatEvent::Text(piece) => {
@@ -297,10 +304,26 @@ async fn collect(opened: Opened, events: &UnboundedSender<AgentEvent>) -> Result
                 send(events, AgentEvent::Text(piece));
             }
             ChatEvent::ToolCall(call) => calls.push(call),
+            ChatEvent::Usage(used) => match spent.as_mut() {
+                Some(total) => total.add(&used),
+                None => spent = Some(used),
+            },
             ChatEvent::Done => break,
         }
     }
-    Ok((text, calls))
+    Ok((text, calls, spent))
+}
+
+fn usage_event(spent: Spent) -> AgentEvent {
+    AgentEvent::Usage {
+        provider: spent.provider,
+        model: spent.model,
+        input: spent.input,
+        output: spent.output,
+        cache_read: spent.cache_read,
+        cache_write: spent.cache_write,
+        cost: spent.cost,
+    }
 }
 
 /// A closed channel means nobody is watching; the run still finishes.
@@ -447,6 +470,37 @@ mod tests {
         let seen = drain(rx).await;
         assert!(matches!(seen.first(), Some(AgentEvent::ToolStart { .. })));
         assert_eq!(seen.last(), Some(&AgentEvent::Done));
+    }
+
+    fn spent(input: u64, cost: Option<f64>) -> Spent {
+        Spent { provider: "p".into(), model: "m".into(), input, output: 10, cache_read: 0, cache_write: 0, cost }
+    }
+
+    #[tokio::test]
+    async fn each_model_call_reports_what_it_used_once_and_pieces_of_one_call_are_summed() {
+        let provider = Scripted::new(vec![
+            vec![ChatEvent::Usage(spent(100, Some(0.01))), call("c1", "echo"), ChatEvent::Done],
+            vec![ChatEvent::Usage(spent(40, Some(0.01))), ChatEvent::Usage(spent(60, None)), ChatEvent::Text("ok".into()), ChatEvent::Done],
+        ]);
+        let (tx, rx) = unbounded_channel();
+        let mut history = user("ping");
+        agent(provider).run(&mut history, &tx, Thinking::Low).await.unwrap();
+        drop(tx);
+
+        let used: Vec<_> = drain(rx).await.into_iter().filter_map(|e| match e {
+            AgentEvent::Usage { input, output, cost, .. } => Some((input, output, cost)),
+            _ => None,
+        }).collect();
+        assert_eq!(used, [(100, 10, Some(0.01)), (100, 20, None)], "the second call's cost is unknown once one piece is");
+    }
+
+    #[test]
+    fn adding_spend_keeps_a_cost_only_while_every_part_has_one() {
+        let mut total = spent(1, Some(0.5));
+        total.add(&spent(2, Some(0.25)));
+        assert_eq!((total.input, total.cost), (3, Some(0.75)));
+        total.add(&spent(3, None));
+        assert_eq!((total.input, total.cost), (6, None));
     }
 
     #[tokio::test]

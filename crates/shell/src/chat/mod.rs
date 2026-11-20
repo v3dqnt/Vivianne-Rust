@@ -4,6 +4,7 @@ mod composer;
 mod items;
 mod models;
 mod session;
+mod thread_usage;
 mod toolcalls;
 mod transcript;
 
@@ -61,6 +62,8 @@ pub struct ChatView {
     running: bool,
     /// Tool calls the user has folded shut, by id.
     folded_tools: HashSet<String>,
+    /// What this thread has used, shown in the status row. Read again after each reply.
+    thread_usage: Option<vivianne_ai::inference::usage_store::DayUsage>,
     _input_events: Subscription,
     _picker_events: Subscription,
 }
@@ -120,6 +123,7 @@ impl ChatView {
             project,
             running: false,
             folded_tools: HashSet::new(),
+            thread_usage: None,
             _input_events: input_events,
             _picker_events: picker_events,
         }
@@ -251,6 +255,7 @@ impl ChatView {
         let choice = choice.clone();
         cx.spawn_in(window, async move |chat, cx| {
             let Ok(result) = answer.await else { return };
+            crate::backend::note_sign_in(&choice.id, &result);
             chat.update_in(cx, |chat, window, cx| match result {
                 Ok(vivianne_providers::acp::AuthState::SignedIn) => chat.switch_to_coding_agent(&choice, cx),
                 Ok(vivianne_providers::acp::AuthState::NeedsSignIn(_)) => {
@@ -285,6 +290,7 @@ impl ChatView {
             }
         }
         self.selection = Selection { provider: choice.provider.clone(), model: choice.id.clone() };
+        vivianne_telemetry::track("model.switch", serde_json::json!({ "provider": choice.provider, "model": choice.id }));
         self.push_item(Item::Notice(format!("{} will work in this project's folder with its own tools, and asks before it acts.", choice.name)), cx);
     }
 
@@ -305,6 +311,7 @@ impl ChatView {
             Err(_) => self.session = Ok(Session::new(agent, self.host.runtime.clone())),
         }
         self.selection = Selection { provider: choice.provider.clone(), model: choice.id.clone() };
+        vivianne_telemetry::track("model.switch", serde_json::json!({ "provider": choice.provider, "model": choice.id }));
         if let Err(problem) = vivianne_ai::host::remember_last_model(&choice.provider, &choice.id) {
             self.push_item(Item::Notice(format!("Switched, but couldn't remember the choice: {problem}")), cx);
         }
@@ -382,7 +389,23 @@ impl ChatView {
         {
             self.push_item(Item::Notice(format!("Error: {error}")), cx);
         }
+        self.refresh_thread_usage(cx);
         cx.notify();
+    }
+
+    /// Reads what the thread has used so far, for the status row. Everything the turn spent was recorded before
+    /// the turn's events ended, so this sees it.
+    fn refresh_thread_usage(&mut self, cx: &mut Context<Self>) {
+        let Ok(session) = &self.session else { return };
+        let thread = session.thread_id().to_owned();
+        let chat = cx.entity().downgrade();
+        crate::backend::run(cx, async move { vivianne_ai::inference::usage_store::thread_total(&thread).await }, move |total, cx| {
+            chat.update(cx, |chat, cx| {
+                chat.thread_usage = Some(total);
+                cx.notify();
+            })
+            .ok();
+        });
     }
 
     /// Stop the run in progress.
@@ -466,7 +489,10 @@ impl ChatView {
             .justify_center()
             .text_size(px(11.0))
             .text_color(color(theme::MUTED))
-            .child(format!("{}  ·  {status}", self.selection.model))
+            .child(match self.thread_usage.as_ref().and_then(thread_usage::line) {
+                Some(used) => format!("{}  ·  {status}  ·  {used}", self.selection.model),
+                None => format!("{}  ·  {status}", self.selection.model),
+            })
     }
 
     /// The screen before the first message: a question and a few starting points.

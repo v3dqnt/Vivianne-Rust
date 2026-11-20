@@ -21,6 +21,7 @@ pub fn fill(v: &mut Values) {
     v.auto_extract = true;
     v.refuse_secrets = true;
     v.cloud_prefer = "local".into();
+    v.usage_range = super::usage_data::DEFAULT_RANGE.into();
     reliability(v);
     layout(v);
     components(v);

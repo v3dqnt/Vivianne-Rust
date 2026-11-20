@@ -317,9 +317,10 @@ pub mod download {
 
         #[test]
         fn cancelling_marks_the_file_until_a_download_clears_it() {
-            cancel("host-test.bin");
-            assert!(cancelled().contains("host-test.bin"));
-            cancelled().remove("host-test.bin");
+            // Its own file name: another test downloads "host-test.bin", which clears a cancel of that name.
+            cancel("host-test-cancel.bin");
+            assert!(cancelled().contains("host-test-cancel.bin"));
+            cancelled().remove("host-test-cancel.bin");
         }
 
         #[tokio::test]

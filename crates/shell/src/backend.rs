@@ -7,6 +7,7 @@ use std::sync::{Arc, OnceLock};
 use gpui_kit::App;
 use tokio::runtime::{Handle, Runtime};
 use vivianne_ai::events::Events;
+use vivianne_ai::inference::usage_store;
 use vivianne_ai::providers::Hub;
 use vivianne_providers::acp::Acp;
 
@@ -23,12 +24,25 @@ static BACKEND: OnceLock<Backend> = OnceLock::new();
 pub fn init(runtime: &Runtime) {
     let events = Events::new();
     let hub = runtime.block_on(Hub::start(&events));
+    // Usage is kept in memory and written on a timer, so the last of a session is not lost to a crash.
+    runtime.spawn(usage_store::flush_periodically());
     let _ = BACKEND.set(Backend { handle: runtime.handle().clone(), hub, acp: Arc::new(Acp::new()) });
 }
 
 #[must_use]
 pub fn get() -> Option<&'static Backend> {
     BACKEND.get()
+}
+
+/// Writes the usage still in memory when the app quits. GPUI waits for this a moment (a fraction of a second),
+/// and writing a few small files takes far less.
+pub fn flush_on_quit(cx: &mut App) {
+    cx.on_app_quit(|_cx| async {
+        if let Some(flushed) = spawn(usage_store::flush_all()) {
+            let _ = flushed.await;
+        }
+    })
+    .detach();
 }
 
 /// Runs `work` on the async runtime and calls `done` with its answer on the UI thread. Nothing happens
@@ -60,4 +74,15 @@ pub fn spawn<T: Send + 'static>(work: impl Future<Output = T> + Send + 'static) 
         let _ = tx.send(work.await);
     });
     Some(rx)
+}
+
+/// Notes how a coding agent's sign-in ended: which agent and the outcome, nothing else.
+pub fn note_sign_in(agent: &str, result: &Result<vivianne_providers::acp::AuthState, String>) {
+    use vivianne_providers::acp::AuthState;
+    let outcome = match result {
+        Ok(AuthState::SignedIn) => "signed_in",
+        Ok(AuthState::NeedsSignIn(_)) => "needs_sign_in",
+        Ok(AuthState::Failed(_)) | Err(_) => "failed",
+    };
+    vivianne_telemetry::track("agent.sign_in", serde_json::json!({ "agent": agent, "outcome": outcome }));
 }

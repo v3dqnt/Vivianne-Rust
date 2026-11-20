@@ -105,7 +105,7 @@ pub fn apply(items: &mut Vec<Item>, event: &AgentEvent) -> Change {
             items.push(Item::Notice(format!("Switched to {to}: {reason}")));
             Change::Appended
         }
-        AgentEvent::Retrying { .. } | AgentEvent::Stopped | AgentEvent::Done => Change::Nothing,
+        AgentEvent::Retrying { .. } | AgentEvent::Usage { .. } | AgentEvent::Stopped | AgentEvent::Done => Change::Nothing,
     }
 }
 

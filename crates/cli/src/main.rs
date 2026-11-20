@@ -69,7 +69,7 @@ fn print_event(event: &AgentEvent) {
             output,
             ..
         } => eprintln!("[failed] {output}"),
-        AgentEvent::ToolEnd { .. } | AgentEvent::Done => {}
+        AgentEvent::ToolEnd { .. } | AgentEvent::Usage { .. } | AgentEvent::Done => {}
         AgentEvent::Approval { title, .. } => eprintln!("[asks] {title}"),
         AgentEvent::StepLimit => eprintln!("\n[stopped: step limit]"),
         AgentEvent::Stopped => eprintln!("\n[stopped]"),

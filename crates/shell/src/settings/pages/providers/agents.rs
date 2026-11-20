@@ -252,6 +252,7 @@ fn sign_in(values: &Shared, id: &str, method: &str, cx: &mut App) {
     let (values, id, method) = (values.clone(), id.to_owned(), method.to_owned());
     let ask = id.clone();
     backend::run(cx, async move { acp::sign_in(&ask, &method).await }, move |result, cx| {
+        backend::note_sign_in(&id, &result);
         store_auth(&values, &id, result);
         cx.refresh_windows();
     });

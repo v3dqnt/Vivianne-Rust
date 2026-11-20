@@ -9,6 +9,7 @@ members = [
     "crates/app-api",
     "crates/cli",
     "crates/ai",
+    "crates/telemetry",
     "crates/shell",
 ]
 
@@ -33,6 +34,7 @@ vivianne-core = { path = "crates/core" }
 vivianne-runtime = { path = "crates/runtime" }
 vivianne-providers = { path = "crates/providers" }
 vivianne-ai = { path = "crates/ai" }
+vivianne-telemetry = { path = "crates/telemetry" }
 vivianne-tools = { path = "crates/tools" }
 vivianne-plugins = { path = "crates/plugins" }
 vivianne-app-api = { path = "crates/app-api" }
