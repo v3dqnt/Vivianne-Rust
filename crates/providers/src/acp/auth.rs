@@ -6,13 +6,18 @@
 use std::time::Duration;
 
 use serde_json::{Value, json};
+use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 use super::conn::{Conn, RpcError, spawn, trace};
 use super::registry::{Harness, find};
-use super::session::{explain_start_failure, looks_unauthenticated};
+use super::session::{DELEGATE, explain_start_failure, looks_unauthenticated};
+use super::turn::{self, AcpEvent, Outcome, PromptPart, TurnRequest};
 
 /// Opening a probe session can wait on a first start.
 const PROBE_TIMEOUT: Duration = Duration::from_mins(2);
+/// How long the agent gets to answer the check question.
+const ANSWER_TIMEOUT: Duration = Duration::from_secs(90);
 /// A browser sign-in waits for the user.
 const SIGN_IN_TIMEOUT: Duration = Duration::from_mins(5);
 
@@ -95,21 +100,60 @@ fn terminal_command(harness: &Harness, method: &Value) -> String {
     own.collect::<Vec<_>>().join(" ")
 }
 
-/// Opens a session on a connection to see whether the agent is signed in.
-async fn probe(conn: &Conn, harness: &Harness, cwd: &str) -> AuthState {
+/// Opens a session on a connection. An agent that is plainly not signed in answers `auth_required` here; one
+/// that checks only when asked (Claude's adapter does) opens a session fine, so this alone proves nothing.
+async fn open_probe(conn: &Conn, harness: &Harness, cwd: &str) -> Result<String, AuthState> {
     let opened = conn.request("session/new", json!({ "cwd": cwd, "mcpServers": [] }), Some(PROBE_TIMEOUT)).await;
     match opened {
-        Ok(session) => {
-            // The probe is not a conversation: close it where the agent can.
-            if let Some(id) = session.get("sessionId").and_then(Value::as_str)
-                && conn.cap("/capabilities/session", "/agentCapabilities/sessionCapabilities/close")
-            {
-                let _ = conn.request("session/close", json!({ "sessionId": id }), Some(Duration::from_secs(10))).await;
+        Ok(session) => session.get("sessionId").and_then(Value::as_str).map(str::to_owned).ok_or_else(|| AuthState::Failed(format!("{} opened a session without an id.", harness.name))),
+        Err(e) if e.is_auth_required() || looks_unauthenticated(&e.message) => Err(AuthState::NeedsSignIn(methods_in(&conn.caps(), conn.speaks_v2(), harness))),
+        Err(e) => Err(AuthState::Failed(explain_start_failure(harness, &e.to_string()))),
+    }
+}
+
+/// Whether a failure message is the agent saying it isn't signed in.
+fn says_sign_in(message: &str) -> bool {
+    looks_unauthenticated(message) || message.contains("needs you to sign in")
+}
+
+/// Finds out for certain whether the agent is signed in: opens a session, then asks it one tiny question,
+/// because some agents only check their credentials when they are asked something. A permission asked
+/// during the question is refused, and plan mode keeps it from changing anything.
+async fn verify(conn: &std::sync::Arc<Conn>, harness: &Harness, cwd: &str) -> AuthState {
+    let session = match open_probe(conn, harness, cwd).await {
+        Ok(session) => session,
+        Err(state) => return state,
+    };
+    let (events, mut seen) = mpsc::unbounded_channel();
+    let drain = tokio::spawn(async move {
+        while let Some(event) = seen.recv().await {
+            if let AcpEvent::Permission(request) = event {
+                request.answer(false);
             }
-            AuthState::SignedIn
         }
-        Err(e) if e.is_auth_required() || looks_unauthenticated(&e.message) => AuthState::NeedsSignIn(methods_in(&conn.caps(), conn.speaks_v2(), harness)),
-        Err(e) => AuthState::Failed(explain_start_failure(harness, &e.to_string())),
+    });
+    let cancel = CancellationToken::new();
+    let limit = cancel.clone();
+    let timer = tokio::spawn(async move {
+        tokio::time::sleep(ANSWER_TIMEOUT).await;
+        limit.cancel();
+    });
+    let prompt = [PromptPart::Text("Reply with the single word: ok".to_owned())];
+    let request = TurnRequest { prompt: &prompt, earlier: &[], plan_mode: true, bypass: false };
+    let thread = format!("{DELEGATE}auth-{}", harness.id);
+    let end = turn::run(conn, harness, &session, &thread, &request, &events, &cancel).await;
+    timer.abort();
+    drop(events);
+    let _ = drain.await;
+    // The check is not a conversation: close it where the agent can.
+    if conn.cap("/capabilities/session", "/agentCapabilities/sessionCapabilities/close") {
+        let _ = conn.request("session/close", json!({ "sessionId": session }), Some(Duration::from_secs(10))).await;
+    }
+    match end.outcome {
+        Outcome::Finished => AuthState::SignedIn,
+        Outcome::Failed(message) if says_sign_in(&message) => AuthState::NeedsSignIn(methods_in(&conn.caps(), conn.speaks_v2(), harness)),
+        Outcome::Failed(message) => AuthState::Failed(message),
+        Outcome::Stopped => AuthState::Failed(format!("{} didn't answer in {} seconds.", harness.name, ANSWER_TIMEOUT.as_secs())),
     }
 }
 
@@ -117,7 +161,8 @@ fn working_folder() -> String {
     std::env::current_dir().map_or_else(|_| ".".to_owned(), |d| d.display().to_string())
 }
 
-/// Whether the agent can be used now, asked of a fresh process.
+/// Whether the agent can be used now, asked of a fresh process with a real question (it costs one tiny
+/// prompt).
 pub async fn check(id: &str) -> Result<AuthState, String> {
     let harness = find(id).await?;
     if !harness.available {
@@ -126,10 +171,22 @@ pub async fn check(id: &str) -> Result<AuthState, String> {
     if harness.needs_setup() {
         return Err(format!("{} isn't set up yet.", harness.name));
     }
-    let conn = spawn(&harness, &working_folder()).await?;
-    let state = probe(&conn, &harness, &working_folder()).await;
+    let cwd = working_folder();
+    let conn = spawn(&harness, &cwd).await?;
+    let state = verify(&conn, &harness, &cwd).await;
     trace(&harness.name, format!("sign-in check: {state:?}"));
     Ok(state)
+}
+
+/// The ways an agent can be signed in, without asking it anything else. For an agent that failed a turn with
+/// "sign in", where checking again would only fail the same way.
+pub async fn options(id: &str) -> Result<Vec<AuthMethod>, String> {
+    let harness = find(id).await?;
+    if !harness.available || harness.needs_setup() {
+        return Err(format!("{} isn't ready to sign in to.", harness.name));
+    }
+    let conn = spawn(&harness, &working_folder()).await?;
+    Ok(methods_in(&conn.caps(), conn.speaks_v2(), &harness))
 }
 
 /// Signs the agent in with one of the methods it listed that the agent runs itself, then checks again. A
@@ -152,7 +209,7 @@ pub async fn sign_in(id: &str, method_id: &str) -> Result<AuthState, String> {
     let call = if v2 { "auth/login" } else { "authenticate" };
     trace(&harness.name, format!("signing in with method {method_id}"));
     conn.request(call, json!({ "methodId": method_id }), Some(SIGN_IN_TIMEOUT)).await.map_err(|e: RpcError| explain_start_failure(&harness, &e.to_string()))?;
-    Ok(probe(&conn, &harness, &cwd).await)
+    Ok(verify(&conn, &harness, &cwd).await)
 }
 
 #[cfg(test)]
@@ -186,34 +243,69 @@ mod tests {
         assert!(methods_in(&json!({}), true, &harness("unknown-agent")).is_empty());
     }
 
-    #[tokio::test]
-    async fn a_probe_that_opens_a_session_means_signed_in_and_one_that_wants_auth_lists_the_ways() {
+    /// An agent that has finished `initialize` as a v2 agent offering one browser sign-in.
+    async fn ready_agent() -> (std::sync::Arc<Conn>, super::super::conn::testing::Peer) {
         use super::super::conn::testing::peer;
-        for signed_in in [true, false] {
-            let (conn, mut agent) = peer("mock");
-            let ready = tokio::spawn({
-                let conn = conn.clone();
-                async move { super::super::conn::handshake(&conn, &harness("claude-acp")).await }
-            });
-            agent.hello_version(2, json!({}), json!([{"methodId": "browser", "name": "Browser", "type": "agent"}])).await;
-            assert!(ready.await.is_ok_and(|r| r.is_ok()));
-            let asked = tokio::spawn({
-                let conn = conn.clone();
-                async move { probe(&conn, &harness("claude-acp"), "/p").await }
-            });
-            let request = agent.recv().await;
-            assert_eq!(request["method"], "session/new");
-            if signed_in {
-                agent.answer(&request["id"], json!({"sessionId": "probe"})).await;
-            } else {
-                agent.refuse(&request["id"], -32000, "authentication required", Value::Null).await;
-            }
-            let state = asked.await.unwrap_or(AuthState::Failed(String::new()));
-            if signed_in {
-                assert_eq!(state, AuthState::SignedIn);
-            } else {
-                assert!(matches!(&state, AuthState::NeedsSignIn(m) if m.len() == 1 && m[0].id == "browser"), "{state:?}");
-            }
-        }
+        let (conn, mut agent) = peer("mock");
+        let ready = tokio::spawn({
+            let conn = conn.clone();
+            async move { super::super::conn::handshake(&conn, &harness("claude-acp")).await }
+        });
+        agent.hello_version(2, json!({}), json!([{"methodId": "browser", "name": "Browser", "type": "agent"}])).await;
+        assert!(ready.await.is_ok_and(|r| r.is_ok()));
+        (conn, agent)
+    }
+
+    #[tokio::test]
+    async fn an_agent_that_refuses_a_session_is_not_signed_in_and_lists_the_ways() {
+        let (conn, mut agent) = ready_agent().await;
+        let asked = tokio::spawn({
+            let conn = conn.clone();
+            async move { verify(&conn, &harness("claude-acp"), "/p").await }
+        });
+        let request = agent.recv().await;
+        assert_eq!(request["method"], "session/new");
+        agent.refuse(&request["id"], -32000, "authentication required", Value::Null).await;
+        let state = asked.await.unwrap_or(AuthState::Failed(String::new()));
+        assert!(matches!(&state, AuthState::NeedsSignIn(m) if m.len() == 1 && m[0].id == "browser"), "{state:?}");
+    }
+
+    #[tokio::test]
+    async fn an_agent_that_opens_a_session_but_fails_the_question_is_not_signed_in() {
+        // The Claude adapter checks its credentials only when it is asked something.
+        let (conn, mut agent) = ready_agent().await;
+        let asked = tokio::spawn({
+            let conn = conn.clone();
+            async move { verify(&conn, &harness("claude-acp"), "/p").await }
+        });
+        let open = agent.open("probe").await;
+        assert_eq!(open["method"], "session/new");
+        let prompt = agent.prompt().await;
+        agent.refuse(&prompt["id"], -32000, "Authentication required: OAuth session expired", Value::Null).await;
+        let state = asked.await.unwrap_or(AuthState::Failed(String::new()));
+        assert!(matches!(&state, AuthState::NeedsSignIn(_)), "{state:?}");
+    }
+
+    #[tokio::test]
+    async fn an_agent_that_answers_the_question_is_signed_in() {
+        let (conn, mut agent) = ready_agent().await;
+        let asked = tokio::spawn({
+            let conn = conn.clone();
+            async move { verify(&conn, &harness("claude-acp"), "/p").await }
+        });
+        agent.open("probe").await;
+        let prompt = agent.prompt().await;
+        assert_eq!(prompt["params"]["prompt"][0]["text"], "Reply with the single word: ok");
+        agent.update("probe", json!({"sessionUpdate": "agent_message_chunk", "content": {"text": "ok"}})).await;
+        agent.update("probe", json!({"sessionUpdate": "state_update", "state": "idle"})).await;
+        agent.answer(&prompt["id"], json!({})).await;
+        assert_eq!(asked.await.unwrap_or(AuthState::Failed(String::new())), AuthState::SignedIn);
+    }
+
+    #[test]
+    fn the_agents_own_sign_in_words_are_recognised() {
+        assert!(says_sign_in("Claude Agent needs you to sign in. Run `claude` once"));
+        assert!(says_sign_in("Authentication required: Failed to authenticate"));
+        assert!(!says_sign_in("rate limit reached"));
     }
 }
