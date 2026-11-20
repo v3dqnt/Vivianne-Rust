@@ -96,8 +96,23 @@ impl Toolbox {
             .map(AsRef::as_ref)
     }
 
+    /// Reads the connected MCP servers' tools again if any changed.
+    pub async fn refresh(&self) {
+        mcp::refresh_tools().await;
+    }
+
     /// Run the named tool, or `None` if there is no such tool.
     pub async fn execute(&self, name: &str, args: &Value) -> Option<ToolResult> {
+        if name.starts_with("mcp__") && self.get(name).is_none() {
+            // A tool of a connected MCP server: its text is the result, its failure an error result.
+            if !mcp::definitions().iter().any(|(public, _, _)| public == name) {
+                return None;
+            }
+            return Some(match mcp::call_public(name, args.clone()).await {
+                Ok(content) => ToolResult { content, is_error: false, details: None },
+                Err(content) => ToolResult { content, is_error: true, details: None },
+            });
+        }
         let tool = self.get(name)?;
         Some(tool.execute(args, &self.cwd).await)
     }
@@ -107,6 +122,7 @@ impl Toolbox {
     pub fn definitions(&self) -> Vec<ToolDef> {
         let originals = schemas::definitions();
         let own = simple::definitions();
+        let servers = mcp::definitions().into_iter().map(|(name, description, parameters)| ToolDef { name, description, parameters });
         self.tools
             .iter()
             .filter_map(|tool| {
@@ -119,6 +135,7 @@ impl Toolbox {
                     parameters: found["parameters"].clone(),
                 })
             })
+            .chain(servers)
             .collect()
     }
 }
@@ -154,6 +171,7 @@ pub mod ai;
 pub mod mods;
 #[rustfmt::skip]
 pub mod proc;
+pub mod mcp;
 pub mod open_apps;
 pub mod dev_server;
 mod tauri;

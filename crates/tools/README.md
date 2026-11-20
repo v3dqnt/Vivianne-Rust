@@ -44,3 +44,8 @@ editing. Dependency versions match the original backend.
 - `src/dev_server.rs`: starts the project's dev server (`dev_server::detect_command` reads package.json and the
   lockfile) and picks the local address out of its output; a server that exits before printing one is reported as
   crashed. Stopped when the app quits.
+- `src/mcp/`: the MCP client, ported from the old app. `transport.rs` speaks JSON-RPC to a program (newline-delimited
+  over stdio) or a web address (Streamable HTTP; plain or event-stream replies), `oauth.rs` signs in to a remote server
+  (authorization code with PKCE), `mod.rs` keeps the connections, remembers them in `~/.viv/agent/mcp_servers.json`,
+  and gives the toolbox their tools as `mcp__<server>__<tool>`. Those tools need approval in Ask mode and are
+  withheld in Plan mode, like any tool not known to only look. Not ported: the built-in app connectors.

@@ -26,6 +26,8 @@ static BACKEND: OnceLock<Backend> = OnceLock::new();
 pub fn init(runtime: &Runtime) {
     let events = Events::new();
     let hub = runtime.block_on(Hub::start(&events));
+    // The MCP servers added in an earlier session reconnect in the background, so a slow one holds nothing up.
+    runtime.spawn(async { vivianne_tools::mcp::restore_servers(vivianne_tools::mcp::load_persisted_configs().await).await });
     // Usage is kept in memory and written on a timer, so the last of a session is not lost to a crash.
     runtime.spawn(usage_store::flush_periodically());
     let _ = BACKEND.set(Backend { handle: runtime.handle().clone(), events, hub, acp: Arc::new(Acp::new()) });
@@ -57,6 +59,9 @@ pub fn flush_on_quit(cx: &mut App) {
     cx.on_app_quit(|_cx| async {
         // A dev server started from the app would otherwise outlive it.
         vivianne_tools::dev_server::DEV_SERVERS.stop_all();
+        if let Some(done) = spawn(vivianne_tools::mcp::shutdown_all()) {
+            let _ = done.await;
+        }
         if let Some(flushed) = spawn(usage_store::flush_all()) {
             let _ = flushed.await;
         }

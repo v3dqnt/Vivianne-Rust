@@ -254,6 +254,8 @@ impl Agent {
         thinking: Thinking,
         cancel: &CancellationToken,
     ) -> Result<(), AgentError> {
+        // The connected MCP servers' tools, read again if a server changed its list.
+        self.tools.refresh().await;
         if let Some((folders, key)) = &self.instructions_from {
             let loaded = crate::instructions::load_for(Some(key), folders).await;
             *self.instructions.lock().unwrap_or_else(PoisonError::into_inner) = loaded;

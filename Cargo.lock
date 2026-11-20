@@ -8786,6 +8786,7 @@ dependencies = [
  "lopdf 0.34.0",
  "printpdf",
  "quick-xml 0.37.5",
+ "rand 0.9.5",
  "regex",
  "reqwest",
  "rust_xlsxwriter",

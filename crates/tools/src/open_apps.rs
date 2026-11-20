@@ -89,6 +89,21 @@ pub fn open_in(path: &str, app: &str, line: Option<u32>) -> Result<(), String> {
     }
 }
 
+/// Opens a web address in the default browser.
+pub fn open_url(url: &str) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("only web addresses can be opened this way".to_owned());
+    }
+    #[cfg(windows)]
+    // `start` takes the address as its own argument, quoted, so `&` in a query string is not read as a command.
+    let spawned = crate::proc::quiet_std("rundll32").args(["url.dll,FileProtocolHandler", url]).spawn();
+    #[cfg(target_os = "macos")]
+    let spawned = crate::proc::quiet_std("open").arg(url).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let spawned = crate::proc::quiet_std("xdg-open").arg(url).spawn();
+    spawned.map(|_| ()).map_err(|e| format!("failed to open the browser: {e}"))
+}
+
 fn open_default(p: &Path) -> Result<(), String> {
     #[cfg(windows)]
     let spawned = crate::proc::quiet_std("cmd").args(["/C", "start", ""]).arg(p).spawn();
