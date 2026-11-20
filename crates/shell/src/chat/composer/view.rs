@@ -60,6 +60,7 @@ pub fn render(
                     theme::BORDER
                 }))
                 .bg(color(theme::SURFACE))
+                .shadow_lg()
                 .drag_over::<ExternalPaths>(|style, _, _, _| {
                     style.border_color(color(theme::ACCENT))
                 })

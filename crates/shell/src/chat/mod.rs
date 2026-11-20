@@ -482,13 +482,16 @@ impl ChatView {
 
     /// Small status line under the composer.
     fn status_line(&self) -> impl IntoElement {
-        let status = if self.running { "Working" } else { "Ready" };
+        let (status, dot) = if self.running { ("Working", theme::ACCENT) } else { ("Ready", theme::OK) };
         div()
             .pb(px(10.0))
             .flex()
             .justify_center()
+            .items_center()
+            .gap(px(7.0))
             .text_size(px(11.0))
             .text_color(color(theme::MUTED))
+            .child(div().size(px(6.0)).flex_none().rounded_full().bg(color(dot)))
             .child(match self.thread_usage.as_ref().and_then(thread_usage::line) {
                 Some(used) => format!("{}  ·  {status}  ·  {used}", self.selection.model),
                 None => format!("{}  ·  {status}", self.selection.model),

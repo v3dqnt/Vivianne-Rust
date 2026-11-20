@@ -121,7 +121,13 @@ impl Rail {
             .flex()
             .flex_col()
             .gap(px(16.0))
-            .child(section("Project", [div().child(folder).into_any_element(), muted(self.root.display().to_string()).into_any_element()]))
+            .child(section(
+                "Project",
+                [
+                    div().text_size(px(15.0)).font_weight(gpui_kit::FontWeight::SEMIBOLD).child(folder).into_any_element(),
+                    div().font_family(theme::MONO).text_size(px(11.0)).text_color(color(theme::MUTED)).child(self.root.display().to_string()).into_any_element(),
+                ],
+            ))
             .child(self.version_control(cx))
     }
 
@@ -129,7 +135,7 @@ impl Rail {
         let Some(branch) = &self.git.branch else {
             return section("Version control", [muted("Not a git repository").into_any_element()]).into_any_element();
         };
-        let mut lines = vec![div().child(format!("Branch: {branch}")).into_any_element()];
+        let mut lines = vec![div().flex().items_center().gap(px(8.0)).child(muted("Branch")).child(pill(branch.clone())).into_any_element()];
         if let Some(commit) = &self.git.last_commit {
             lines.push(muted(format!("Last commit: {commit}")).into_any_element());
         }
@@ -149,7 +155,7 @@ impl Rail {
                 .py(px(2.0))
                 .rounded(px(theme::RADIUS_CONTROL))
                 .cursor_pointer()
-                .hover(|style| style.bg(color(theme::SURFACE)))
+                .hover(|style| style.bg(color(theme::RAISED)))
                 .on_click(cx.listener(move |rail, _event, _window, cx| {
                     rail.open_file(path.clone());
                     cx.notify();
@@ -161,7 +167,7 @@ impl Rail {
             rail.refresh();
             cx.notify();
         }));
-        section("Version control", lines).child(div().flex().flex_col().children(rows)).child(refresh).into_any_element()
+        section("Version control", lines).child(div().flex().flex_col().children(rows)).child(div().flex().child(refresh)).into_any_element()
     }
 
     fn files(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -267,7 +273,7 @@ impl Render for Rail {
             .rounded(px(theme::RADIUS_SURFACE))
             .border_1()
             .border_color(color(theme::BORDER))
-            .bg(color(theme::BG))
+            .bg(color(theme::PANEL))
             .child(div().px(px(8.0)).child(self.tab_bar(cx)))
             .child(
                 div()
@@ -291,8 +297,40 @@ fn change_mark(kind: ChangeKind) -> impl IntoElement {
     div().w(px(14.0)).flex_none().text_size(px(11.0)).text_color(color(hex)).child(kind.letter())
 }
 
+/// A titled card: a small spaced label with an accent bar, then its lines.
 fn section(title: &str, lines: impl IntoIterator<Item = gpui_kit::AnyElement>) -> gpui_kit::Div {
-    div().flex().flex_col().gap(px(4.0)).child(div().text_size(px(11.0)).text_color(color(theme::MUTED)).child(title.to_uppercase())).children(lines)
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(6.0))
+        .p(px(12.0))
+        .rounded(px(theme::RADIUS_SURFACE))
+        .border_1()
+        .border_color(color(theme::BORDER))
+        .bg(color(theme::SURFACE))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(7.0))
+                .child(div().w(px(3.0)).h(px(11.0)).flex_none().rounded_full().bg(color(theme::ACCENT)))
+                .child(div().text_size(px(11.0)).text_color(color(theme::MUTED)).child(title.to_uppercase())),
+        )
+        .children(lines)
+}
+
+/// A short value shown as a pill: the branch name, a count.
+fn pill(text: String) -> gpui_kit::Div {
+    div()
+        .px(px(8.0))
+        .py(px(2.0))
+        .rounded_full()
+        .bg(color(theme::ACCENT_SOFT))
+        .border_1()
+        .border_color(color(theme::ACCENT_LINE))
+        .text_size(px(12.0))
+        .text_color(color(theme::ACCENT_TEXT))
+        .child(text)
 }
 
 fn muted(text: impl Into<SharedString>) -> gpui_kit::Div {

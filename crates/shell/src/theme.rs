@@ -1,7 +1,9 @@
-//! Design tokens: one calm dark palette, one blue accent, two radii.
+//! Design tokens: one dark palette with four levels of depth, one blue accent, two radii.
 //!
-//! Neutral greys with a faint cool tint, off-white text, no glows and no pure
-//! black. Radii follow the old component library (`viv-ui`): 6 px for controls,
+//! The greys lean slightly blue so the app has a temperature instead of looking flat. Depth, from back to front:
+//! the window (`BG`), the side panel and cards (`PANEL`), bubbles and the composer (`SURFACE`), and what the
+//! pointer is over (`RAISED`). The accent is used sparingly (the active tab, the send button, your messages,
+//! links), so it reads as meaning something. Off-white text, no pure black. Radii follow the old component library (`viv-ui`): 6 px for controls,
 //! 10 px for surfaces. Dark only for now.
 //!
 //! [`apply`] pushes the same tokens into Kit's theme so its components (text
@@ -14,23 +16,35 @@ use gpui_kit::component::{Theme, ThemeMode};
 use gpui_kit::{App, Hsla, Rgba, px, rgb};
 
 /// App background.
-pub const BG: u32 = 0x111214;
+pub const BG: u32 = 0x0f1115;
+/// The side panel and cards: one step in front of the window.
+pub const PANEL: u32 = 0x151820;
 /// Raised surfaces: bubbles, rows, the composer.
-pub const SURFACE: u32 = 0x1a1c20;
+pub const SURFACE: u32 = 0x1b1f28;
+/// What the pointer is over.
+pub const RAISED: u32 = 0x242a36;
 /// Recessed areas: code, tool output, title bar.
-pub const CODE_BG: u32 = 0x0c0d0f;
-pub const BORDER: u32 = 0x25282d;
-pub const TEXT: u32 = 0xe7e8ea;
+pub const CODE_BG: u32 = 0x0b0d11;
+pub const BORDER: u32 = 0x2a303c;
+pub const TEXT: u32 = 0xe9ebf0;
 /// Secondary text, 6:1 on `BG`.
-pub const MUTED: u32 = 0x8e94a0;
+pub const MUTED: u32 = 0x959dad;
 /// The one accent.
-pub const ACCENT: u32 = 0x4a82e6;
-pub const ACCENT_HOVER: u32 = 0x6a98ec;
-const ACCENT_ACTIVE: u32 = 0x3b6dc7;
+pub const ACCENT: u32 = 0x5b8cff;
+pub const ACCENT_HOVER: u32 = 0x7aa0ff;
+const ACCENT_ACTIVE: u32 = 0x4673e0;
+/// The accent faintly over the window: the fill of your messages and of selected things.
+pub const ACCENT_SOFT: u32 = 0x1a2745;
+/// The border that goes with `ACCENT_SOFT`.
+pub const ACCENT_LINE: u32 = 0x2f4780;
+/// Text on `ACCENT_SOFT`: the accent lightened to read well on it.
+pub const ACCENT_TEXT: u32 = 0xa9c1ff;
 /// Text and icons on the accent.
 pub const ON_ACCENT: u32 = 0xffffff;
-pub const OK: u32 = 0x3fb56b;
-pub const DANGER: u32 = 0xe5534b;
+pub const OK: u32 = 0x45c179;
+pub const DANGER: u32 = 0xf0605a;
+/// Something worth a look but not wrong.
+pub const WARN: u32 = 0xe3a948;
 
 /// Buttons and inputs.
 pub const RADIUS_CONTROL: f32 = 6.0;
@@ -75,6 +89,7 @@ pub fn apply(cx: &mut App) {
         colors.muted = hsla(CODE_BG);
         colors.muted_foreground = hsla(MUTED);
         colors.secondary = hsla(SURFACE);
+        colors.secondary_hover = hsla(RAISED);
         colors.popover = hsla(SURFACE);
         colors.ring = hsla(ACCENT);
         colors.title_bar = hsla(CODE_BG);

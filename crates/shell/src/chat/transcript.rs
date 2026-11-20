@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::text::TextView;
 use gpui_kit::prelude::*;
-use gpui_kit::{AnyElement, Context, SharedString, div, px};
+use gpui_kit::{AnyElement, Context, SharedString, div, px, relative};
 
 use super::ChatView;
 use super::items::Item;
@@ -24,10 +24,7 @@ pub fn render_item(
         Item::Assistant(text) => assistant(index, text),
         Item::Tool(tool) => toolcalls::render(tool, folded.contains(&tool.id), cx),
         Item::Approval { id, title, answer } => approval(id, title, *answer, cx),
-        Item::Notice(text) => div()
-            .text_color(color(theme::MUTED))
-            .child(text.clone())
-            .into_any_element(),
+        Item::Notice(text) => notice(text),
     }
 }
 
@@ -40,9 +37,16 @@ fn approval(id: &str, title: &str, answer: Option<bool>, cx: &mut Context<ChatVi
         .p(px(12.0))
         .rounded(px(theme::RADIUS_SURFACE))
         .border_1()
-        .border_color(color(theme::BORDER))
+        .border_color(color(theme::WARN))
         .bg(color(theme::SURFACE))
-        .child(div().child(title.to_owned()));
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .child(div().size(px(7.0)).flex_none().rounded_full().bg(color(theme::WARN)))
+                .child(div().child(title.to_owned())),
+        );
     match answer {
         Some(true) => card.child(div().text_color(color(theme::MUTED)).child("Allowed.")).into_any_element(),
         Some(false) => card.child(div().text_color(color(theme::MUTED)).child("Denied.")).into_any_element(),
@@ -64,14 +68,49 @@ fn approval(id: &str, title: &str, answer: Option<bool>, cx: &mut Context<ChatVi
     }
 }
 
+/// What you said: a tinted bubble on the right, so the two sides of the conversation are told apart at a glance.
 fn user(text: &str) -> AnyElement {
     div()
-        .p(px(12.0))
-        .rounded(px(theme::RADIUS_SURFACE))
-        .border_1()
-        .border_color(color(theme::BORDER))
-        .bg(color(theme::SURFACE))
-        .child(text.to_owned())
+        .flex()
+        .justify_end()
+        .child(
+            div()
+                .max_w(relative(0.82))
+                .px(px(14.0))
+                .py(px(10.0))
+                .rounded(px(theme::RADIUS_SURFACE))
+                .border_1()
+                .border_color(color(theme::ACCENT_LINE))
+                .bg(color(theme::ACCENT_SOFT))
+                .text_color(color(theme::TEXT))
+                .child(text.to_owned()),
+        )
+        .into_any_element()
+}
+
+/// Something the app says that is not part of the conversation: a small chip with a dot, so it is never
+/// mistaken for what the assistant wrote.
+fn notice(text: &str) -> AnyElement {
+    let problem = text.starts_with("Can't use") || text.starts_with("Signing in") && text.contains("failed");
+    let dot = if problem { theme::WARN } else { theme::ACCENT };
+    div()
+        .flex()
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .px(px(10.0))
+                .py(px(5.0))
+                .rounded_full()
+                .bg(color(theme::PANEL))
+                .border_1()
+                .border_color(color(theme::BORDER))
+                .text_size(px(12.0))
+                .text_color(color(theme::MUTED))
+                .child(div().size(px(6.0)).flex_none().rounded_full().bg(color(dot)))
+                .child(text.to_owned()),
+        )
         .into_any_element()
 }
 
