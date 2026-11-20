@@ -8,10 +8,10 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::setting::{SettingGroup, SettingItem};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, SharedString, Styled, div};
-use vivianne_providers::acp;
+use vivianne_providers::acp::{self, AuthKind, AuthMethod, AuthState};
 
 use crate::backend;
-use crate::settings::provider_state::{AgentInfo, AgentReport};
+use crate::settings::provider_state::{AgentAuth, AgentInfo, AgentReport};
 use crate::settings::values::Shared;
 use crate::settings::widgets::{mono, muted, note, pill, strong};
 use crate::theme;
@@ -102,9 +102,14 @@ fn status(agent: &AgentInfo) -> &'static str {
 }
 
 fn row(values: &Shared, agent: &AgentInfo) -> impl IntoElement + use<> {
-    let (busy, report) = {
+    let (busy, report, auth, progress) = {
         let v = values.borrow();
-        (v.providers.is_busy(&format!("agent-{}", agent.id)), v.providers.agent_reports.get(&agent.id).cloned())
+        (
+            v.providers.is_busy(&format!("agent-{}", agent.id)),
+            v.providers.agent_reports.get(&agent.id).cloned(),
+            v.providers.agent_auth.get(&agent.id).cloned(),
+            v.providers.agent_progress.get(&agent.id).cloned(),
+        )
     };
     let mut actions = h_flex().gap_2();
     if agent.available && !agent.ready {
@@ -113,6 +118,17 @@ fn row(values: &Shared, agent: &AgentInfo) -> impl IntoElement + use<> {
             move |_, _, cx| {
                 if !busy {
                     set_up(&values, &id, cx);
+                }
+            },
+        ));
+    }
+    if agent.available && agent.ready {
+        let (values, id) = (values.clone(), agent.id.clone());
+        let checking = matches!(auth, Some(AgentAuth::Checking));
+        actions = actions.child(Button::new(SharedString::from(format!("auth-{}", agent.id))).label(if checking { "Checking…" } else { "Check sign-in" }).small().on_click(
+            move |_, _, cx| {
+                if !checking {
+                    check_sign_in(&values, &id, cx);
                 }
             },
         ));
@@ -141,7 +157,97 @@ fn row(values: &Shared, agent: &AgentInfo) -> impl IntoElement + use<> {
                 .child(div().flex().flex_col().child(strong(agent.name.clone())).child(muted(agent.description.clone())))
                 .child(h_flex().gap_2().items_center().child(pill(status(agent))).child(actions)),
         )
+        .children(progress.filter(|_| busy).map(muted))
+        .children(auth.map(|a| auth_view(values, &agent.id, &a)))
         .children(report.map(|r| report_view(&r)))
+}
+
+/// Whether the agent is signed in, and if not, how to sign it in.
+fn auth_view(values: &Shared, id: &str, auth: &AgentAuth) -> gpui_kit::AnyElement {
+    match auth {
+        AgentAuth::Checking => muted("Checking whether it is signed in…").into_any_element(),
+        AgentAuth::SignedIn => div().text_sm().text_color(theme::color(theme::OK)).child("Signed in. It is ready to use.").into_any_element(),
+        AgentAuth::Failed(why) => div().text_sm().text_color(theme::color(theme::DANGER)).child(why.clone()).into_any_element(),
+        AgentAuth::Needs(methods) => {
+            let rows: Vec<_> = methods.iter().map(|m| method_row(values, id, m)).collect();
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(div().text_sm().text_color(theme::color(theme::DANGER)).child("It needs you to sign in before it can be used."))
+                .children(rows)
+                .into_any_element()
+        }
+    }
+}
+
+fn method_row(values: &Shared, id: &str, method: &AuthMethod) -> gpui_kit::AnyElement {
+    let (values, agent_id, method_id) = (values.clone(), id.to_owned(), method.id.clone());
+    match (&method.kind, &method.command) {
+        (AuthKind::Terminal, Some(command)) => {
+            let (copy, again, text) = (command.clone(), values.clone(), command.clone());
+            let agent = agent_id.clone();
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(muted("Run this in a terminal, then check again:"))
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(mono(text))
+                        .child(Button::new(SharedString::from(format!("copy-{agent_id}-{method_id}"))).label("Copy").small().ghost().on_click(move |_, _, cx| {
+                            cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(copy.clone()));
+                        }))
+                        .child(Button::new(SharedString::from(format!("again-{agent_id}-{method_id}"))).label("Check again").small().on_click(move |_, _, cx| {
+                            check_sign_in(&again, &agent, cx);
+                        })),
+                )
+                .into_any_element()
+        }
+        _ => {
+            let label = format!("Sign in: {}", method.name);
+            Button::new(SharedString::from(format!("signin-{agent_id}-{method_id}")))
+                .label(label)
+                .small()
+                .on_click(move |_, _, cx| sign_in(&values, &agent_id, &method_id, cx))
+                .into_any_element()
+        }
+    }
+}
+
+/// Asks the agent whether it is signed in.
+fn check_sign_in(values: &Shared, id: &str, cx: &mut App) {
+    values.borrow_mut().providers.agent_auth.insert(id.to_owned(), AgentAuth::Checking);
+    cx.refresh_windows();
+    let (values, id) = (values.clone(), id.to_owned());
+    let ask = id.clone();
+    backend::run(cx, async move { acp::check_auth(&ask).await }, move |result, cx| {
+        store_auth(&values, &id, result);
+        cx.refresh_windows();
+    });
+}
+
+/// Signs the agent in the way it offered, which may open a browser, then shows where that left it.
+fn sign_in(values: &Shared, id: &str, method: &str, cx: &mut App) {
+    values.borrow_mut().providers.agent_auth.insert(id.to_owned(), AgentAuth::Checking);
+    cx.refresh_windows();
+    let (values, id, method) = (values.clone(), id.to_owned(), method.to_owned());
+    let ask = id.clone();
+    backend::run(cx, async move { acp::sign_in(&ask, &method).await }, move |result, cx| {
+        store_auth(&values, &id, result);
+        cx.refresh_windows();
+    });
+}
+
+fn store_auth(values: &Shared, id: &str, result: Result<AuthState, String>) {
+    let auth = match result {
+        Ok(AuthState::SignedIn) => AgentAuth::SignedIn,
+        Ok(AuthState::NeedsSignIn(methods)) => AgentAuth::Needs(methods),
+        Ok(AuthState::Failed(why)) | Err(why) => AgentAuth::Failed(why),
+    };
+    values.borrow_mut().providers.agent_auth.insert(id.to_owned(), auth);
 }
 
 fn report_view(report: &AgentReport) -> impl IntoElement + use<> {
@@ -168,7 +274,9 @@ fn set_up(values: &Shared, id: &str, cx: &mut App) {
     cx.refresh_windows();
     let (values, id) = (values.clone(), id.to_owned());
     let ask = id.clone();
-    backend::run(cx, async move { acp::install(&ask).await }, move |result, cx| {
+    let slot = id.clone();
+    watch_progress(values.clone(), id.clone(), cx);
+    backend::run(cx, async move { acp::install(&ask, &move |p| store_progress(&slot, &p)).await }, move |result, cx| {
         {
             let mut v = values.borrow_mut();
             v.providers.finish(&key);
@@ -208,6 +316,37 @@ fn test(values: &Shared, id: &str, cx: &mut App) {
         }
         cx.refresh_windows();
     });
+}
+
+/// What an install last reported, by agent, written from the async side and read while the page redraws.
+static PROGRESS: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+
+#[allow(clippy::cast_precision_loss)]
+fn store_progress(id: &str, progress: &acp::InstallProgress) {
+    let megabytes = progress.bytes as f64 / 1_048_576.0;
+    let text = format!("{} ({megabytes:.0} MB on disk)", progress.line);
+    let mut all = PROGRESS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    all.retain(|(known, _)| known != id);
+    all.push((id.to_owned(), text));
+}
+
+/// Copies what the install reports into the page every second, until it is done.
+fn watch_progress(values: Shared, id: String, cx: &mut App) {
+    cx.spawn(async move |cx| {
+        loop {
+            cx.background_executor().timer(std::time::Duration::from_secs(1)).await;
+            let still = values.borrow().providers.is_busy(&format!("agent-{id}"));
+            let text = PROGRESS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().find(|(known, _)| *known == id).map(|(_, t)| t.clone());
+            if let Some(text) = text {
+                values.borrow_mut().providers.agent_progress.insert(id.clone(), text);
+            }
+            cx.update(|cx| cx.refresh_windows());
+            if !still {
+                break;
+            }
+        }
+    })
+    .detach();
 }
 
 #[allow(clippy::cast_precision_loss)]

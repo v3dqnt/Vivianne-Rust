@@ -176,9 +176,48 @@ impl ChatView {
         }
     }
 
+    /// Hand the thread to a coding agent, once it is known to be signed in: an agent that isn't would answer
+    /// the first message with an authentication error.
+    fn use_coding_agent(&mut self, choice: &ModelChoice, cx: &mut Context<Self>) {
+        self.push_item(Item::Notice(format!("Checking that {} is signed in…", choice.name)), cx);
+        let (checked, answer) = tokio::sync::oneshot::channel();
+        let id = choice.id.clone();
+        self.host.runtime.spawn(async move {
+            let _ = checked.send(vivianne_providers::acp::check_auth(&id).await);
+        });
+        let choice = choice.clone();
+        cx.spawn(async move |chat, cx| {
+            let Ok(result) = answer.await else { return };
+            chat.update(cx, |chat, cx| chat.after_sign_in_check(&choice, result, cx)).ok();
+        })
+        .detach();
+    }
+
+    /// Switches to the agent if it is signed in; otherwise says how to sign it in and stays on the current model.
+    fn after_sign_in_check(&mut self, choice: &ModelChoice, result: Result<vivianne_providers::acp::AuthState, String>, cx: &mut Context<Self>) {
+        use vivianne_providers::acp::{AuthKind, AuthState};
+        match result {
+            Ok(AuthState::SignedIn) => self.switch_to_coding_agent(choice, cx),
+            Ok(AuthState::NeedsSignIn(methods)) => {
+                let ways: Vec<String> = methods
+                    .iter()
+                    .map(|m| match (&m.kind, &m.command) {
+                        (AuthKind::Terminal, Some(command)) => format!("run `{command}` in a terminal"),
+                        _ => format!("use \"Sign in: {}\" in Settings, Providers, Coding agents", m.name),
+                    })
+                    .collect();
+                let how = if ways.is_empty() { "sign in to it once in a terminal".to_owned() } else { ways.join(", or ") };
+                self.push_item(Item::Notice(format!("{} needs you to sign in before it can be used: {how}. Then pick it again.", choice.name)), cx);
+            }
+            Ok(AuthState::Failed(why)) | Err(why) => {
+                self.push_item(Item::Notice(format!("Can't use {}: {why} Set it up in Settings, Providers, Coding agents.", choice.name)), cx);
+            }
+        }
+    }
+
     /// Hand the thread to a coding agent. The conversation so far stays in the transcript; the agent starts
     /// its own session the first time it is asked.
-    fn use_coding_agent(&mut self, choice: &ModelChoice, cx: &mut Context<Self>) {
+    fn switch_to_coding_agent(&mut self, choice: &ModelChoice, cx: &mut Context<Self>) {
         let Some(backend) = crate::backend::get() else {
             self.push_item(Item::Notice("Coding agents aren't available: the app's services didn't start.".to_owned()), cx);
             return;

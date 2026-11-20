@@ -75,6 +75,16 @@ pub struct AgentInfo {
     pub ready: bool,
 }
 
+/// Whether a coding agent is signed in, as far as it has been asked.
+#[derive(Debug, Clone)]
+pub enum AgentAuth {
+    Checking,
+    SignedIn,
+    /// It has to be signed in first, one of these ways.
+    Needs(Vec<vivianne_providers::acp::AuthMethod>),
+    Failed(String),
+}
+
 /// What testing an agent found.
 #[derive(Debug, Clone, Default)]
 pub struct AgentReport {
@@ -114,6 +124,9 @@ pub struct ProviderState {
     pub new_models: Vec<(String, u64)>,
     pub agents: Option<Vec<AgentInfo>>,
     pub agent_reports: BTreeMap<String, AgentReport>,
+    pub agent_auth: BTreeMap<String, AgentAuth>,
+    /// What setting up an agent is doing now (the last thing npm did, and how much is on disk).
+    pub agent_progress: BTreeMap<String, String>,
     pub agent_log: Option<Vec<String>>,
     pub routing: Option<RoutingConfig>,
     pub models: Vec<PickableModel>,

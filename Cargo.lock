@@ -8618,6 +8618,8 @@ version = "0.0.1"
 dependencies = [
  "async-trait",
  "futures",
+ "regex",
+ "serde",
  "serde_json",
  "thiserror 2.0.21",
  "tokio",

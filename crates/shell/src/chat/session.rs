@@ -13,7 +13,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use vivianne_core::{Message, Role, Thinking};
-use vivianne_providers::acp::{Acp, AcpEvent, Outcome, PermissionRequest, PromptPart};
+use vivianne_providers::acp::{Acp, AcpEvent, Line, Outcome, PermissionRequest, PromptPart, TurnRequest};
 use vivianne_runtime::{Agent, AgentEvent};
 
 static NEXT_THREAD: AtomicU64 = AtomicU64::new(1);
@@ -101,12 +101,15 @@ impl Session {
             Engine::Harness { id, acp, workspace } => {
                 let stop = CancellationToken::new();
                 self.stop = Some(stop.clone());
+                // What was said before this message, for an agent that wasn't there for it.
+                let earlier: Vec<Line> = self.before_run.as_deref().map(lines_of).unwrap_or_default();
                 let turn = HarnessTurn {
                     acp: acp.clone(),
                     id: id.clone(),
                     thread: self.thread.clone(),
                     cwd: workspace.display().to_string(),
                     text,
+                    earlier,
                     approvals: self.approvals.clone(),
                 };
                 self.task = Some(self.runtime.spawn(async move {
@@ -169,6 +172,7 @@ struct HarnessTurn {
     thread: String,
     cwd: String,
     text: String,
+    earlier: Vec<Line>,
     approvals: Approvals,
 }
 
@@ -177,8 +181,9 @@ impl HarnessTurn {
     async fn run(self, events: &mpsc::UnboundedSender<AgentEvent>, stop: &CancellationToken) -> (String, Option<String>) {
         let (acp_tx, mut acp_rx) = mpsc::unbounded_channel();
         let prompt = [PromptPart::Text(self.text.clone())];
+        let request = TurnRequest { prompt: &prompt, earlier: &self.earlier, plan_mode: false, bypass: false };
         let turn = async {
-            let outcome = self.acp.run_turn(&self.thread, &self.id, &self.cwd, &prompt, &acp_tx, stop).await;
+            let outcome = self.acp.run_turn(&self.thread, &self.id, &self.cwd, &request, &acp_tx, stop).await;
             drop(acp_tx);
             outcome
         };
@@ -199,7 +204,7 @@ impl HarnessTurn {
             reply
         };
         let (outcome, reply) = tokio::join!(turn, forward);
-        let error = match outcome {
+        let error = match outcome.map(|end| end.outcome) {
             Ok(Outcome::Finished) => {
                 let _ = events.send(AgentEvent::Done);
                 None
@@ -208,9 +213,7 @@ impl HarnessTurn {
                 let _ = events.send(AgentEvent::Stopped);
                 None
             }
-            Ok(Outcome::Refused) => Some("The coding agent declined to continue.".to_owned()),
-            Ok(Outcome::Limit(which)) => Some(format!("The coding agent stopped: it hit its limit ({which}).")),
-            Err(why) => Some(why),
+            Ok(Outcome::Failed(why)) | Err(why) => Some(why),
         };
         (reply, error)
     }
@@ -225,6 +228,16 @@ impl HarnessTurn {
             AcpEvent::ToolEnd { id, name, args, output, is_error } => {
                 vec![AgentEvent::ToolEnd { id, name, output, is_error, details: None, args: Some(args) }]
             }
+            AcpEvent::Notice { title, text, is_error } => {
+                let id = format!("notice-{}-{plans}", self.thread);
+                let args = json!({ "title": title, "severity": if is_error { "error" } else { "info" } });
+                vec![
+                    AgentEvent::ToolStart { id: id.clone(), name: "notice".to_owned(), args },
+                    AgentEvent::ToolEnd { id, name: "notice".to_owned(), output: text, is_error, details: None, args: None },
+                ]
+            }
+            // A plan that was removed leaves nothing to draw.
+            AcpEvent::Plan(text) if text.is_empty() => Vec::new(),
             // The plan draws as the checklist tool does.
             AcpEvent::Plan(text) => {
                 let id = format!("plan-{}-{plans}", self.thread);
@@ -240,5 +253,33 @@ impl HarnessTurn {
                 vec![AgentEvent::Approval { id, title }]
             }
         }
+    }
+}
+
+/// The conversation as what a coding agent that joined late is told: who said what, in words.
+fn lines_of(history: &[Message]) -> Vec<Line> {
+    history
+        .iter()
+        .filter_map(|m| match m.role {
+            Role::User => Some(Line { who: "User", text: m.text.clone() }),
+            Role::Assistant => Some(Line { who: "Assistant", text: m.text.clone() }),
+            _ => None,
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_late_agent_is_told_what_the_user_and_assistant_said_and_nothing_else() {
+        let history = vec![
+            Message::new(Role::User, "hi".to_owned()),
+            Message::assistant("hello".to_owned(), Vec::new()),
+            Message::tool_result("c1", "output".to_owned()),
+        ];
+        let lines = lines_of(&history);
+        assert_eq!(lines, vec![Line { who: "User", text: "hi".into() }, Line { who: "Assistant", text: "hello".into() }]);
     }
 }

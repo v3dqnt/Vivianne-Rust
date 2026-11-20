@@ -10,7 +10,9 @@ What the agent loop sees of a model provider.
 
 ## acp/
 
-Other coding agents (Claude Code, Codex, Gemini CLI, the rest of the Agent Client Protocol registry) run as child
-processes over stdio. `registry.rs` lists them and how to start them, `conn.rs` is a running agent and its traffic
-trace, `turn.rs` turns what an agent streams into `AcpEvent`s, `mod.rs` has `Acp` (one agent per thread, `run_turn`,
-`reset`) plus `install` and `debug`. Nothing in the chat uses it yet: a thread cannot pick an agent as its model.
+Other coding agents (Claude Code, Codex, Gemini CLI, the rest of the Agent Client Protocol registry), run as child
+processes over stdio. Ported from the newer working layer on the old repo's `updated-threads` branch: protocol v2 with a
+v1 fallback, starting an npx agent straight from npx's cache with `node` (the Windows "not recognized" failure), agents
+installed under `~/.viv/agents`, signing in (`auth.rs`), resuming sessions, stop that cancels, closes and finally kills,
+and stderr cleaned of secrets. See `acp/mod.rs` for the file map. Not ported: offering Vivianne's own tools to the agent
+over MCP, delegating a job to an agent from the agent loop, and answering the agent's forms (they are declined).
