@@ -69,6 +69,7 @@ pub struct Finished {
 impl Session {
     #[must_use]
     pub fn new(agent: Agent, runtime: Arc<Runtime>) -> Self {
+        agent.set_mode(Mode::default());
         Self {
             engine: Engine::Own(Arc::new(agent)),
             runtime,
@@ -151,7 +152,8 @@ impl Session {
                     text,
                     earlier,
                     approvals: self.approvals.clone(),
-                    plan_mode: !self.mode.allows("write"),
+                    plan_mode: self.mode == Mode::Plan,
+                    bypass: self.mode == Mode::Auto,
                 };
                 self.task = Some(self.runtime.spawn(async move {
                     let started = Instant::now();
@@ -194,6 +196,9 @@ impl Session {
 
     /// Answer a coding agent's request. `false` if it is no longer waiting.
     pub fn answer(&self, id: &str, allow: bool) -> bool {
+        if let Engine::Own(agent) = &self.engine {
+            return agent.answer(id, allow);
+        }
         let request = self.approvals.lock().unwrap_or_else(PoisonError::into_inner).remove(id);
         request.map(|r| r.answer(allow)).is_some()
     }
@@ -313,6 +318,7 @@ struct HarnessTurn {
     approvals: Approvals,
     /// Look but do not change: the agent is held to its own read-only plan mode.
     plan_mode: bool,
+    bypass: bool,
 }
 
 impl HarnessTurn {
@@ -320,7 +326,7 @@ impl HarnessTurn {
     async fn run(self, events: &mpsc::UnboundedSender<AgentEvent>, stop: &CancellationToken) -> (String, Option<String>) {
         let (acp_tx, mut acp_rx) = mpsc::unbounded_channel();
         let prompt = [PromptPart::Text(self.text.clone())];
-        let request = TurnRequest { prompt: &prompt, earlier: &self.earlier, plan_mode: self.plan_mode, bypass: false };
+        let request = TurnRequest { prompt: &prompt, earlier: &self.earlier, plan_mode: self.plan_mode, bypass: self.bypass };
         let turn = async {
             let outcome = self.acp.run_turn(&self.thread, &self.id, &self.cwd, &request, &acp_tx, stop).await;
             drop(acp_tx);

@@ -45,39 +45,32 @@ impl Thinking {
     }
 }
 
-/// What the agent is for right now. Each mode adds a short instruction to the system prompt and limits which
-/// tools the agent may use, so the same agent visibly behaves differently depending on what the user wants.
+/// How much the agent may do on its own: ask before it changes anything, act freely, or only plan.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
-    /// Reads, writes, runs commands: everything.
+    /// Pauses before a tool that changes things, so the user approves each one.
     #[default]
-    Agent,
-    /// Answers questions about the project. Looks, never changes or runs anything.
     Ask,
-    /// Finds the cause of a problem: looks and runs commands, but writes no files.
-    Debug,
-    /// Gets oriented in the codebase. Looks only.
-    Explore,
+    /// Acts without asking.
+    Auto,
+    /// Researches and proposes a plan. Changes nothing.
+    Plan,
 }
 
-/// Tools that only look. Anything not named here (a new tool, an editing one such as `lsp_edit`) is withheld
-/// outside `Agent` mode until someone decides it is safe: a list of what is allowed fails closed, a list of what
-/// is forbidden fails open.
+/// Tools that only look. Anything not named here (a new tool, an editing one such as `lsp_edit`) counts as one that
+/// changes things: a list of what is safe fails closed, a list of what is dangerous fails open.
 const LOOK_ONLY_TOOLS: [&str; 8] = ["read", "ls", "grep", "code_search", "glob", "diagnostics", "lsp", "repo_overview"];
-/// What `Debug` adds to looking.
-const RUN_TOOLS: [&str; 1] = ["shell"];
 
 impl Mode {
-    pub const ALL: [Self; 4] = [Self::Agent, Self::Ask, Self::Debug, Self::Explore];
+    pub const ALL: [Self; 3] = [Self::Ask, Self::Auto, Self::Plan];
 
     #[must_use]
     pub fn label(self) -> &'static str {
         match self {
-            Self::Agent => "Agent",
-            Self::Ask => "Ask",
-            Self::Debug => "Debug",
-            Self::Explore => "Explore",
+            Self::Ask => "Ask for approval",
+            Self::Auto => "Auto",
+            Self::Plan => "Plan",
         }
     }
 
@@ -85,41 +78,39 @@ impl Mode {
     #[must_use]
     pub fn hint(self) -> &'static str {
         match self {
-            Self::Agent => "Reads, writes and runs commands",
-            Self::Ask => "Answers questions, changes nothing",
-            Self::Debug => "Finds a cause: runs commands, writes no files",
-            Self::Explore => "Maps the codebase, looks only",
+            Self::Ask => "Pauses before a tool that changes things, so you approve each one.",
+            Self::Auto => "Acts without asking. Files and commands run as the agent decides.",
+            Self::Plan => "Researches and proposes a plan for review. Changes nothing until you approve it.",
         }
     }
 
-    /// The instruction added to the system prompt, or `None` for the unrestricted default.
+    /// The instruction added to the system prompt while this mode is on.
     #[must_use]
     pub fn prompt_section(self) -> Option<&'static str> {
         match self {
-            Self::Agent => None,
-            Self::Ask => Some(
-                "# Mode: Ask
-You are in Ask mode: answer questions about the codebase and project. Read and search as much as you need,                  but do not write, edit or run commands; you have no such tools right now. If the request really needs a change, say so                  and suggest switching to Agent mode instead of working around it.",
-            ),
-            Self::Debug => Some(
-                "# Mode: Debug
-You are in Debug mode: find the root cause of a problem. You can read, search and run commands                  (reproduce the bug, run tests, inspect logs), but you cannot write or edit files: this mode is for diagnosis, not                  fixing. End with a clear statement of the cause and what change would fix it, so the user can act on it or switch to                  Agent mode.",
-            ),
-            Self::Explore => Some(
-                "# Mode: Explore
-You are in Explore mode: help the user get oriented in the codebase. Read, search and describe                  structure and architecture; you have only read-only navigation tools. Favor a clear map of how things fit together                  over deep investigation of any one issue.",
+            Self::Ask | Self::Auto => None,
+            Self::Plan => Some(
+                "# Mode: Plan
+You are in PLAN MODE. The user wants a plan they can review before anything is done. You cannot change anything: only tools that read and search the project work, and anything else is refused.
+
+1. Understand the request. If a decision only the user can make would change the whole plan, ask it; otherwise decide sensibly and say so in the plan.
+2. Explore the project: its structure, the code the work touches, and its dependency manifests, noting the versions in use.
+3. Write the plan as your reply: the goal and context; what you found; the approach and the decisions in it; risks and open questions; concrete steps in order; how the result will be verified.
+4. Stop there. The user will comment on it or tell you to go ahead.",
             ),
         }
     }
 
-    /// Whether the agent may use the tool called `name` in this mode.
+    /// Whether the tool called `name` is available at all: plan mode offers only the ones that look.
     #[must_use]
     pub fn allows(self, name: &str) -> bool {
-        match self {
-            Self::Agent => true,
-            Self::Ask | Self::Explore => LOOK_ONLY_TOOLS.contains(&name),
-            Self::Debug => LOOK_ONLY_TOOLS.contains(&name) || RUN_TOOLS.contains(&name),
-        }
+        self != Self::Plan || LOOK_ONLY_TOOLS.contains(&name)
+    }
+
+    /// Whether the user must say yes before the tool called `name` runs.
+    #[must_use]
+    pub fn needs_approval(self, name: &str) -> bool {
+        self == Self::Ask && !LOOK_ONLY_TOOLS.contains(&name)
     }
 }
 
@@ -198,16 +189,13 @@ mod tests {
     }
 
     #[test]
-    fn modes_allow_only_what_they_are_for_and_unknown_tools_are_withheld() {
-        assert!(Mode::Agent.allows("anything"));
+    fn plan_withholds_what_changes_things_and_ask_asks_before_it_and_unknown_tools_count_as_changing() {
         for tool in ["write", "edit", "lsp_edit", "repo_clone", "shell", "a_tool_added_next_year"] {
-            assert!(!Mode::Ask.allows(tool) && !Mode::Explore.allows(tool), "{tool}");
+            assert!(!Mode::Plan.allows(tool) && Mode::Auto.allows(tool) && Mode::Ask.allows(tool), "{tool}");
+            assert!(Mode::Ask.needs_approval(tool) && !Mode::Auto.needs_approval(tool), "{tool}");
         }
-        assert!(Mode::Ask.allows("read") && Mode::Explore.allows("grep"));
-        assert!(Mode::Debug.allows("shell") && Mode::Debug.allows("read"));
-        assert!(!Mode::Debug.allows("write") && !Mode::Debug.allows("edit") && !Mode::Debug.allows("lsp_edit"));
-        assert!(Mode::Agent.prompt_section().is_none());
-        assert!(Mode::ALL.iter().skip(1).all(|m| m.prompt_section().is_some()));
+        assert!(Mode::Plan.allows("read") && !Mode::Ask.needs_approval("grep"));
+        assert!(Mode::Plan.prompt_section().is_some() && Mode::Ask.prompt_section().is_none());
     }
 
     #[test]

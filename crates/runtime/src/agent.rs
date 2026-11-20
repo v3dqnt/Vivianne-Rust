@@ -1,9 +1,11 @@
 //! The turn loop.
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use futures::StreamExt;
 use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use vivianne_core::{Message, Mode, Thinking, ToolCall};
 use vivianne_providers::{ChatEvent, ChatRequest, EventStream, Provider, ProviderError, Spent, ToolSpec};
@@ -63,6 +65,8 @@ pub struct Agent {
     /// What the agent is for right now. Set through [`Agent::set_mode`]; read at every step, so a change takes
     /// effect on the next model call.
     mode: Mutex<Mode>,
+    /// Tool calls waiting for the user's yes or no, by call id.
+    asking: Mutex<HashMap<String, oneshot::Sender<bool>>>,
 }
 
 /// The first thing a stream said, and the rest of it.
@@ -81,13 +85,30 @@ impl Agent {
             tools,
             max_steps: DEFAULT_MAX_STEPS,
             retry: RetryPolicy::default(),
-            mode: Mutex::new(Mode::default()),
+            // A library caller has nobody to ask; an app that has sets `Mode::Ask`.
+            mode: Mutex::new(Mode::Auto),
+            asking: Mutex::default(),
         }
     }
 
     /// Changes what the agent is for: its instructions and the tools it may use.
     pub fn set_mode(&self, mode: Mode) {
         *self.mode.lock().unwrap_or_else(PoisonError::into_inner) = mode;
+    }
+
+    /// The user's answer to an [`AgentEvent::Approval`]. `false` if nothing is waiting on `id` any more.
+    pub fn answer(&self, id: &str, allow: bool) -> bool {
+        let waiting = self.asking.lock().unwrap_or_else(PoisonError::into_inner).remove(id);
+        waiting.is_some_and(|w| w.send(allow).is_ok())
+    }
+
+    /// Asks the user whether `call` may run, and waits. A dropped question (the run was stopped) counts as no.
+    async fn approved(&self, call: &ToolCall, events: &UnboundedSender<AgentEvent>) -> bool {
+        let (tx, rx) = oneshot::channel();
+        self.asking.lock().unwrap_or_else(PoisonError::into_inner).insert(call.id.clone(), tx);
+        let detail = ["command", "path"].iter().find_map(|k| call.args[k].as_str()).unwrap_or_default();
+        send(events, AgentEvent::Approval { id: call.id.clone(), title: format!("{} {detail}", call.name).trim().to_owned() });
+        rx.await.unwrap_or(false)
     }
 
     fn mode(&self) -> Mode {
@@ -292,14 +313,16 @@ impl Agent {
         let mode = self.mode();
         // Not offering a tool is not enough: a model can still ask for one it remembers from earlier in the
         // conversation (or from before the mode changed), so the mode is enforced here too.
-        let result = if mode.allows(&call.name) {
+        let result = if !mode.allows(&call.name) {
+            ToolResult { content: format!("`{}` is not available in {} mode", call.name, mode.label()), is_error: true, details: None }
+        } else if mode.needs_approval(&call.name) && !self.approved(call, events).await {
+            ToolResult { content: "the user did not allow this".to_owned(), is_error: true, details: None }
+        } else {
             self.tools.execute(&call.name, &call.args).await.unwrap_or_else(|| ToolResult {
                 content: format!("unknown tool `{}`", call.name),
                 is_error: true,
                 details: None,
             })
-        } else {
-            ToolResult { content: format!("`{}` is not available in {} mode", call.name, mode.label()), is_error: true, details: None }
         };
         let output = if result.is_error { format!("error: {}", result.content) } else { result.content };
         send(
@@ -546,36 +569,63 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_mode_adds_its_instruction_and_offers_only_the_tools_it_allows() {
+    async fn plan_mode_adds_its_instruction_and_offers_only_the_tools_that_look() {
         let provider = Scripted::new(vec![vec![ChatEvent::Done]]);
         let agent = Agent::new(provider.clone(), "m", Some("Be brief.".to_owned()), toolbox());
-        agent.set_mode(Mode::Ask);
+        agent.set_mode(Mode::Plan);
         let (tx, _rx) = unbounded_channel();
         agent.run(&mut user("x"), &tx, Thinking::default()).await.unwrap();
         let seen = provider.seen.lock().unwrap();
-        assert!(seen[0].system.as_deref().is_some_and(|s| s.starts_with("Be brief.") && s.contains("Mode: Ask")));
+        assert!(seen[0].system.as_deref().is_some_and(|s| s.starts_with("Be brief.") && s.contains("PLAN MODE")));
         assert!(seen[0].tools.is_empty(), "the test tools (echo, hang) are not look-only tools");
     }
 
     #[tokio::test]
-    async fn a_tool_the_mode_withholds_is_refused_even_if_the_model_asks_for_it() {
+    async fn plan_mode_refuses_a_tool_even_if_the_model_asks_for_it() {
         let provider = Scripted::new(vec![vec![call("c1", "echo"), ChatEvent::Done], vec![ChatEvent::Done]]);
         let agent = Agent::new(provider, "m", None, toolbox());
-        agent.set_mode(Mode::Explore);
+        agent.set_mode(Mode::Plan);
         let (tx, _rx) = unbounded_channel();
         let mut history = user("x");
         agent.run(&mut history, &tx, Thinking::default()).await.unwrap();
-        assert!(history[2].text.contains("not available in Explore mode"), "{}", history[2].text);
+        assert!(history[2].text.contains("not available in Plan mode"), "{}", history[2].text);
+    }
+
+    /// Ask mode stops at a tool that changes things until the user answers; no answer, or no, means it never runs.
+    #[tokio::test]
+    async fn ask_mode_waits_for_a_yes_before_a_tool_runs() {
+        for (allow, ran) in [(true, true), (false, false)] {
+            let provider = Scripted::new(vec![vec![call("c1", "echo"), ChatEvent::Done], vec![ChatEvent::Done]]);
+            let agent = Arc::new(Agent::new(provider, "m", None, toolbox()));
+            agent.set_mode(Mode::Ask);
+            let (tx, mut rx) = unbounded_channel();
+            let task = tokio::spawn({
+                let agent = agent.clone();
+                async move {
+                    let mut history = user("x");
+                    agent.run(&mut history, &tx, Thinking::default()).await.unwrap();
+                    history
+                }
+            });
+            let id = loop {
+                if let Some(AgentEvent::Approval { id, .. }) = rx.recv().await {
+                    break id;
+                }
+            };
+            assert!(agent.answer(&id, allow));
+            let history = task.await.unwrap();
+            assert_eq!(history[2].text.contains("did not allow"), !ran, "{}", history[2].text);
+        }
     }
 
     #[test]
     fn the_breakdown_follows_the_mode_because_withheld_tools_leave_the_window() {
         let agent = Agent::new(Scripted::new(vec![]), "m", Some("Be brief.".to_owned()), Toolbox::coding(std::path::Path::new(".")));
         let all = agent.breakdown(&[]);
-        agent.set_mode(Mode::Ask);
-        let ask = agent.breakdown(&[]);
-        assert!(ask.tools > 0 && ask.tools < all.tools, "{all:?} {ask:?}");
-        assert!(ask.system > all.system, "the mode's instruction is part of the system prompt");
+        agent.set_mode(Mode::Plan);
+        let plan = agent.breakdown(&[]);
+        assert!(plan.tools > 0 && plan.tools < all.tools, "{all:?} {plan:?}");
+        assert!(plan.system > all.system, "the mode's instruction is part of the system prompt");
     }
 
     #[tokio::test]
