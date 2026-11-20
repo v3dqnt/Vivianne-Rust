@@ -255,6 +255,7 @@ impl Agent {
                 output: output.clone(),
                 is_error: result.is_error,
                 details: result.details,
+                args: None,
             },
         );
         Message::tool_result(&call.id, output)

@@ -22,6 +22,8 @@ pub enum Item {
     Assistant(String),
     Tool(ToolItem),
     Notice(String),
+    /// A coding agent asks to do something. `answer` is `None` until the user decides.
+    Approval { id: String, title: String, answer: Option<bool> },
 }
 
 /// What one event did to the transcript.
@@ -32,6 +34,16 @@ pub enum Change {
     Appended,
     /// An item that was already there grew or finished.
     Updated(usize),
+}
+
+/// Records the user's answer to an approval; the index of the item, if it was waiting.
+pub fn answer_approval(items: &mut [Item], id: &str, allow: bool) -> Option<usize> {
+    let found = items.iter_mut().enumerate().find_map(|(index, item)| match item {
+        Item::Approval { id: waiting, answer, .. } if waiting == id && answer.is_none() => Some((index, answer)),
+        _ => None,
+    })?;
+    *found.1 = Some(allow);
+    Some(found.0)
 }
 
 /// Fold one agent event into the transcript.
@@ -63,6 +75,7 @@ pub fn apply(items: &mut Vec<Item>, event: &AgentEvent) -> Change {
             output,
             is_error,
             details,
+            args,
             ..
         } => {
             let running = items.iter_mut().enumerate().rev().find_map(|(index, item)| match item {
@@ -75,7 +88,14 @@ pub fn apply(items: &mut Vec<Item>, event: &AgentEvent) -> Change {
             tool.output = Some(output.clone());
             tool.is_error = *is_error;
             tool.details.clone_from(details);
+            if let Some(args) = args {
+                tool.args.clone_from(args);
+            }
             Change::Updated(index)
+        }
+        AgentEvent::Approval { id, title } => {
+            items.push(Item::Approval { id: id.clone(), title: title.clone(), answer: None });
+            Change::Appended
         }
         AgentEvent::StepLimit => {
             items.push(Item::Notice("Stopped: step limit reached.".to_owned()));
@@ -110,6 +130,7 @@ mod tests {
             output: output.into(),
             is_error,
             details: Some(json!({"matches": 1})),
+            args: None,
         }
     }
 
@@ -171,5 +192,33 @@ mod tests {
         let mut items = Vec::new();
         apply(&mut items, &AgentEvent::StepLimit);
         assert!(matches!(items.as_slice(), [Item::Notice(_)]));
+    }
+
+    #[test]
+    fn a_tool_end_with_arguments_replaces_the_ones_from_its_start() {
+        let mut items = Vec::new();
+        apply(&mut items, &tool_start("t"));
+        let end = AgentEvent::ToolEnd {
+            id: "t".into(),
+            name: "edit".into(),
+            output: "ok".into(),
+            is_error: false,
+            details: None,
+            args: Some(json!({"old_string": "a", "new_string": "b"})),
+        };
+        apply(&mut items, &end);
+        let Item::Tool(tool) = &items[0] else { panic!("not a tool") };
+        assert_eq!(tool.args["new_string"], "b");
+    }
+
+    #[test]
+    fn an_approval_waits_until_answered_and_is_answered_once() {
+        let mut items = Vec::new();
+        let ask = AgentEvent::Approval { id: "a1".into(), title: "Run tests".into() };
+        assert_eq!(apply(&mut items, &ask), Change::Appended);
+        assert_eq!(answer_approval(&mut items, "a1", true), Some(0));
+        assert_eq!(answer_approval(&mut items, "a1", false), None);
+        assert_eq!(answer_approval(&mut items, "other", true), None);
+        assert!(matches!(&items[0], Item::Approval { answer: Some(true), .. }));
     }
 }

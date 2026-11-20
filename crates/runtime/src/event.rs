@@ -16,6 +16,15 @@ pub enum AgentEvent {
         is_error: bool,
         /// What the tool tells the UI beyond its text (the original tools' `details`).
         details: Option<serde_json::Value>,
+        /// The call's arguments, when they are only known now (a coding agent's edit knows its before and
+        /// after at the end). `None` leaves what the start said.
+        args: Option<serde_json::Value>,
+    },
+    /// Something a coding agent wants to do and asks first. The answer goes back through whoever holds the
+    /// request, by `id`.
+    Approval {
+        id: String,
+        title: String,
     },
     /// A model call failed for a passing reason and will be made again after `delay`.
     Retrying {

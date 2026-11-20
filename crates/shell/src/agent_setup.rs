@@ -36,6 +36,11 @@ pub fn agent_for(provider: &str, model: &str, workspace: &std::path::Path) -> Re
     Ok(build_agent(env::provider_for(provider)?, model, workspace, fallback_targets(&chosen)))
 }
 
+/// An agent that is never asked: a session needs one, but a coding agent answers instead.
+pub fn placeholder_agent(workspace: &std::path::Path) -> Result<Agent, String> {
+    Ok(build_agent(Arc::new(Demo), "none", workspace, Vec::new()))
+}
+
 fn build_agent(provider: Arc<dyn Provider>, model: &str, workspace: &std::path::Path, fallbacks: Vec<Target>) -> Agent {
     let retry = if env::auto_retry() { RetryPolicy::default() } else { RetryPolicy::once() };
     Agent::new(provider, model, Some(CODING_SYSTEM_PROMPT.to_owned()), Toolbox::coding(workspace))

@@ -128,11 +128,14 @@ impl ChatView {
     fn look_up_models(host: &ChatHost, window: &mut Window, cx: &mut Context<Self>) {
         let (found, models) = tokio::sync::oneshot::channel();
         host.runtime.spawn(async move {
-            let _ = found.send(vivianne_ai::host::discover_models(false).await);
+            let (discovered, agents) = tokio::join!(vivianne_ai::host::discover_models(false), vivianne_providers::acp::harnesses());
+            // Only agents whose launcher is here can run.
+            let agents: Vec<(String, String)> = agents.into_iter().filter(|a| a.available).map(|a| (a.id, a.name)).collect();
+            let _ = found.send((discovered, agents));
         });
         cx.spawn_in(window, async move |chat, cx| {
-            let Ok(discovered) = models.await else { return };
-            chat.update_in(cx, |chat, window, cx| chat.show_models(&discovered, window, cx)).ok();
+            let Ok((discovered, agents)) = models.await else { return };
+            chat.update_in(cx, |chat, window, cx| chat.show_models(&discovered, &agents, window, cx)).ok();
         })
         .detach();
     }
@@ -140,10 +143,11 @@ impl ChatView {
     fn show_models(
         &mut self,
         discovered: &[vivianne_ai::ai::model_discovery::DiscoveredModel],
+        agents: &[(String, String)],
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.models = choices(discovered);
+        self.models = choices(discovered, agents);
         let current = ModelChoice::value_of(&self.selection.provider, &self.selection.model);
         let items = SearchableVec::new(self.models.clone());
         self.picker.update(cx, |picker, cx| {
@@ -162,10 +166,46 @@ impl ChatView {
             self.push_item(Item::Notice("Wait for the reply to finish before switching models.".to_owned()), cx);
             return;
         }
+        if choice.is_agent() {
+            self.use_coding_agent(&choice, cx);
+            return;
+        }
         match crate::agent_setup::agent_for(&choice.provider, &choice.id, &self.host.workspace) {
             Ok(agent) => self.use_agent(agent, &choice, cx),
             Err(problem) => self.push_item(Item::Notice(format!("Can't use {}: {problem}", choice.name)), cx),
         }
+    }
+
+    /// Hand the thread to a coding agent. The conversation so far stays in the transcript; the agent starts
+    /// its own session the first time it is asked.
+    fn use_coding_agent(&mut self, choice: &ModelChoice, cx: &mut Context<Self>) {
+        let Some(backend) = crate::backend::get() else {
+            self.push_item(Item::Notice("Coding agents aren't available: the app's services didn't start.".to_owned()), cx);
+            return;
+        };
+        let workspace = self.host.workspace.clone();
+        match self.session.as_mut() {
+            Ok(session) => session.use_harness(&choice.id, backend.acp.clone(), workspace),
+            Err(_) => {
+                let Ok(agent) = crate::agent_setup::placeholder_agent(&self.host.workspace) else { return };
+                let mut session = Session::new(agent, self.host.runtime.clone());
+                session.use_harness(&choice.id, backend.acp.clone(), workspace);
+                self.session = Ok(session);
+            }
+        }
+        self.selection = Selection { provider: choice.provider.clone(), model: choice.id.clone() };
+        self.push_item(Item::Notice(format!("{} will work in this project's folder with its own tools, and asks before it acts.", choice.name)), cx);
+    }
+
+    /// The user's answer to a coding agent's request.
+    fn answer_approval(&mut self, id: &str, allow: bool, cx: &mut Context<Self>) {
+        if let Ok(session) = &self.session {
+            session.answer(id, allow);
+        }
+        if let Some(index) = items::answer_approval(&mut self.items, id, allow) {
+            self.scroller.update(cx, |scroller, cx| scroller.remeasure_items(index..index + 1, cx));
+        }
+        cx.notify();
     }
 
     fn use_agent(&mut self, agent: vivianne_runtime::Agent, choice: &ModelChoice, cx: &mut Context<Self>) {

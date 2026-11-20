@@ -8655,6 +8655,7 @@ dependencies = [
  "raw-window-handle",
  "serde_json",
  "tokio",
+ "tokio-util",
  "vivianne-ai",
  "vivianne-core",
  "vivianne-providers",
