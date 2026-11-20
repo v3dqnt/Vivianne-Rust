@@ -185,18 +185,22 @@ fn method_row(values: &Shared, id: &str, method: &AuthMethod) -> gpui_kit::AnyEl
     let (values, agent_id, method_id) = (values.clone(), id.to_owned(), method.id.clone());
     match (&method.kind, &method.command) {
         (AuthKind::Terminal, Some(command)) => {
-            let (copy, again, text) = (command.clone(), values.clone(), command.clone());
-            let agent = agent_id.clone();
+            let (copy, again, text, run) = (command.clone(), values.clone(), command.clone(), command.clone());
+            let (agent, here, here_id, here_values) = (agent_id.clone(), agent_id.clone(), agent_id.clone(), values.clone());
+            let name = agent_id.clone();
             div()
                 .flex()
                 .flex_col()
                 .gap_1()
-                .child(muted("Run this in a terminal, then check again:"))
+                .child(muted("Sign in with this command. It runs in a window here, and the status updates by itself:"))
                 .child(
                     h_flex()
                         .gap_2()
                         .items_center()
                         .child(mono(text))
+                        .child(Button::new(SharedString::from(format!("here-{here}-{method_id}"))).label("Sign in here").small().on_click(move |_, _, cx| {
+                            open_sign_in_window(&here_values, &here_id, &name, &run, cx);
+                        }))
                         .child(Button::new(SharedString::from(format!("copy-{agent_id}-{method_id}"))).label("Copy").small().ghost().on_click(move |_, _, cx| {
                             cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(copy.clone()));
                         }))
@@ -217,13 +221,25 @@ fn method_row(values: &Shared, id: &str, method: &AuthMethod) -> gpui_kit::AnyEl
     }
 }
 
+/// Opens the window that runs the agent's sign-in command in a terminal and shows the agent as signed in when
+/// it is.
+fn open_sign_in_window(values: &Shared, id: &str, name: &str, command: &str, cx: &mut App) {
+    let (shown, agent) = (values.clone(), id.to_owned());
+    let done: crate::signin::OnSignedIn = std::rc::Rc::new(move |cx| {
+        shown.borrow_mut().providers.agent_auth.insert(agent.clone(), AgentAuth::SignedIn);
+        cx.refresh_windows();
+    });
+    let label = values.borrow().providers.agents.as_ref().and_then(|list| list.iter().find(|a| a.id == id).map(|a| a.name.clone())).unwrap_or_else(|| name.to_owned());
+    crate::signin::open(id, &label, command, done, cx);
+}
+
 /// Asks the agent whether it is signed in.
 fn check_sign_in(values: &Shared, id: &str, cx: &mut App) {
     values.borrow_mut().providers.agent_auth.insert(id.to_owned(), AgentAuth::Checking);
     cx.refresh_windows();
     let (values, id) = (values.clone(), id.to_owned());
     let ask = id.clone();
-    backend::run(cx, async move { acp::check_auth(&ask).await }, move |result, cx| {
+    backend::run(cx, async move { acp::check_auth(&ask, acp::Depth::Thorough).await }, move |result, cx| {
         store_auth(&values, &id, result);
         cx.refresh_windows();
     });

@@ -9,6 +9,7 @@ mod transcript;
 
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use gpui_kit::component::combobox::{ComboboxEvent, ComboboxState};
@@ -99,11 +100,11 @@ impl ChatView {
         );
         let picker: Picker =
             cx.new(|cx| ComboboxState::new(SearchableVec::new(Vec::<ModelChoice>::new()), vec![], window, cx).searchable(true));
-        let picker_events = cx.subscribe_in(&picker, window, |chat, _picker, event, _window, cx| {
+        let picker_events = cx.subscribe_in(&picker, window, |chat, _picker, event, window, cx| {
             if let ComboboxEvent::Change(values) = event
                 && let Some(value) = values.first()
             {
-                chat.select_model(value, cx);
+                chat.select_model(value, window, cx);
             }
         });
         Self::look_up_models(&host, window, cx);
@@ -157,62 +158,113 @@ impl ChatView {
         cx.notify();
     }
 
+    /// Puts the picker's tick back on the model the thread is really using, after a pick that did not switch:
+    /// a tick left on the pick would make picking it again do nothing.
+    fn show_selection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let current = ModelChoice::value_of(&self.selection.provider, &self.selection.model);
+        self.picker.update(cx, |picker, cx| picker.set_selected_values(&[current], window, cx));
+    }
+
     /// Switch the thread to the picked model; the conversation so far stays.
-    fn select_model(&mut self, value: &str, cx: &mut Context<Self>) {
+    fn select_model(&mut self, value: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(choice) = self.models.iter().find(|m| m.value() == value).cloned() else {
             return;
         };
         if self.running {
             self.push_item(Item::Notice("Wait for the reply to finish before switching models.".to_owned()), cx);
+            self.show_selection(window, cx);
             return;
         }
         if choice.is_agent() {
-            self.use_coding_agent(&choice, cx);
+            self.use_coding_agent(&choice, window, cx);
             return;
         }
         match crate::agent_setup::agent_for(&choice.provider, &choice.id, &self.host.workspace) {
             Ok(agent) => self.use_agent(agent, &choice, cx),
-            Err(problem) => self.push_item(Item::Notice(format!("Can't use {}: {problem}", choice.name)), cx),
+            Err(problem) => {
+                self.push_item(Item::Notice(format!("Can't use {}: {problem}", choice.name)), cx);
+                self.show_selection(window, cx);
+            }
         }
     }
 
     /// Hand the thread to a coding agent, once it is known to be signed in: an agent that isn't would answer
     /// the first message with an authentication error.
-    fn use_coding_agent(&mut self, choice: &ModelChoice, cx: &mut Context<Self>) {
+    fn use_coding_agent(&mut self, choice: &ModelChoice, window: &mut Window, cx: &mut Context<Self>) {
         self.push_item(Item::Notice(format!("Checking that {} is signed in…", choice.name)), cx);
-        let (checked, answer) = tokio::sync::oneshot::channel();
         let id = choice.id.clone();
-        self.host.runtime.spawn(async move {
-            let _ = checked.send(vivianne_providers::acp::check_auth(&id).await);
-        });
+        let Some(answer) = crate::backend::spawn(async move { vivianne_providers::acp::check_auth(&id, vivianne_providers::acp::Depth::Quick).await }) else {
+            self.push_item(Item::Notice("Coding agents aren't available: the app's services didn't start.".to_owned()), cx);
+            self.show_selection(window, cx);
+            return;
+        };
         let choice = choice.clone();
-        cx.spawn(async move |chat, cx| {
+        cx.spawn_in(window, async move |chat, cx| {
             let Ok(result) = answer.await else { return };
-            chat.update(cx, |chat, cx| chat.after_sign_in_check(&choice, result, cx)).ok();
+            chat.update_in(cx, |chat, window, cx| chat.after_sign_in_check(&choice, result, window, cx)).ok();
         })
         .detach();
     }
 
-    /// Switches to the agent if it is signed in; otherwise says how to sign it in and stays on the current model.
-    fn after_sign_in_check(&mut self, choice: &ModelChoice, result: Result<vivianne_providers::acp::AuthState, String>, cx: &mut Context<Self>) {
+    /// Switches to the agent if it is signed in. Otherwise the picker goes back to the model in use and the
+    /// agent is signed in from here: in a window with its own terminal, or the browser the agent opens.
+    fn after_sign_in_check(
+        &mut self,
+        choice: &ModelChoice,
+        result: Result<vivianne_providers::acp::AuthState, String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         use vivianne_providers::acp::{AuthKind, AuthState};
         match result {
             Ok(AuthState::SignedIn) => self.switch_to_coding_agent(choice, cx),
             Ok(AuthState::NeedsSignIn(methods)) => {
-                let ways: Vec<String> = methods
-                    .iter()
-                    .map(|m| match (&m.kind, &m.command) {
-                        (AuthKind::Terminal, Some(command)) => format!("run `{command}` in a terminal"),
-                        _ => format!("use \"Sign in: {}\" in Settings, Providers, Coding agents", m.name),
-                    })
-                    .collect();
-                let how = if ways.is_empty() { "sign in to it once in a terminal".to_owned() } else { ways.join(", or ") };
-                self.push_item(Item::Notice(format!("{} needs you to sign in before it can be used: {how}. Then pick it again.", choice.name)), cx);
+                self.show_selection(window, cx);
+                let chat = cx.entity().downgrade();
+                let picked = choice.clone();
+                let switch: Rc<dyn Fn(&mut App)> = Rc::new(move |cx| {
+                    let _ = chat.update(cx, |chat, cx| chat.switch_to_coding_agent(&picked, cx));
+                });
+                let terminal = methods.iter().find_map(|m| (m.kind == AuthKind::Terminal).then(|| m.command.clone()).flatten());
+                let browser = methods.iter().find(|m| m.kind == AuthKind::Agent).map(|m| m.id.clone());
+                if let Some(command) = terminal {
+                    self.push_item(Item::Notice(format!("{} needs you to sign in. A window is opening to do it; this chat switches by itself once you have.", choice.name)), cx);
+                    crate::signin::open(&choice.id, &choice.name, &command, switch, cx);
+                } else if let Some(method) = browser {
+                    self.push_item(Item::Notice(format!("{} needs you to sign in. Finish in the browser window that opens; this chat switches by itself.", choice.name)), cx);
+                    self.sign_in_with_browser(choice, &method, window, cx);
+                } else {
+                    self.push_item(Item::Notice(format!("{} needs you to sign in, and offers no way Vivianne can run. Sign in to it once in a terminal.", choice.name)), cx);
+                }
             }
             Ok(AuthState::Failed(why)) | Err(why) => {
                 self.push_item(Item::Notice(format!("Can't use {}: {why} Set it up in Settings, Providers, Coding agents.", choice.name)), cx);
+                self.show_selection(window, cx);
             }
         }
+    }
+
+    /// Runs the agent's own sign-in (which opens a browser) and switches to it when that worked.
+    fn sign_in_with_browser(&mut self, choice: &ModelChoice, method: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let (id, method) = (choice.id.clone(), method.to_owned());
+        let Some(answer) = crate::backend::spawn(async move { vivianne_providers::acp::sign_in(&id, &method).await }) else { return };
+        let choice = choice.clone();
+        cx.spawn_in(window, async move |chat, cx| {
+            let Ok(result) = answer.await else { return };
+            chat.update_in(cx, |chat, window, cx| match result {
+                Ok(vivianne_providers::acp::AuthState::SignedIn) => chat.switch_to_coding_agent(&choice, cx),
+                Ok(vivianne_providers::acp::AuthState::NeedsSignIn(_)) => {
+                    chat.push_item(Item::Notice(format!("{} still isn't signed in. Pick it again to retry.", choice.name)), cx);
+                    chat.show_selection(window, cx);
+                }
+                Ok(vivianne_providers::acp::AuthState::Failed(why)) | Err(why) => {
+                    chat.push_item(Item::Notice(format!("Signing in to {} failed: {why}", choice.name)), cx);
+                    chat.show_selection(window, cx);
+                }
+            })
+            .ok();
+        })
+        .detach();
     }
 
     /// Hand the thread to a coding agent. The conversation so far stays in the transcript; the agent starts

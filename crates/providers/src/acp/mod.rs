@@ -35,7 +35,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use conn::{Conn, quiet, spawn, trace};
-pub use auth::{AuthKind, AuthMethod, AuthState, check as check_auth, options as sign_in_options, sign_in};
+pub use auth::{AuthKind, AuthMethod, AuthState, Depth, check as check_auth, options as sign_in_options, sign_in};
 pub use conn::trace_lines;
 pub use info::{AgentCommand, SessionInfo, context_usage};
 pub use install::InstallProgress;

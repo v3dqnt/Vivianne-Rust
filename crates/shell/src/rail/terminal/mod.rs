@@ -32,18 +32,29 @@ pub struct TerminalView {
     session: Result<Session, String>,
     ended: bool,
     focus: FocusHandle,
+    /// A size the view keeps, for a terminal that is not the rail's (it does not follow the window).
+    fixed: bool,
 }
 
 impl TerminalView {
     pub fn new(root: &Path, cx: &mut Context<Self>) -> Self {
-        let session = match Session::start(root, START_COLUMNS, START_LINES) {
+        Self::open(root, None, (START_COLUMNS, START_LINES), false, cx)
+    }
+
+    /// A terminal of a fixed size that runs `command` first, for a window of its own.
+    pub fn running(root: &Path, command: &str, (columns, lines): (u16, u16), cx: &mut Context<Self>) -> Self {
+        Self::open(root, Some(command), (columns, lines), true, cx)
+    }
+
+    fn open(root: &Path, command: Option<&str>, (columns, lines): (u16, u16), fixed: bool, cx: &mut Context<Self>) -> Self {
+        let session = match Session::start(root, columns, lines, command) {
             Ok((session, signals)) => {
                 Self::listen(signals, cx);
                 Ok(session)
             }
             Err(why) => Err(why),
         };
-        Self { session, ended: false, focus: cx.focus_handle() }
+        Self { session, ended: false, focus: cx.focus_handle(), fixed }
     }
 
     pub fn focus_handle(&self) -> &FocusHandle {
@@ -111,6 +122,9 @@ impl TerminalView {
 
     /// Keeps the shell's idea of its size in step with the window.
     fn fit(&mut self, window: &Window) {
+        if self.fixed {
+            return;
+        }
         let Ok(session) = &mut self.session else { return };
         let height = f32::from(window.viewport_size().height);
         let columns = (crate::rail::WIDTH - crate::rail::GAP - SIDE_CHROME) / CELL_WIDTH;

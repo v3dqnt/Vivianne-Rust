@@ -2,7 +2,7 @@
 
 mod files;
 mod git;
-mod terminal;
+pub(crate) mod terminal;
 
 use std::collections::HashSet;
 use std::path::PathBuf;

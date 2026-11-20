@@ -75,11 +75,13 @@ pub struct Screen {
 
 impl Session {
     /// Starts the user's shell in `dir`. The signals arrive on the returned receiver.
-    pub fn start(dir: &Path, columns: u16, lines: u16) -> Result<(Self, UnboundedReceiver<Signal>), String> {
+    /// Starts the user's shell in `dir`, or `command` through it (a program and its arguments as one line, so
+    /// `.cmd` shims and the PATH work as they do in a terminal; the shell stays open when it ends).
+    pub fn start(dir: &Path, columns: u16, lines: u16, command: Option<&str>) -> Result<(Self, UnboundedReceiver<Signal>), String> {
         let size = Size { columns, lines };
         let (tx, rx) = unbounded();
         let options = Options {
-            shell: Some(default_shell()),
+            shell: Some(shell_for(command)),
             working_directory: Some(dir.to_path_buf()),
             drain_on_exit: true,
             env: HashMap::new(),
@@ -155,6 +157,17 @@ impl Drop for Session {
 
 fn window_size(size: Size) -> WindowSize {
     WindowSize { num_lines: size.lines, num_cols: size.columns, cell_width: 7, cell_height: 16 }
+}
+
+/// The shell to start: the user's own, running `command` first when there is one.
+fn shell_for(command: Option<&str>) -> Shell {
+    let Some(command) = command else { return default_shell() };
+    if cfg!(windows) {
+        Shell::new("powershell.exe".to_owned(), vec!["-NoLogo".to_owned(), "-NoExit".to_owned(), "-Command".to_owned(), command.to_owned()])
+    } else {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned());
+        Shell::new(shell, vec!["-c".to_owned(), format!("{command}; exec \"$SHELL\"")])
+    }
 }
 
 fn default_shell() -> Shell {

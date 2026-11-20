@@ -50,3 +50,14 @@ pub fn run<T: Send + 'static>(
     })
     .detach();
 }
+
+/// Starts `work` on the async runtime and gives back where its answer will arrive, for code that waits for it
+/// inside its own async task. `None` if the services never opened.
+pub fn spawn<T: Send + 'static>(work: impl Future<Output = T> + Send + 'static) -> Option<futures::channel::oneshot::Receiver<T>> {
+    let backend = get()?;
+    let (tx, rx) = futures::channel::oneshot::channel();
+    backend.handle.spawn(async move {
+        let _ = tx.send(work.await);
+    });
+    Some(rx)
+}

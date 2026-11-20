@@ -178,6 +178,8 @@ pub(super) struct Conn {
     pub cost: Mutex<f64>,
     /// What the agent has told us about the session: its commands, mode, options and title.
     pub info: Mutex<SessionInfo>,
+    /// What the agent last said about being signed in (`auth/status_update`'s `state`), when it says.
+    pub auth_state: Mutex<Option<String>>,
     /// The process, when there is one. A test agent has none.
     _child: tokio::sync::Mutex<Option<tokio::process::Child>>,
     tree: TreeKillOnDrop,
@@ -285,6 +287,17 @@ impl Conn {
         self.remember_stderr(line);
     }
 
+    /// What the agent said about being signed in, waiting a moment for it if it has not said yet.
+    pub async fn auth_state_soon(&self) -> Option<String> {
+        for _ in 0..20 {
+            if let Some(state) = self.auth_state.lock().unwrap_or_else(PoisonError::into_inner).clone() {
+                return Some(state);
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        None
+    }
+
     pub fn stderr_tail(&self) -> String {
         self.stderr.lock().unwrap_or_else(PoisonError::into_inner).clone()
     }
@@ -390,6 +403,7 @@ pub(super) fn wire(
         seen: AtomicUsize::new(0),
         cost: Mutex::new(0.0),
         info: Mutex::new(SessionInfo::default()),
+        auth_state: Mutex::new(None),
         _child: tokio::sync::Mutex::new(child),
         tree,
         stderr: Mutex::new(String::new()),
@@ -421,6 +435,13 @@ async fn read_loop(reader: Box<dyn AsyncBufRead + Unpin + Send>, conn: Weak<Conn
             (None, Some(id)) => answer(&pending, &id, &msg),
             // It asks us something.
             (Some(method), Some(id)) => ask(&conn, &sink, method, id, msg.get("params").cloned().unwrap_or(Value::Null)).await,
+            // A notification: whether the agent is signed in.
+            (Some("auth/status_update"), None) => {
+                let state = msg.pointer("/params/state").and_then(Value::as_str).map(str::to_owned);
+                if let (Some(conn), Some(state)) = (conn.upgrade(), state) {
+                    *conn.auth_state.lock().unwrap_or_else(PoisonError::into_inner) = Some(state);
+                }
+            }
             // A notification: the session's progress.
             (Some("session/update"), None) => {
                 if let Some(sink) = sink.lock().unwrap_or_else(PoisonError::into_inner).as_ref() {

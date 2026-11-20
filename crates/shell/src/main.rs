@@ -11,6 +11,7 @@ mod demo;
 mod home;
 mod rail;
 mod settings;
+mod signin;
 mod theme;
 
 use std::sync::Arc;

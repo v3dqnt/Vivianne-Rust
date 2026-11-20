@@ -119,11 +119,19 @@ fn says_sign_in(message: &str) -> bool {
 /// Finds out for certain whether the agent is signed in: opens a session, then asks it one tiny question,
 /// because some agents only check their credentials when they are asked something. A permission asked
 /// during the question is refused, and plan mode keeps it from changing anything.
-async fn verify(conn: &std::sync::Arc<Conn>, harness: &Harness, cwd: &str) -> AuthState {
+async fn verify(conn: &std::sync::Arc<Conn>, harness: &Harness, cwd: &str, depth: Depth) -> AuthState {
     let session = match open_probe(conn, harness, cwd).await {
         Ok(session) => session,
         Err(state) => return state,
     };
+    // An agent that says whether it is signed in answers the quick check without a question (which costs a
+    // real prompt: on the Claude agent about 60,000 tokens of context).
+    if depth == Depth::Quick
+        && let Some(state) = conn.auth_state_soon().await
+    {
+        close_session(conn, &session).await;
+        return if state == "authenticated" { AuthState::SignedIn } else { AuthState::NeedsSignIn(methods_in(&conn.caps(), conn.speaks_v2(), harness)) };
+    }
     let (events, mut seen) = mpsc::unbounded_channel();
     let drain = tokio::spawn(async move {
         while let Some(event) = seen.recv().await {
@@ -145,10 +153,7 @@ async fn verify(conn: &std::sync::Arc<Conn>, harness: &Harness, cwd: &str) -> Au
     timer.abort();
     drop(events);
     let _ = drain.await;
-    // The check is not a conversation: close it where the agent can.
-    if conn.cap("/capabilities/session", "/agentCapabilities/sessionCapabilities/close") {
-        let _ = conn.request("session/close", json!({ "sessionId": session }), Some(Duration::from_secs(10))).await;
-    }
+    close_session(conn, &session).await;
     match end.outcome {
         Outcome::Finished => AuthState::SignedIn,
         Outcome::Failed(message) if says_sign_in(&message) => AuthState::NeedsSignIn(methods_in(&conn.caps(), conn.speaks_v2(), harness)),
@@ -157,13 +162,30 @@ async fn verify(conn: &std::sync::Arc<Conn>, harness: &Harness, cwd: &str) -> Au
     }
 }
 
+/// The check is not a conversation: close its session where the agent can.
+async fn close_session(conn: &Conn, session: &str) {
+    if conn.cap("/capabilities/session", "/agentCapabilities/sessionCapabilities/close") {
+        let _ = conn.request("session/close", json!({ "sessionId": session }), Some(Duration::from_secs(10))).await;
+    }
+}
+
+/// How sure a check has to be.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Depth {
+    /// Believe what the agent says about being signed in; ask it a question only if it says nothing. Fast and
+    /// free, but an agent can say "signed in" about a login that has since expired.
+    Quick,
+    /// Always ask the agent one tiny question. A few seconds and a real prompt.
+    Thorough,
+}
+
 fn working_folder() -> String {
     std::env::current_dir().map_or_else(|_| ".".to_owned(), |d| d.display().to_string())
 }
 
 /// Whether the agent can be used now, asked of a fresh process with a real question (it costs one tiny
 /// prompt).
-pub async fn check(id: &str) -> Result<AuthState, String> {
+pub async fn check(id: &str, depth: Depth) -> Result<AuthState, String> {
     let harness = find(id).await?;
     if !harness.available {
         return Err(format!("{} isn't installed.", harness.name));
@@ -173,7 +195,7 @@ pub async fn check(id: &str) -> Result<AuthState, String> {
     }
     let cwd = working_folder();
     let conn = spawn(&harness, &cwd).await?;
-    let state = verify(&conn, &harness, &cwd).await;
+    let state = verify(&conn, &harness, &cwd, depth).await;
     trace(&harness.name, format!("sign-in check: {state:?}"));
     Ok(state)
 }
@@ -209,7 +231,7 @@ pub async fn sign_in(id: &str, method_id: &str) -> Result<AuthState, String> {
     let call = if v2 { "auth/login" } else { "authenticate" };
     trace(&harness.name, format!("signing in with method {method_id}"));
     conn.request(call, json!({ "methodId": method_id }), Some(SIGN_IN_TIMEOUT)).await.map_err(|e: RpcError| explain_start_failure(&harness, &e.to_string()))?;
-    Ok(verify(&conn, &harness, &cwd).await)
+    Ok(verify(&conn, &harness, &cwd, Depth::Thorough).await)
 }
 
 #[cfg(test)]
@@ -261,7 +283,7 @@ mod tests {
         let (conn, mut agent) = ready_agent().await;
         let asked = tokio::spawn({
             let conn = conn.clone();
-            async move { verify(&conn, &harness("claude-acp"), "/p").await }
+            async move { verify(&conn, &harness("claude-acp"), "/p", Depth::Thorough).await }
         });
         let request = agent.recv().await;
         assert_eq!(request["method"], "session/new");
@@ -276,7 +298,7 @@ mod tests {
         let (conn, mut agent) = ready_agent().await;
         let asked = tokio::spawn({
             let conn = conn.clone();
-            async move { verify(&conn, &harness("claude-acp"), "/p").await }
+            async move { verify(&conn, &harness("claude-acp"), "/p", Depth::Thorough).await }
         });
         let open = agent.open("probe").await;
         assert_eq!(open["method"], "session/new");
@@ -291,7 +313,7 @@ mod tests {
         let (conn, mut agent) = ready_agent().await;
         let asked = tokio::spawn({
             let conn = conn.clone();
-            async move { verify(&conn, &harness("claude-acp"), "/p").await }
+            async move { verify(&conn, &harness("claude-acp"), "/p", Depth::Thorough).await }
         });
         agent.open("probe").await;
         let prompt = agent.prompt().await;
@@ -300,6 +322,26 @@ mod tests {
         agent.update("probe", json!({"sessionUpdate": "state_update", "state": "idle"})).await;
         agent.answer(&prompt["id"], json!({})).await;
         assert_eq!(asked.await.unwrap_or(AuthState::Failed(String::new())), AuthState::SignedIn);
+    }
+
+    #[tokio::test]
+    async fn a_quick_check_believes_what_the_agent_says_without_asking_it_a_question() {
+        for (state, signed_in) in [("authenticated", true), ("unauthenticated", false)] {
+            let (conn, mut agent) = ready_agent().await;
+            let asked = tokio::spawn({
+                let conn = conn.clone();
+                async move { verify(&conn, &harness("claude-acp"), "/p", Depth::Quick).await }
+            });
+            agent.send(json!({"jsonrpc": "2.0", "method": "auth/status_update", "params": {"state": state}})).await;
+            agent.open("probe").await;
+            let result = asked.await.unwrap_or(AuthState::Failed(String::new()));
+            if signed_in {
+                assert_eq!(result, AuthState::SignedIn);
+            } else {
+                assert!(matches!(result, AuthState::NeedsSignIn(_)), "{result:?}");
+            }
+            assert!(agent.next_within(150).await.is_none_or(|frame| frame["method"] != "session/prompt"), "no question was asked");
+        }
     }
 
     #[test]
