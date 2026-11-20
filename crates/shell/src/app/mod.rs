@@ -73,6 +73,7 @@ impl AppView {
             _rail_events: rail_events,
         };
         app.reload_saved();
+        crate::backend::start_memory(vec![app.workspace.display().to_string()]);
         app.new_thread(window, cx);
         app
     }

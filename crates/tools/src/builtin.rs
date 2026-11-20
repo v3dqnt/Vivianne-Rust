@@ -31,6 +31,11 @@ pub struct ToolResult {
 #[async_trait]
 pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
+    /// The tool's definition (`name`, `description`, `parameters`), for a tool defined outside this crate. The ones
+    /// here are looked up by name instead.
+    fn definition(&self) -> Option<serde_json::Value> {
+        None
+    }
     async fn execute(&self, args: &serde_json::Value, cwd: &str) -> ToolResult;
 }
 

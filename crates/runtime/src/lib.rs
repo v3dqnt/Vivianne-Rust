@@ -19,6 +19,6 @@ pub mod title;
 mod prompt;
 pub mod resilience;
 
-pub use agent::{Agent, AgentError, Target};
+pub use agent::{Agent, AgentError, ContextSource, Target};
 pub use event::AgentEvent;
 pub use prompt::coding_system_prompt;

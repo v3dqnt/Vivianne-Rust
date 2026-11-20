@@ -110,10 +110,9 @@ impl Toolbox {
         self.tools
             .iter()
             .filter_map(|tool| {
-                let found = originals
-                    .iter()
-                    .chain(own.iter())
-                    .find(|d| d["name"] == tool.name())?;
+                let found = tool
+                    .definition()
+                    .or_else(|| originals.iter().chain(own.iter()).find(|d| d["name"] == tool.name()).cloned())?;
                 Some(ToolDef {
                     name: tool.name().to_owned(),
                     description: found["description"].as_str().unwrap_or_default().to_owned(),

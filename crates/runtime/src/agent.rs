@@ -83,6 +83,25 @@ pub struct Agent {
     instructions_from: Option<(Vec<String>, String)>,
     /// What those files said at the start of the current run.
     instructions: Mutex<Option<String>>,
+    /// Asked for a block of standing context (core memory) at the start of every run.
+    context_source: Option<ContextSource>,
+    context: Mutex<Option<String>>,
+}
+
+/// Something that can say what the agent should always know, read at the start of every run.
+#[derive(Clone)]
+pub struct ContextSource(Arc<dyn Fn() -> futures::future::BoxFuture<'static, Option<String>> + Send + Sync>);
+
+impl ContextSource {
+    pub fn new(source: impl Fn() -> futures::future::BoxFuture<'static, Option<String>> + Send + Sync + 'static) -> Self {
+        Self(Arc::new(source))
+    }
+}
+
+impl std::fmt::Debug for ContextSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ContextSource")
+    }
 }
 
 /// The first thing a stream said, and the rest of it.
@@ -107,12 +126,21 @@ impl Agent {
             window: AtomicU32::new(0),
             instructions_from: None,
             instructions: Mutex::new(None),
+            context_source: None,
+            context: Mutex::new(None),
         }
     }
 
     /// Changes what the agent is for: its instructions and the tools it may use.
     pub fn set_mode(&self, mode: Mode) {
         *self.mode.lock().unwrap_or_else(PoisonError::into_inner) = mode;
+    }
+
+    /// The provider and model the agent answers with first.
+    #[must_use]
+    pub fn primary(&self) -> (String, String) {
+        let target = &self.targets[0];
+        (target.provider.id().to_owned(), target.model.clone())
     }
 
     /// Tells the agent how large the model's context window is, so it can condense the conversation before the
@@ -143,7 +171,8 @@ impl Agent {
     /// The system prompt as sent: the standing instructions, the project's, then the mode's.
     fn system_prompt(&self, mode: Mode) -> Option<String> {
         let project = self.instructions.lock().unwrap_or_else(PoisonError::into_inner).clone();
-        let parts: Vec<&str> = [self.system.as_deref(), project.as_deref(), mode.prompt_section()].into_iter().flatten().collect();
+        let standing = self.context.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        let parts: Vec<&str> = [self.system.as_deref(), project.as_deref(), standing.as_deref(), mode.prompt_section()].into_iter().flatten().collect();
         (!parts.is_empty()).then(|| parts.join("\n\n"))
     }
 
@@ -174,6 +203,14 @@ impl Agent {
     #[must_use]
     pub fn with_instructions(mut self, folders: Vec<String>) -> Self {
         self.instructions_from = Some((folders, uuid::Uuid::new_v4().to_string()));
+        self
+    }
+
+    /// Adds a block of standing context (such as core memory) to the system prompt, asked for at the start of every
+    /// run so a change lands on the next message.
+    #[must_use]
+    pub fn with_context(mut self, source: ContextSource) -> Self {
+        self.context_source = Some(source);
         self
     }
 
@@ -220,6 +257,10 @@ impl Agent {
         if let Some((folders, key)) = &self.instructions_from {
             let loaded = crate::instructions::load_for(Some(key), folders).await;
             *self.instructions.lock().unwrap_or_else(PoisonError::into_inner) = loaded;
+        }
+        if let Some(source) = &self.context_source {
+            let standing = (source.0)().await;
+            *self.context.lock().unwrap_or_else(PoisonError::into_inner) = standing;
         }
         let mut attempts = Attempts::default();
         let mut condensed_for_overflow = false;
@@ -830,6 +871,17 @@ mod tests {
         agent.run(&mut history, &tx, Thinking::default()).await.unwrap();
         let sent = &provider.seen.lock().unwrap()[0].messages;
         assert_eq!(sent[2].tool_call_id.as_deref(), Some("c"), "the call has an answer right after it");
+    }
+
+    #[tokio::test]
+    async fn standing_context_is_asked_for_at_the_start_of_a_run_and_joins_the_system_prompt() {
+        let provider = Scripted::new(vec![vec![ChatEvent::Done]]);
+        let agent = Agent::new(provider.clone(), "m", Some("Be brief.".to_owned()), toolbox())
+            .with_context(ContextSource::new(|| Box::pin(async { Some("<core_memory>prefers tabs</core_memory>".to_owned()) })));
+        let (tx, _rx) = unbounded_channel();
+        agent.run(&mut user("x"), &tx, Thinking::default()).await.unwrap();
+        let system = provider.seen.lock().unwrap()[0].system.clone().unwrap();
+        assert!(system.starts_with("Be brief.") && system.contains("prefers tabs"));
     }
 
     #[tokio::test]

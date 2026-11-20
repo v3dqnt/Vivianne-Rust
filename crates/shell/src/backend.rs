@@ -13,6 +13,8 @@ use vivianne_providers::acp::Acp;
 
 pub struct Backend {
     handle: Handle,
+    /// The service registry the provider layer and memory use to find the keys.
+    pub events: Events,
     pub hub: Arc<Hub>,
     /// The coding agents that are running.
     pub acp: Arc<Acp>,
@@ -26,12 +28,19 @@ pub fn init(runtime: &Runtime) {
     let hub = runtime.block_on(Hub::start(&events));
     // Usage is kept in memory and written on a timer, so the last of a session is not lost to a crash.
     runtime.spawn(usage_store::flush_periodically());
-    let _ = BACKEND.set(Backend { handle: runtime.handle().clone(), hub, acp: Arc::new(Acp::new()) });
+    let _ = BACKEND.set(Backend { handle: runtime.handle().clone(), events, hub, acp: Arc::new(Acp::new()) });
 }
 
 #[must_use]
 pub fn get() -> Option<&'static Backend> {
     BACKEND.get()
+}
+
+/// Starts memory's background tidying for these project folders: it runs while nothing is working.
+pub fn start_memory(projects: Vec<String>) {
+    let Some(backend) = get() else { return };
+    let _entered = backend.handle.enter();
+    vivianne_memory::sleep::start(backend.events.clone(), projects);
 }
 
 /// Starts a dev server. It is a child process watched by tasks on the async runtime, so it is started with that

@@ -4,10 +4,11 @@
 use std::sync::Arc;
 
 use tokio::runtime::Runtime;
+use vivianne_ai::host::ModelRef;
 use vivianne_providers::env::{self, Selection};
 use vivianne_providers::Provider;
 use vivianne_runtime::resilience::RetryPolicy;
-use vivianne_runtime::{Agent, Target, coding_system_prompt};
+use vivianne_runtime::{Agent, ContextSource, Target, coding_system_prompt};
 use vivianne_tools::Toolbox;
 
 use crate::chat::ChatSession;
@@ -43,7 +44,18 @@ pub fn placeholder_agent(workspace: &std::path::Path) -> Result<Agent, String> {
 
 fn build_agent(provider: Arc<dyn Provider>, model: &str, workspace: &std::path::Path, fallbacks: Vec<Target>) -> Agent {
     let retry = if env::auto_retry() { RetryPolicy::default() } else { RetryPolicy::once() };
-    Agent::new(provider, model, Some(coding_system_prompt(workspace)), Toolbox::coding(workspace))
+    let mut tools = Toolbox::coding(workspace);
+    let root = workspace.display().to_string();
+    // The project's memory: tools the model can use, and the standing facts that are in every prompt.
+    if let Some(backend) = crate::backend::get() {
+        let reflecting = ModelRef { id: model.to_owned(), name: model.to_owned(), provider: provider.id().to_owned(), ..ModelRef::default() };
+        vivianne_memory::agent::add_tools(&mut tools, &root, &backend.events, reflecting);
+    }
+    Agent::new(provider, model, Some(coding_system_prompt(workspace)), tools)
+        .with_context(ContextSource::new(move || {
+            let root = root.clone();
+            Box::pin(async move { vivianne_memory::agent::core_block(&root).await })
+        }))
         .with_instructions(vec![workspace.display().to_string()])
         .with_fallbacks(fallbacks)
         .with_retry(retry)

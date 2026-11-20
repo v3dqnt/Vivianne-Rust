@@ -13,6 +13,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use vivianne_ai::ai::types::{CostBreakdown, Usage};
+use vivianne_ai::host::ModelRef;
 use vivianne_ai::inference::usage_store;
 use vivianne_core::{Message, Mode, Role, Thinking};
 use vivianne_providers::acp::{Acp, AcpEvent, Line, Outcome, PermissionRequest, PromptPart, TurnRequest};
@@ -155,12 +156,21 @@ impl Session {
                 let agent = agent.clone();
                 let (events_tx, watcher) = watch_turn(self.runtime.handle(), self.thread.clone(), events_tx);
                 let (folder, thread) = (self.folder.display().to_string(), self.thread.clone());
+                let (provider, model) = agent.primary();
+                let model = ModelRef { id: model.clone(), name: model, provider, ..ModelRef::default() };
                 self.task = Some(self.runtime.spawn(async move {
                     let started = Instant::now();
+                    // Memory tidies itself while nothing is working; this says something is.
+                    let _working = vivianne_memory::sleep::Working::begin();
                     // A baseline to compare the run against, and a snapshot of what it left, so it can be undone.
                     checkpoints::before_turn(&folder, &thread).await;
+                    let first_new = history.len();
                     let result = agent.run(&mut history, &events_tx, thinking).await;
                     checkpoints::after_turn(&folder, &thread).await;
+                    // What the run did is noted in the project's memory (when memory is on for it).
+                    if let Some(backend) = crate::backend::get() {
+                        vivianne_memory::agent::after_run(&folder, &backend.events, &model, &history[first_new..]).await;
+                    }
                     drop(events_tx);
                     let error = result.err().map(|e| e.to_string());
                     watcher.finish(started, error.as_deref()).await;

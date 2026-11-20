@@ -1,4 +1,4 @@
-﻿[workspace]
+[workspace]
 resolver = "2"
 members = [
     "crates/core",
@@ -10,6 +10,7 @@ members = [
     "crates/cli",
     "crates/ai",
     "crates/telemetry",
+    "crates/memory",
     "crates/shell",
 ]
 
@@ -35,6 +36,7 @@ vivianne-runtime = { path = "crates/runtime" }
 vivianne-providers = { path = "crates/providers" }
 vivianne-ai = { path = "crates/ai" }
 vivianne-telemetry = { path = "crates/telemetry" }
+vivianne-memory = { path = "crates/memory" }
 vivianne-tools = { path = "crates/tools" }
 vivianne-plugins = { path = "crates/plugins" }
 vivianne-app-api = { path = "crates/app-api" }
