@@ -68,6 +68,7 @@ pub fn selection() -> Result<Selection, String> {
 
 /// The models to fall back to, in order, from the old app's settings (`fallbackModel`, then the
 /// `fallbackModels` list). Entries whose provider has no key are left out.
+#[must_use]
 pub fn fallbacks() -> Vec<Selection> {
     fallbacks_from(&settings_blocking()).into_iter().filter(|s| is_usable(&s.provider)).collect()
 }

@@ -64,6 +64,30 @@ pub fn parse_config(v: Option<&serde_json::Value>) -> Config {
     }
 }
 
+fn model_to_value(m: &ModelRef) -> serde_json::Value {
+    serde_json::json!({
+        "id": m.id, "name": m.name, "api": m.api, "provider": m.provider, "baseUrl": m.base_url,
+        "maxTokens": m.max_tokens, "contextWindow": m.context_window,
+    })
+}
+
+/// Write the routing setting, leaving the rest of settings as it is.
+pub async fn save_config(cfg: &Config) -> Result<(), String> {
+    let tier = |m: &Option<ModelRef>| m.as_ref().map(model_to_value);
+    let value = serde_json::json!({
+        "enabled": cfg.enabled,
+        "auto": cfg.auto,
+        "quick": tier(&cfg.quick),
+        "tiers": { "easy": tier(&cfg.tiers[0]), "medium": tier(&cfg.tiers[1]), "hard": tier(&cfg.tiers[2]) },
+    });
+    crate::host::update_settings(move |settings| {
+        if let Some(object) = settings.as_object_mut() {
+            object.insert("routing".to_owned(), value);
+        }
+    })
+    .await
+}
+
 /// The model for a task of this difficulty, with no I/O. A level without its
 /// own model uses the nearest configured one that is not smaller than it
 /// (a hard task is never handed a smaller model than the tiers offer for it),
@@ -332,6 +356,24 @@ mod tests {
         assert_eq!((q.id.as_str(), q.provider.as_str(), q.max_tokens, q.context_window), ("nvidia/nemotron-3-nano", "nebius", 4096, 131072));
         assert!(!parse_config(None).enabled);
         assert!(parse_config(Some(&serde_json::json!({ "enabled": true, "quick": { "id": "x" } }))).quick.is_none());
+    }
+
+    #[test]
+    fn a_saved_routing_setting_reads_back_the_same() {
+        let cfg = Config {
+            enabled: true,
+            auto: true,
+            quick: Some(model("q", "nebius")),
+            tiers: [Some(model("e", "openai")), None, Some(model("h", "anthropic"))],
+        };
+        let value = serde_json::json!({
+            "enabled": cfg.enabled, "auto": cfg.auto, "quick": cfg.quick.as_ref().map(model_to_value),
+            "tiers": {"easy": cfg.tiers[0].as_ref().map(model_to_value), "medium": null, "hard": cfg.tiers[2].as_ref().map(model_to_value)},
+        });
+        let back = parse_config(Some(&value));
+        assert!(back.enabled && back.auto);
+        assert_eq!(back.quick.map(|m| m.id), Some("q".to_owned()));
+        assert_eq!(back.tiers.each_ref().map(|t| t.as_ref().map(|m| m.id.clone())), [Some("e".to_owned()), None, Some("h".to_owned())]);
     }
 
     #[test]

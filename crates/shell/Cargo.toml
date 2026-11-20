@@ -32,6 +32,7 @@ serde_json.workspace = true
 gpui-kit = "=0.9.1"
 raw-window-handle = "0.6"
 alacritty_terminal = "0.25"
+which = "7"
 
 [target.'cfg(windows)'.dependencies]
 # Win32 calls for the overlay spike.

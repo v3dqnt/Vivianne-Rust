@@ -1,8 +1,9 @@
 //! The Settings dialog: a page list on the left, the page on the right.
 //! Pages follow the old app. Values live in memory only for now (see `values`).
 
-mod demo;
+mod defaults;
 mod pages;
+mod provider_state;
 mod values;
 mod widgets;
 
@@ -24,7 +25,7 @@ const SIDEBAR_WIDTH: f32 = 220.0;
 pub fn open(window: &mut Window, cx: &mut App) {
     // Created once per opening, so edits survive the dialog being rebuilt.
     let values = Rc::new(RefCell::new(Values::default()));
-    demo::fill(&mut values.borrow_mut());
+    defaults::fill(&mut values.borrow_mut());
     window.open_dialog(cx, move |dialog, _window, _cx| {
         let settings = Settings::new("settings")
             .sidebar_width(px(SIDEBAR_WIDTH))

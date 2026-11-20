@@ -48,3 +48,7 @@ function that took nine arguments now takes a `GoogleModel`, an `unwrap` after a
 `embedding` and `local_onnx` ask the app's memory store to re-embed through the `memory-reembed` event;
 there is no memory store in the new app yet, so nothing answers. `host::background_model` returns the model
 it is given: cost-aware routing is not part of the new app.
+
+`src/providers.rs` is the keys the user has (save, delete, extra keys with cooldowns, ChatGPT plan sign-in) that
+Settings → Providers talks to. `src/custom_providers.rs` is the providers the user defines. `host::update_settings`
+changes `settings.json` under one lock and writes it atomically.

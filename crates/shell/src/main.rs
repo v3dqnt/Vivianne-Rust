@@ -5,6 +5,7 @@
 
 mod agent_setup;
 mod app;
+mod backend;
 mod chat;
 mod demo;
 mod home;
@@ -30,6 +31,7 @@ fn main() {
             std::process::exit(1);
         }
     };
+    backend::init(&runtime);
     let workspace = match std::env::current_dir() {
         Ok(dir) => dir,
         Err(error) => {

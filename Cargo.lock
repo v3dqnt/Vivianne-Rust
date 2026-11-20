@@ -8621,8 +8621,10 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
+ "tokio-util",
  "vivianne-ai",
  "vivianne-core",
+ "which 7.0.3",
 ]
 
 [[package]]
@@ -8658,6 +8660,7 @@ dependencies = [
  "vivianne-providers",
  "vivianne-runtime",
  "vivianne-tools",
+ "which 7.0.3",
  "windows 0.61.3",
 ]
 

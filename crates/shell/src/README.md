@@ -10,3 +10,4 @@
 - `rail/`: Overview, Files, Preview and Terminal beside a chat.
 - `settings/`: the Settings dialog.
 - `bin/`: throwaway spike binaries.
+- `backend.rs`: the key store and coding-agent manager opened at start, and `run` to do async work from the UI.

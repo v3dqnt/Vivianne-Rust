@@ -85,14 +85,27 @@ pub fn remember_last_model(provider: &str, model: &str) -> Result<(), String> {
     std::fs::write(settings_path()?, text).map_err(|e| e.to_string())
 }
 
-/// Replace `~/.viv/agent/settings.json`.
+/// Replace `~/.viv/agent/settings.json`, through a temp file and a rename so a crash never leaves
+/// half a file. Prefer [`update_settings`], which also keeps two writers from losing each other's change.
 pub async fn save_settings_json(settings: &Value) -> Result<(), String> {
     let path = settings_path()?;
-    if let Some(dir) = path.parent() {
-        tokio::fs::create_dir_all(dir).await.map_err(|e| e.to_string())?;
+    let settings = settings.clone();
+    tokio::task::spawn_blocking(move || crate::paths::write_json_atomic(&path, &settings)).await.map_err(|e| e.to_string())?
+}
+
+static SETTINGS_WRITE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Read the settings, let `change` edit them, and write them back, all under one lock. Everything
+/// else in the file is kept as it is. (The old app rewrote the whole file from a copy fetched
+/// earlier, so a change made in between was silently undone.)
+pub async fn update_settings(change: impl FnOnce(&mut Value) + Send) -> Result<(), String> {
+    let _guard = SETTINGS_WRITE.lock().await;
+    let mut settings = read_settings_json().await;
+    if !settings.is_object() {
+        settings = json!({});
     }
-    let text = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
-    tokio::fs::write(path, text).await.map_err(|e| e.to_string())
+    change(&mut settings);
+    save_settings_json(&settings).await
 }
 
 // ── Provider keys ───────────────────────────────────────────────────────────

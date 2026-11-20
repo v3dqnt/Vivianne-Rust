@@ -3,6 +3,7 @@
 //! Every real provider is Vivianne's old provider layer (`vivianne-ai`), reached through
 //! [`ai_provider::AiProvider`]. [`env`] picks one from environment variables.
 
+pub mod acp;
 pub mod ai_provider;
 pub mod env;
 

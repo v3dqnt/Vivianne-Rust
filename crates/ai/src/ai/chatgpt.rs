@@ -254,7 +254,7 @@ pub struct ChatGptStatus {
     pub manage_url: &'static str,
 }
 
-async fn status(app: &Events) -> ChatGptStatus {
+pub async fn status(app: &Events) -> ChatGptStatus {
     let account = load_account();
     let auth = crate::ai::auth::wait_for_state(app).await;
     let signed_in = matches!(auth.store.read(PROVIDER).await, Ok(Some(crate::ai::auth::Credential::OAuth(_))));
@@ -495,4 +495,9 @@ mod tests {
         ]});
         assert_eq!(parse_models(&body), vec![("gpt-6".into(), "GPT-6".into()), ("gpt-6-mini".into(), "gpt-6-mini".into())]);
     }
+}
+
+/// Open the page where the weekly plan limit for Vivianne is set.
+pub fn manage_usage() -> Result<(), String> {
+    open::that(MANAGE_URL).map_err(|e| format!("Couldn't open {MANAGE_URL}: {e}"))
 }

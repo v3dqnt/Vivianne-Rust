@@ -10,3 +10,4 @@ The Settings dialog (Kit `Settings`): a page list on the left, the page on the r
   into `~/.viv` (the old app's format) comes with the settings store.
 - `demo.rs`: the sample data that fills `Values` until real data is wired in.
 - `widgets.rs`: shared building blocks (text styles, switch/dropdown/input fields bound to `Values`, buttons).
+- `provider_state.rs`: what the Providers page shows and edits, read from where the keys and settings live.
