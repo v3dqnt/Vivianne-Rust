@@ -170,6 +170,12 @@ impl Render for AppView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let rows = self.thread_rows(cx);
         self.home.update(cx, |home, cx| home.set_threads(rows, cx));
+        if let Page::Thread(index) = self.page
+            && let Some(thread) = self.threads.get(index)
+        {
+            let context = thread.chat.read(cx).context();
+            self.rail.update(cx, |rail, cx| rail.set_context(context, cx));
+        }
         div()
             .size_full()
             .flex()

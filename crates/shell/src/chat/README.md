@@ -5,8 +5,9 @@ unit tested.
 
 - `mod.rs`: `ChatView`: layout, sending and stopping a run, attaching files, wiring agent events into the
   transcript, keeping the view pinned to the bottom.
-- `session.rs`: conversation history plus the agent run on tokio; hands the UI an event channel.
-- `composer/`: the composer card (attachments, thinking and model menus, voice, send and stop); see its README.
+- `session.rs`: the mode (also sent to a coding agent as plan mode when it may not write), the context breakdown,
+  conversation history plus the agent run on tokio; hands the UI an event channel.
+- `composer/`: the composer card (attachments, mode, thinking and model menus, voice, send and stop); see its README.
 - `items.rs`: transcript items and how agent events change them (tested).
 - `transcript.rs`: draws one item: user bubble, assistant reply as markdown (Kit `TextView`, selectable,
   with code blocks), tool row with scrollable output, notice.

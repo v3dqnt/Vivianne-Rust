@@ -14,7 +14,7 @@ use gpui_kit::component::{Icon, IconName, Sizable as _};
 use gpui_kit::prelude::*;
 use gpui_kit::{Anchor, Context, ExternalPaths, Focusable as _, Hsla, Window, div, px, rgb};
 
-use super::{Thinking, thinking_label};
+use super::{Mode, Thinking, thinking_label};
 use super::attachments::size_label;
 use crate::chat::{ChatView, shorten};
 use crate::settings;
@@ -118,6 +118,7 @@ fn toolbar(chat: &ChatView, can_send: bool, cx: &mut Context<ChatView>) -> impl 
                             cx.listener(|_chat, _event, _window, cx| ChatView::pick_files(cx)),
                         ),
                 )
+                .child(mode_menu(chat, cx))
                 .child(thinking_menu(chat, cx))
                 .child(model_menu(chat)),
         )
@@ -136,6 +137,29 @@ fn toolbar(chat: &ChatView, can_send: bool, cx: &mut Context<ChatView>) -> impl 
                 )
                 .child(send_button(chat.running, can_send, cx)),
         )
+}
+
+fn mode_menu(chat: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElement {
+    let me = cx.entity().downgrade();
+    let current = chat.composer.mode;
+    Button::new("mode")
+        .ghost()
+        .small()
+        .label(current.label())
+        .dropdown_caret(true)
+        .tooltip(current.hint())
+        .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _window, _cx| {
+            Mode::ALL.iter().fold(menu, |menu, &mode| {
+                let me = me.clone();
+                menu.item(
+                    PopupMenuItem::new(format!("{}: {}", mode.label(), mode.hint()))
+                        .checked(mode == current)
+                        .on_click(move |_event, _window, app| {
+                            me.update(app, |chat, cx| chat.set_mode(mode, cx)).ok();
+                        }),
+                )
+            })
+        })
 }
 
 fn thinking_menu(chat: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElement {

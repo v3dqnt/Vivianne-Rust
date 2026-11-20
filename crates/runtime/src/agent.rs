@@ -1,14 +1,15 @@
 //! The turn loop.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use futures::StreamExt;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::sync::CancellationToken;
-use vivianne_core::{Message, Thinking, ToolCall};
+use vivianne_core::{Message, Mode, Thinking, ToolCall};
 use vivianne_providers::{ChatEvent, ChatRequest, EventStream, Provider, ProviderError, Spent, ToolSpec};
 use vivianne_tools::{ToolResult, Toolbox};
 
+use crate::context::{self, Breakdown};
 use crate::AgentEvent;
 use crate::resilience::{Chain, Failure, RetryPolicy, Stopped, retry};
 
@@ -59,6 +60,9 @@ pub struct Agent {
     tools: Toolbox,
     max_steps: usize,
     retry: RetryPolicy,
+    /// What the agent is for right now. Set through [`Agent::set_mode`]; read at every step, so a change takes
+    /// effect on the next model call.
+    mode: Mutex<Mode>,
 }
 
 /// The first thing a stream said, and the rest of it.
@@ -77,7 +81,48 @@ impl Agent {
             tools,
             max_steps: DEFAULT_MAX_STEPS,
             retry: RetryPolicy::default(),
+            mode: Mutex::new(Mode::default()),
         }
+    }
+
+    /// Changes what the agent is for: its instructions and the tools it may use.
+    pub fn set_mode(&self, mode: Mode) {
+        *self.mode.lock().unwrap_or_else(PoisonError::into_inner) = mode;
+    }
+
+    fn mode(&self) -> Mode {
+        *self.mode.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The system prompt as sent: the standing instructions, then the mode's.
+    fn system_prompt(&self, mode: Mode) -> Option<String> {
+        match (&self.system, mode.prompt_section()) {
+            (Some(system), Some(section)) => Some(format!("{system}\n\n{section}")),
+            (Some(system), None) => Some(system.clone()),
+            (None, section) => section.map(str::to_owned),
+        }
+    }
+
+    /// The tools the model is offered in `mode`.
+    fn tool_specs(&self, mode: Mode) -> Vec<ToolSpec> {
+        self.tools
+            .definitions()
+            .into_iter()
+            .filter(|d| mode.allows(&d.name))
+            .map(|d| ToolSpec { name: d.name, description: d.description, parameters: d.parameters })
+            .collect()
+    }
+
+    /// Where the context window goes for `history` under the current mode.
+    #[must_use]
+    pub fn breakdown(&self, history: &[Message]) -> Breakdown {
+        let mode = self.mode();
+        let tools: Vec<serde_json::Value> = self
+            .tool_specs(mode)
+            .into_iter()
+            .map(|t| serde_json::json!({ "name": t.name, "description": t.description, "parameters": t.parameters }))
+            .collect();
+        context::breakdown(self.system_prompt(mode).as_deref().unwrap_or_default(), &tools, history)
     }
 
     #[must_use]
@@ -244,11 +289,18 @@ impl Agent {
 
     async fn run_tool(&self, call: &ToolCall, events: &UnboundedSender<AgentEvent>) -> Message {
         send(events, AgentEvent::ToolStart { id: call.id.clone(), name: call.name.clone(), args: call.args.clone() });
-        let result = self.tools.execute(&call.name, &call.args).await.unwrap_or_else(|| ToolResult {
-            content: format!("unknown tool `{}`", call.name),
-            is_error: true,
-            details: None,
-        });
+        let mode = self.mode();
+        // Not offering a tool is not enough: a model can still ask for one it remembers from earlier in the
+        // conversation (or from before the mode changed), so the mode is enforced here too.
+        let result = if mode.allows(&call.name) {
+            self.tools.execute(&call.name, &call.args).await.unwrap_or_else(|| ToolResult {
+                content: format!("unknown tool `{}`", call.name),
+                is_error: true,
+                details: None,
+            })
+        } else {
+            ToolResult { content: format!("`{}` is not available in {} mode", call.name, mode.label()), is_error: true, details: None }
+        };
         let output = if result.is_error { format!("error: {}", result.content) } else { result.content };
         send(
             events,
@@ -265,18 +317,8 @@ impl Agent {
     }
 
     fn request(&self, target: &Target, history: &[Message], thinking: Thinking) -> ChatRequest {
-        ChatRequest {
-            model: target.model.clone(),
-            system: self.system.clone(),
-            messages: history.to_vec(),
-            tools: self
-                .tools
-                .definitions()
-                .into_iter()
-                .map(|d| ToolSpec { name: d.name, description: d.description, parameters: d.parameters })
-                .collect(),
-            thinking,
-        }
+        let mode = self.mode();
+        ChatRequest { model: target.model.clone(), system: self.system_prompt(mode), messages: history.to_vec(), tools: self.tool_specs(mode), thinking }
     }
 }
 
@@ -501,6 +543,39 @@ mod tests {
         assert_eq!((total.input, total.cost), (3, Some(0.75)));
         total.add(&spent(3, None));
         assert_eq!((total.input, total.cost), (6, None));
+    }
+
+    #[tokio::test]
+    async fn a_mode_adds_its_instruction_and_offers_only_the_tools_it_allows() {
+        let provider = Scripted::new(vec![vec![ChatEvent::Done]]);
+        let agent = Agent::new(provider.clone(), "m", Some("Be brief.".to_owned()), toolbox());
+        agent.set_mode(Mode::Ask);
+        let (tx, _rx) = unbounded_channel();
+        agent.run(&mut user("x"), &tx, Thinking::default()).await.unwrap();
+        let seen = provider.seen.lock().unwrap();
+        assert!(seen[0].system.as_deref().is_some_and(|s| s.starts_with("Be brief.") && s.contains("Mode: Ask")));
+        assert!(seen[0].tools.is_empty(), "the test tools (echo, hang) are not look-only tools");
+    }
+
+    #[tokio::test]
+    async fn a_tool_the_mode_withholds_is_refused_even_if_the_model_asks_for_it() {
+        let provider = Scripted::new(vec![vec![call("c1", "echo"), ChatEvent::Done], vec![ChatEvent::Done]]);
+        let agent = Agent::new(provider, "m", None, toolbox());
+        agent.set_mode(Mode::Explore);
+        let (tx, _rx) = unbounded_channel();
+        let mut history = user("x");
+        agent.run(&mut history, &tx, Thinking::default()).await.unwrap();
+        assert!(history[2].text.contains("not available in Explore mode"), "{}", history[2].text);
+    }
+
+    #[test]
+    fn the_breakdown_follows_the_mode_because_withheld_tools_leave_the_window() {
+        let agent = Agent::new(Scripted::new(vec![]), "m", Some("Be brief.".to_owned()), Toolbox::coding(std::path::Path::new(".")));
+        let all = agent.breakdown(&[]);
+        agent.set_mode(Mode::Ask);
+        let ask = agent.breakdown(&[]);
+        assert!(ask.tools > 0 && ask.tools < all.tools, "{all:?} {ask:?}");
+        assert!(ask.system > all.system, "the mode's instruction is part of the system prompt");
     }
 
     #[tokio::test]

@@ -15,8 +15,9 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use vivianne_ai::ai::types::{CostBreakdown, Usage};
 use vivianne_ai::inference::usage_store;
-use vivianne_core::{Message, Role, Thinking};
+use vivianne_core::{Message, Mode, Role, Thinking};
 use vivianne_providers::acp::{Acp, AcpEvent, Line, Outcome, PermissionRequest, PromptPart, TurnRequest};
+use vivianne_runtime::context::Breakdown;
 use vivianne_runtime::{Agent, AgentEvent};
 
 static NEXT_THREAD: AtomicU64 = AtomicU64::new(1);
@@ -51,6 +52,7 @@ pub struct Session {
     stop: Option<CancellationToken>,
     /// Requests from the coding agent waiting for the user.
     approvals: Approvals,
+    mode: Mode,
 }
 
 /// A started run: events as they happen, then the final state.
@@ -76,6 +78,25 @@ impl Session {
             task: None,
             stop: None,
             approvals: Approvals::default(),
+            mode: Mode::default(),
+        }
+    }
+
+    /// What the agent is for from the next message on.
+    pub fn set_mode(&mut self, mode: Mode) {
+        self.mode = mode;
+        if let Engine::Own(agent) = &self.engine {
+            agent.set_mode(mode);
+        }
+    }
+
+    /// Where the context window goes, for our own agent (a coding agent keeps its own conversation).
+    /// `None` while a run owns the history.
+    #[must_use]
+    pub fn breakdown(&self) -> Option<Breakdown> {
+        match &self.engine {
+            Engine::Own(agent) => Some(agent.breakdown(self.history.as_deref()?)),
+            Engine::Harness { .. } => None,
         }
     }
 
@@ -87,6 +108,7 @@ impl Session {
 
     /// Answer from now on with `agent` (another model); the conversation so far is kept.
     pub fn switch_agent(&mut self, agent: Agent) {
+        agent.set_mode(self.mode);
         self.engine = Engine::Own(Arc::new(agent));
     }
 
@@ -129,6 +151,7 @@ impl Session {
                     text,
                     earlier,
                     approvals: self.approvals.clone(),
+                    plan_mode: !self.mode.allows("write"),
                 };
                 self.task = Some(self.runtime.spawn(async move {
                     let started = Instant::now();
@@ -288,6 +311,8 @@ struct HarnessTurn {
     text: String,
     earlier: Vec<Line>,
     approvals: Approvals,
+    /// Look but do not change: the agent is held to its own read-only plan mode.
+    plan_mode: bool,
 }
 
 impl HarnessTurn {
@@ -295,7 +320,7 @@ impl HarnessTurn {
     async fn run(self, events: &mpsc::UnboundedSender<AgentEvent>, stop: &CancellationToken) -> (String, Option<String>) {
         let (acp_tx, mut acp_rx) = mpsc::unbounded_channel();
         let prompt = [PromptPart::Text(self.text.clone())];
-        let request = TurnRequest { prompt: &prompt, earlier: &self.earlier, plan_mode: false, bypass: false };
+        let request = TurnRequest { prompt: &prompt, earlier: &self.earlier, plan_mode: self.plan_mode, bypass: false };
         let turn = async {
             let outcome = self.acp.run_turn(&self.thread, &self.id, &self.cwd, &request, &acp_tx, stop).await;
             drop(acp_tx);

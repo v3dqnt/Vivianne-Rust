@@ -26,7 +26,7 @@ use gpui_kit::{
 };
 
 use crate::theme::{self, color};
-use composer::{Composer, Thinking, compose_message, display_message};
+use composer::{Composer, Mode, Thinking, compose_message, display_message};
 use items::{Change, Item, apply};
 use models::{ModelChoice, Picker, choices};
 use session::{Finished, Run, Session};
@@ -64,6 +64,8 @@ pub struct ChatView {
     folded_tools: HashSet<String>,
     /// What this thread has used, shown in the status row. Read again after each reply.
     thread_usage: Option<vivianne_ai::inference::usage_store::DayUsage>,
+    /// Where the context window goes, worked out when the history or the mode changes (not on every redraw).
+    context: Option<vivianne_runtime::context::Breakdown>,
     _input_events: Subscription,
     _picker_events: Subscription,
 }
@@ -111,6 +113,7 @@ impl ChatView {
             }
         });
         Self::look_up_models(&host, window, cx);
+        let context = session.as_ref().ok().and_then(Session::breakdown);
         Self {
             items: Vec::new(),
             composer,
@@ -124,6 +127,7 @@ impl ChatView {
             running: false,
             folded_tools: HashSet::new(),
             thread_usage: None,
+            context,
             _input_events: input_events,
             _picker_events: picker_events,
         }
@@ -290,6 +294,7 @@ impl ChatView {
             }
         }
         self.selection = Selection { provider: choice.provider.clone(), model: choice.id.clone() };
+        self.refresh_context();
         vivianne_telemetry::track("model.switch", serde_json::json!({ "provider": choice.provider, "model": choice.id }));
         self.push_item(Item::Notice(format!("{} will work in this project's folder with its own tools, and asks before it acts.", choice.name)), cx);
     }
@@ -390,7 +395,29 @@ impl ChatView {
             self.push_item(Item::Notice(format!("Error: {error}")), cx);
         }
         self.refresh_thread_usage(cx);
+        self.refresh_context();
         cx.notify();
+    }
+
+    /// Works out where the context window goes. Kept as it was while a run owns the history.
+    fn refresh_context(&mut self) {
+        if let Ok(session) = &self.session
+            && let Some(parts) = session.breakdown()
+        {
+            self.context = Some(parts);
+        }
+    }
+
+    /// What the side panel shows about the window. `None` for a coding agent, which keeps its own conversation.
+    #[must_use]
+    pub fn context(&self) -> Option<crate::rail::ContextView> {
+        let window = self
+            .models
+            .iter()
+            .find(|m| m.provider == self.selection.provider && m.id == self.selection.model)
+            .and_then(|m| m.context_window);
+        let own = self.selection.provider != models::AGENT_PROVIDER;
+        self.context.filter(|_| own).map(|breakdown| crate::rail::ContextView { breakdown, window, mode: self.composer.mode })
     }
 
     /// Reads what the thread has used so far, for the status row. Everything the turn spent was recorded before
@@ -454,6 +481,15 @@ impl ChatView {
         if !self.folded_tools.remove(id) {
             self.folded_tools.insert(id.to_owned());
         }
+        cx.notify();
+    }
+
+    fn set_mode(&mut self, mode: Mode, cx: &mut Context<Self>) {
+        self.composer.mode = mode;
+        if let Ok(session) = self.session.as_mut() {
+            session.set_mode(mode);
+        }
+        self.refresh_context();
         cx.notify();
     }
 

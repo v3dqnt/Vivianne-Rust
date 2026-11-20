@@ -7,6 +7,7 @@
 //! other models live in [`resilience`].
 
 mod agent;
+pub mod context;
 mod event;
 pub mod resilience;
 

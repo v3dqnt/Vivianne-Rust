@@ -45,6 +45,84 @@ impl Thinking {
     }
 }
 
+/// What the agent is for right now. Each mode adds a short instruction to the system prompt and limits which
+/// tools the agent may use, so the same agent visibly behaves differently depending on what the user wants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Mode {
+    /// Reads, writes, runs commands: everything.
+    #[default]
+    Agent,
+    /// Answers questions about the project. Looks, never changes or runs anything.
+    Ask,
+    /// Finds the cause of a problem: looks and runs commands, but writes no files.
+    Debug,
+    /// Gets oriented in the codebase. Looks only.
+    Explore,
+}
+
+/// Tools that only look. Anything not named here (a new tool, an editing one such as `lsp_edit`) is withheld
+/// outside `Agent` mode until someone decides it is safe: a list of what is allowed fails closed, a list of what
+/// is forbidden fails open.
+const LOOK_ONLY_TOOLS: [&str; 8] = ["read", "ls", "grep", "code_search", "glob", "diagnostics", "lsp", "repo_overview"];
+/// What `Debug` adds to looking.
+const RUN_TOOLS: [&str; 1] = ["shell"];
+
+impl Mode {
+    pub const ALL: [Self; 4] = [Self::Agent, Self::Ask, Self::Debug, Self::Explore];
+
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Agent => "Agent",
+            Self::Ask => "Ask",
+            Self::Debug => "Debug",
+            Self::Explore => "Explore",
+        }
+    }
+
+    /// One line for the menu.
+    #[must_use]
+    pub fn hint(self) -> &'static str {
+        match self {
+            Self::Agent => "Reads, writes and runs commands",
+            Self::Ask => "Answers questions, changes nothing",
+            Self::Debug => "Finds a cause: runs commands, writes no files",
+            Self::Explore => "Maps the codebase, looks only",
+        }
+    }
+
+    /// The instruction added to the system prompt, or `None` for the unrestricted default.
+    #[must_use]
+    pub fn prompt_section(self) -> Option<&'static str> {
+        match self {
+            Self::Agent => None,
+            Self::Ask => Some(
+                "# Mode: Ask
+You are in Ask mode: answer questions about the codebase and project. Read and search as much as you need,                  but do not write, edit or run commands; you have no such tools right now. If the request really needs a change, say so                  and suggest switching to Agent mode instead of working around it.",
+            ),
+            Self::Debug => Some(
+                "# Mode: Debug
+You are in Debug mode: find the root cause of a problem. You can read, search and run commands                  (reproduce the bug, run tests, inspect logs), but you cannot write or edit files: this mode is for diagnosis, not                  fixing. End with a clear statement of the cause and what change would fix it, so the user can act on it or switch to                  Agent mode.",
+            ),
+            Self::Explore => Some(
+                "# Mode: Explore
+You are in Explore mode: help the user get oriented in the codebase. Read, search and describe                  structure and architecture; you have only read-only navigation tools. Favor a clear map of how things fit together                  over deep investigation of any one issue.",
+            ),
+        }
+    }
+
+    /// Whether the agent may use the tool called `name` in this mode.
+    #[must_use]
+    pub fn allows(self, name: &str) -> bool {
+        match self {
+            Self::Agent => true,
+            Self::Ask | Self::Explore => LOOK_ONLY_TOOLS.contains(&name),
+            Self::Debug => LOOK_ONLY_TOOLS.contains(&name) || RUN_TOOLS.contains(&name),
+        }
+    }
+}
+
 /// A request from the model to run one tool.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolCall {
@@ -117,6 +195,19 @@ mod tests {
         assert_eq!(Thinking::default(), Thinking::Medium);
         let efforts: Vec<_> = Thinking::ALL.iter().map(|t| t.effort()).collect();
         assert_eq!(efforts, [None, Some("low"), Some("medium"), Some("high")]);
+    }
+
+    #[test]
+    fn modes_allow_only_what_they_are_for_and_unknown_tools_are_withheld() {
+        assert!(Mode::Agent.allows("anything"));
+        for tool in ["write", "edit", "lsp_edit", "repo_clone", "shell", "a_tool_added_next_year"] {
+            assert!(!Mode::Ask.allows(tool) && !Mode::Explore.allows(tool), "{tool}");
+        }
+        assert!(Mode::Ask.allows("read") && Mode::Explore.allows("grep"));
+        assert!(Mode::Debug.allows("shell") && Mode::Debug.allows("read"));
+        assert!(!Mode::Debug.allows("write") && !Mode::Debug.allows("edit") && !Mode::Debug.allows("lsp_edit"));
+        assert!(Mode::Agent.prompt_section().is_none());
+        assert!(Mode::ALL.iter().skip(1).all(|m| m.prompt_section().is_some()));
     }
 
     #[test]

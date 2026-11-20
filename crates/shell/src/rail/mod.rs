@@ -1,5 +1,6 @@
 //! The project rail on the right of a chat: Overview, Files, Preview, Terminal.
 
+mod context;
 mod files;
 mod git;
 pub(crate) mod terminal;
@@ -14,6 +15,7 @@ use gpui_kit::component::{Icon, IconName, Sizable as _};
 use gpui_kit::prelude::*;
 use gpui_kit::{ClipboardItem, Context, Entity, SharedString, Window, div, img, px};
 
+pub use self::context::ContextView;
 use self::files::Content;
 use self::git::{ChangeKind, Snapshot};
 use self::terminal::TerminalView;
@@ -55,13 +57,15 @@ pub struct Rail {
     git: Snapshot,
     /// Started the first time the tab is opened, so no shell runs until it is wanted.
     terminal: Option<Entity<TerminalView>>,
+    /// The active chat's context window, pushed in by the app; `None` when there is nothing to show.
+    context: Option<ContextView>,
 }
 
 impl Rail {
     #[must_use]
     pub fn new(root: PathBuf) -> Self {
         let git = Snapshot::read(&root);
-        Self { root, tab: RailTab::Overview, expanded: HashSet::new(), preview: None, git, terminal: None }
+        Self { root, tab: RailTab::Overview, expanded: HashSet::new(), preview: None, git, terminal: None, context: None }
     }
 
     fn refresh(&mut self) {
@@ -112,6 +116,14 @@ impl Rail {
             .children(TABS.iter().map(|(_, label)| Tab::new().label(*label)))
     }
 
+    /// Shows the active chat's context window. Redraws only when it changed.
+    pub fn set_context(&mut self, context: Option<ContextView>, cx: &mut Context<Self>) {
+        if self.context != context {
+            self.context = context;
+            cx.notify();
+        }
+    }
+
     fn overview(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let folder = self.root.file_name().map_or_else(
             || self.root.display().to_string(),
@@ -128,6 +140,7 @@ impl Rail {
                     div().font_family(theme::MONO).text_size(px(11.0)).text_color(color(theme::MUTED)).child(self.root.display().to_string()).into_any_element(),
                 ],
             ))
+            .children(self.context.as_ref().map(context::card))
             .child(self.version_control(cx))
     }
 

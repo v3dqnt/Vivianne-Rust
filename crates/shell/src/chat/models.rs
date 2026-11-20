@@ -17,6 +17,8 @@ pub struct ModelChoice {
     pub provider: String,
     pub id: String,
     pub name: String,
+    /// Tokens the model can hold at once, when its provider says (many don't).
+    pub context_window: Option<u32>,
     /// `provider/id`, what the picker hands back.
     value: String,
 }
@@ -28,6 +30,7 @@ impl ModelChoice {
             provider: provider.to_owned(),
             id: id.to_owned(),
             name: name.to_owned(),
+            context_window: None,
             value: Self::value_of(provider, id),
         }
     }
@@ -94,7 +97,7 @@ pub fn choices(models: &[DiscoveredModel], agents: &[(String, String)]) -> Vec<M
     let mut out: Vec<ModelChoice> = models
         .iter()
         .filter(|m| !m.is_image_model && !m.is_audio_model)
-        .map(|m| ModelChoice::new(&m.provider, &m.id, &m.name))
+        .map(|m| ModelChoice { context_window: m.context_window, ..ModelChoice::new(&m.provider, &m.id, &m.name) })
         .collect();
     out.sort_by(|a, b| (&a.provider, a.name.to_lowercase()).cmp(&(&b.provider, b.name.to_lowercase())));
     out.dedup();
