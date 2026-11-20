@@ -93,6 +93,28 @@ impl Session {
         }
     }
 
+    /// Starts from a saved conversation: its id (so usage and the file stay one thread) and what was said.
+    pub fn restore(&mut self, id: String, history: Vec<Message>) {
+        self.thread = id;
+        self.history = Some(history);
+        self.before_run = None;
+    }
+
+    /// What has been said so far. `None` while a run owns it.
+    #[must_use]
+    pub fn history(&self) -> Option<&[Message]> {
+        self.history.as_deref()
+    }
+
+    /// Our own agent, for the things that ask the model something on the side (a title).
+    #[must_use]
+    pub fn agent(&self) -> Option<Arc<Agent>> {
+        match &self.engine {
+            Engine::Own(agent) => Some(agent.clone()),
+            Engine::Harness { .. } => None,
+        }
+    }
+
     /// The name usage is recorded under (`main:<this>`).
     #[must_use]
     pub fn thread_id(&self) -> &str {

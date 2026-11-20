@@ -12,6 +12,9 @@ mod compact;
 pub mod context;
 mod event;
 mod history;
+pub mod instructions;
+pub mod store;
+pub mod title;
 mod prompt;
 pub mod resilience;
 

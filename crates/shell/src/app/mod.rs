@@ -36,6 +36,8 @@ pub struct AppView {
     home: Entity<HomeView>,
     rail: Entity<Rail>,
     rail_open: bool,
+    /// Threads kept on disk for this project, read when Home is shown.
+    saved: Vec<vivianne_runtime::store::Summary>,
     _home_events: Subscription,
 }
 
@@ -52,6 +54,7 @@ impl AppView {
             cx.subscribe_in(&home, window, |app, _home, event, window, cx| match event {
                 HomeEvent::NewThread => app.new_thread(window, cx),
                 HomeEvent::OpenThread(index) => app.open_thread(*index, window, cx),
+                HomeEvent::OpenSaved(id) => app.open_saved(id, window, cx),
             });
         let mut app = Self {
             runtime,
@@ -61,8 +64,10 @@ impl AppView {
             home,
             rail,
             rail_open: true,
+            saved: Vec::new(),
             _home_events: home_events,
         };
+        app.reload_saved();
         app.new_thread(window, cx);
         app
     }
@@ -83,6 +88,27 @@ impl AppView {
         vivianne_telemetry::track("thread.new", serde_json::json!({}));
         self.threads.push(Thread { chat });
         self.open_thread(self.threads.len() - 1, window, cx);
+    }
+
+    /// Opens a thread kept on disk, or goes to it if it is already open.
+    fn open_saved(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(index) = self.threads.iter().position(|t| t.chat.read(cx).thread_id() == Some(id)) {
+            self.open_thread(index, window, cx);
+            return;
+        }
+        let Some(saved) = vivianne_runtime::store::load(id) else {
+            self.reload_saved();
+            cx.notify();
+            return;
+        };
+        self.new_thread(window, cx);
+        if let Some(thread) = self.threads.last() {
+            thread.chat.update(cx, |chat, cx| chat.restore(saved, cx));
+        }
+    }
+
+    fn reload_saved(&mut self) {
+        self.saved = vivianne_runtime::store::list(&self.workspace.display().to_string());
     }
 
     fn open_thread(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -113,6 +139,7 @@ impl AppView {
 
     /// The Home button: show Home, or go back to the last thread.
     fn toggle_home(&mut self, cx: &mut Context<Self>) {
+        self.reload_saved();
         self.page = match (self.page, self.threads.len()) {
             (Page::Home, count) if count > 0 => Page::Thread(count - 1),
             _ => Page::Home,
@@ -126,16 +153,22 @@ impl AppView {
     }
 
     fn thread_rows(&self, cx: &Context<Self>) -> Vec<ThreadRow> {
-        self.threads
+        let mut rows: Vec<ThreadRow> = self
+            .threads
             .iter()
             .map(|thread| {
                 let chat = thread.chat.read(cx);
-                ThreadRow {
-                    title: chat.title(),
-                    running: chat.is_running(),
-                }
+                ThreadRow { title: chat.title(), running: chat.is_running(), saved: None }
             })
-            .collect()
+            .collect();
+        let open: Vec<Option<&str>> = self.threads.iter().map(|t| t.chat.read(cx).thread_id()).collect();
+        rows.extend(
+            self.saved
+                .iter()
+                .filter(|s| !open.contains(&Some(s.id.as_str())))
+                .map(|s| ThreadRow { title: s.title.clone(), running: false, saved: Some(s.id.clone()) }),
+        );
+        rows
     }
 
     fn body(&self) -> gpui_kit::AnyElement {

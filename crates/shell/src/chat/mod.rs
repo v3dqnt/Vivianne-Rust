@@ -66,6 +66,8 @@ pub struct ChatView {
     thread_usage: Option<vivianne_ai::inference::usage_store::DayUsage>,
     /// Where the context window goes, worked out when the history or the mode changes (not on every redraw).
     context: Option<vivianne_runtime::context::Breakdown>,
+    /// The thread's name and who gave it (`user` or `auto`); `None` until something has been said.
+    title: Option<(String, &'static str)>,
     _input_events: Subscription,
     _picker_events: Subscription,
 }
@@ -128,6 +130,7 @@ impl ChatView {
             folded_tools: HashSet::new(),
             thread_usage: None,
             context,
+            title: None,
             _input_events: input_events,
             _picker_events: picker_events,
         }
@@ -362,7 +365,11 @@ impl ChatView {
         let Some(run) = session.send(compose_message(&text, files), self.composer.thinking) else {
             return;
         };
-        self.push_item(Item::User(display_message(&text, files)), cx);
+        let shown = display_message(&text, files);
+        if self.title.is_none() {
+            self.ask_for_title(&text, cx);
+        }
+        self.push_item(Item::User(shown), cx);
         self.composer.attachments.clear();
         self.composer
             .input
@@ -400,6 +407,7 @@ impl ChatView {
         }
         self.refresh_thread_usage(cx);
         self.refresh_context();
+        self.save();
         cx.notify();
     }
 
@@ -508,6 +516,9 @@ impl ChatView {
     /// Tab title: the first thing the user said, shortened.
     #[must_use]
     pub fn title(&self) -> String {
+        if let Some((title, _)) = &self.title {
+            return shorten(title, TITLE_MAX_CHARS);
+        }
         let first = self.items.iter().find_map(|item| match item {
             Item::User(text) => Some(text.as_str()),
             _ => None,
@@ -516,6 +527,67 @@ impl ChatView {
             None => NEW_THREAD_TITLE.to_owned(),
             Some(text) => shorten(text, TITLE_MAX_CHARS),
         }
+    }
+
+    /// The thread's id: the name its usage and its saved file go by.
+    #[must_use]
+    pub fn thread_id(&self) -> Option<&str> {
+        self.session.as_ref().ok().map(Session::thread_id)
+    }
+
+    /// Fills the thread from a saved one: what was said, its name and its mode.
+    pub fn restore(&mut self, saved: vivianne_runtime::store::SavedThread, cx: &mut Context<Self>) {
+        let Ok(session) = self.session.as_mut() else { return };
+        self.items = items::from_history(&saved.history);
+        session.restore(saved.id, saved.history);
+        session.set_mode(saved.mode);
+        self.composer.mode = saved.mode;
+        self.title = Some((saved.title, if saved.title_source == vivianne_runtime::title::USER { vivianne_runtime::title::USER } else { vivianne_runtime::title::AUTO }));
+        self.scroller.update(cx, |scroller, cx| scroller.append(self.items.len(), cx));
+        self.refresh_context();
+        cx.notify();
+    }
+
+    /// Writes the thread to disk so it survives closing the app. Nothing is written while a run owns the history
+    /// or before anything has been said.
+    fn save(&self) {
+        let Ok(session) = &self.session else { return };
+        let Some(history) = session.history().filter(|h| !h.is_empty()) else { return };
+        let (title, source) = vivianne_runtime::title::decide(
+            self.title.as_ref().map(|(t, s)| (t.as_str(), *s)),
+            vivianne_runtime::title::first_ask(history),
+        );
+        let thread = vivianne_runtime::store::SavedThread {
+            id: session.thread_id().to_owned(),
+            workspace: self.host.workspace.display().to_string(),
+            title,
+            title_source: source.to_owned(),
+            provider: self.selection.provider.clone(),
+            model: self.selection.model.clone(),
+            mode: self.composer.mode,
+            updated_at: vivianne_runtime::store::now(),
+            history: history.to_vec(),
+        };
+        // A failed save is not worth interrupting anyone for: the next turn saves again.
+        crate::backend::spawn(async move { vivianne_runtime::store::save(&thread) });
+    }
+
+    /// Asks the model for a better title than the cleaned first sentence, without holding up the reply.
+    fn ask_for_title(&mut self, first_ask: &str, cx: &mut Context<Self>) {
+        self.title = Some((vivianne_runtime::title::fallback_title(first_ask), vivianne_runtime::title::AUTO));
+        let Some(agent) = self.session.as_ref().ok().and_then(Session::agent) else { return };
+        let (text, chat) = (first_ask.to_owned(), cx.entity().downgrade());
+        crate::backend::run(cx, async move { agent.title(&text).await }, move |title, cx| {
+            let Some(title) = title else { return };
+            chat.update(cx, |chat, cx| {
+                // A name the person gave while the model was thinking wins.
+                if chat.title.as_ref().is_none_or(|(_, by)| *by != vivianne_runtime::title::USER) {
+                    chat.title = Some((title, vivianne_runtime::title::AUTO));
+                    cx.notify();
+                }
+            })
+            .ok();
+        });
     }
 
     #[must_use]

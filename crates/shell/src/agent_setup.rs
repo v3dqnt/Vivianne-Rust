@@ -44,6 +44,7 @@ pub fn placeholder_agent(workspace: &std::path::Path) -> Result<Agent, String> {
 fn build_agent(provider: Arc<dyn Provider>, model: &str, workspace: &std::path::Path, fallbacks: Vec<Target>) -> Agent {
     let retry = if env::auto_retry() { RetryPolicy::default() } else { RetryPolicy::once() };
     Agent::new(provider, model, Some(coding_system_prompt(workspace)), Toolbox::coding(workspace))
+        .with_instructions(vec![workspace.display().to_string()])
         .with_fallbacks(fallbacks)
         .with_retry(retry)
 }

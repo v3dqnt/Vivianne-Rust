@@ -25,6 +25,9 @@ const DEFAULT_MAX_STEPS: usize = 100;
 /// Longest the call that writes a checkpoint may take.
 const SUMMARY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(40);
 
+/// Longest the call that writes a title may take: the reply never waits for it, but a slow one is not worth keeping.
+const TITLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
 /// What a tool that was cut short tells the model, so every call it made has an answer.
 const CANCELLED_TOOL: &str = "error: cancelled by the user before this finished";
 
@@ -76,6 +79,10 @@ pub struct Agent {
     asking: Mutex<HashMap<String, oneshot::Sender<bool>>>,
     /// How many tokens the chosen model can hold, 0 when its provider does not say.
     window: AtomicU32,
+    /// Where to look for AGENTS.md and CLAUDE.md, and the name this conversation is told about changes under.
+    instructions_from: Option<(Vec<String>, String)>,
+    /// What those files said at the start of the current run.
+    instructions: Mutex<Option<String>>,
 }
 
 /// The first thing a stream said, and the rest of it.
@@ -98,6 +105,8 @@ impl Agent {
             mode: Mutex::new(Mode::Auto),
             asking: Mutex::default(),
             window: AtomicU32::new(0),
+            instructions_from: None,
+            instructions: Mutex::new(None),
         }
     }
 
@@ -131,13 +140,11 @@ impl Agent {
         *self.mode.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// The system prompt as sent: the standing instructions, then the mode's.
+    /// The system prompt as sent: the standing instructions, the project's, then the mode's.
     fn system_prompt(&self, mode: Mode) -> Option<String> {
-        match (&self.system, mode.prompt_section()) {
-            (Some(system), Some(section)) => Some(format!("{system}\n\n{section}")),
-            (Some(system), None) => Some(system.clone()),
-            (None, section) => section.map(str::to_owned),
-        }
+        let project = self.instructions.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        let parts: Vec<&str> = [self.system.as_deref(), project.as_deref(), mode.prompt_section()].into_iter().flatten().collect();
+        (!parts.is_empty()).then(|| parts.join("\n\n"))
     }
 
     /// The tools the model is offered in `mode`.
@@ -160,6 +167,14 @@ impl Agent {
             .map(|t| serde_json::json!({ "name": t.name, "description": t.description, "parameters": t.parameters }))
             .collect();
         context::breakdown(self.system_prompt(mode).as_deref().unwrap_or_default(), &tools, history)
+    }
+
+    /// Reads the project's instruction files (AGENTS.md, CLAUDE.md, and the user's own in `~/.viv`) at the start of
+    /// every run and adds them to the system prompt, so an edit lands on the next message.
+    #[must_use]
+    pub fn with_instructions(mut self, folders: Vec<String>) -> Self {
+        self.instructions_from = Some((folders, uuid::Uuid::new_v4().to_string()));
+        self
     }
 
     #[must_use]
@@ -202,6 +217,10 @@ impl Agent {
         thinking: Thinking,
         cancel: &CancellationToken,
     ) -> Result<(), AgentError> {
+        if let Some((folders, key)) = &self.instructions_from {
+            let loaded = crate::instructions::load_for(Some(key), folders).await;
+            *self.instructions.lock().unwrap_or_else(PoisonError::into_inner) = loaded;
+        }
         let mut attempts = Attempts::default();
         let mut condensed_for_overflow = false;
         for _ in 0..self.max_steps {
@@ -414,6 +433,24 @@ impl Agent {
             }
         }
         None
+    }
+
+    /// A short title for a conversation that opens with `first_ask`, from the first model. `None` if it does not
+    /// answer in time or does not answer with a title; the caller keeps its own cleaned-up sentence then.
+    pub async fn title(&self, first_ask: &str) -> Option<String> {
+        let target = &self.targets[self.chain.order()[0]];
+        let (system, user) = crate::title::title_prompt(first_ask);
+        let request = ChatRequest {
+            model: target.model.clone(),
+            system: Some(system),
+            messages: vec![Message::new(Role::User, user)],
+            tools: Vec::new(),
+            thinking: Thinking::Off,
+        };
+        let (sink, _unread) = tokio::sync::mpsc::unbounded_channel();
+        let asked = async { collect(open(target, &request).await?, &sink).await };
+        let (text, _, _) = tokio::time::timeout(TITLE_TIMEOUT, asked).await.ok()?.ok()?;
+        crate::title::parse_title(&text)
     }
 
     async fn run_tool(&self, call: &ToolCall, events: &UnboundedSender<AgentEvent>) -> Message {
@@ -793,6 +830,14 @@ mod tests {
         agent.run(&mut history, &tx, Thinking::default()).await.unwrap();
         let sent = &provider.seen.lock().unwrap()[0].messages;
         assert_eq!(sent[2].tool_call_id.as_deref(), Some("c"), "the call has an answer right after it");
+    }
+
+    #[tokio::test]
+    async fn a_title_comes_from_the_model_and_is_none_when_it_does_not_answer_with_one() {
+        let agent = Agent::new(Scripted::new(vec![said("\"Fix login timeout\".")]), "m", None, toolbox());
+        assert_eq!(agent.title("my login times out").await.as_deref(), Some("Fix login timeout"));
+        let agent = Agent::new(Scripted::new(vec![said(&"word ".repeat(30))]), "m", None, toolbox());
+        assert_eq!(agent.title("x").await, None);
     }
 
     #[test]

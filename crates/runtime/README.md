@@ -14,9 +14,17 @@ tools it asks for, feeds results back, and stops when the model answers without 
 - `attempts.rs`: remembers failing calls so a retry-with-small-variations is shown what already failed.
 - `context.rs`: splits a request into system prompt, tool definitions, you, assistant and tool results with one
   token estimate (four characters), so the parts add up.
+- `instructions.rs`: AGENTS.md / CLAUDE.md (and `.local.md`, `@imports`) from the user's `~/.viv` and from the project
+  up to the repository root, added to the system prompt at the start of every run, with a note when one changed.
+- `store.rs`: threads kept on disk (`~/.viv/agent/threads/<id>.json`), listed per project folder.
+- `title.rs`: a thread's title: the cleaned first sentence, replaced by a model-written one (`Agent::title`); a
+  name the user gave is never replaced.
 - `prompt.rs`: the coding agent's standing instructions (the old directive without the tools and teams this app
   lacks).
 - `resilience/`: retry, backoff and the fallback chain.
+
+Not ported from the old app's sessions: the one-thread-per-day model, per-thread git worktrees, project icons and
+banners, the `@file` index.
 
 Not ported from the old loop: key rotation, the long-task ledger (24/7 mode), hooks, the "done means checked"
 verification nudge.

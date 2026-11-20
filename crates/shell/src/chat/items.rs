@@ -26,6 +26,38 @@ pub enum Item {
     Approval { id: String, title: String, answer: Option<bool> },
 }
 
+/// The transcript of a saved conversation: what was said, and each tool call with what it answered. The
+/// condensed-history checkpoint is not something anyone said, so it is left out.
+#[must_use]
+pub fn from_history(history: &[vivianne_core::Message]) -> Vec<Item> {
+    use vivianne_core::Role;
+    let mut items = Vec::new();
+    for message in history {
+        match message.role {
+            Role::User if message.text.trim_start().starts_with("<compacted_history>") => {}
+            Role::User => items.push(Item::User(message.text.clone())),
+            Role::Assistant => {
+                if !message.text.trim().is_empty() {
+                    items.push(Item::Assistant(message.text.clone()));
+                }
+                for call in &message.tool_calls {
+                    let answer = history.iter().find(|m| m.role == Role::Tool && m.tool_call_id.as_deref() == Some(&call.id));
+                    items.push(Item::Tool(ToolItem {
+                        id: call.id.clone(),
+                        name: call.name.clone(),
+                        args: call.args.clone(),
+                        is_error: answer.is_some_and(|a| a.text.starts_with("error: ")),
+                        output: answer.map(|a| a.text.clone()),
+                        details: None,
+                    }));
+                }
+            }
+            Role::Tool | Role::System => {}
+        }
+    }
+    items
+}
+
 /// What one event did to the transcript.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Change {
@@ -136,6 +168,24 @@ mod tests {
             details: Some(json!({"matches": 1})),
             args: None,
         }
+    }
+
+    #[test]
+    fn a_saved_conversation_comes_back_as_messages_and_tool_rows_without_the_checkpoint() {
+        use vivianne_core::{Message, Role, ToolCall};
+        let call = ToolCall { id: "c".into(), name: "read".into(), args: json!({"path": "a.rs"}) };
+        let history = vec![
+            Message::new(Role::User, "<compacted_history>\nsummary"),
+            Message::new(Role::User, "look at a.rs"),
+            Message::assistant("ok", vec![call]),
+            Message::tool_result("c", "error: no such file"),
+            Message::assistant("it is missing", vec![]),
+        ];
+        let items = from_history(&history);
+        assert_eq!(items.len(), 4);
+        assert!(matches!(&items[0], Item::User(t) if t == "look at a.rs"));
+        assert!(matches!(&items[2], Item::Tool(t) if t.is_error && t.output.as_deref() == Some("error: no such file")));
+        assert!(matches!(&items[3], Item::Assistant(t) if t == "it is missing"));
     }
 
     #[test]

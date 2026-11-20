@@ -13,10 +13,12 @@ use gpui_kit::{Context, Entity, EventEmitter, Window, div, px};
 use crate::theme::{self, color};
 
 /// What Home asks the app to do.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum HomeEvent {
     NewThread,
     OpenThread(usize),
+    /// A thread kept on disk that is not open: its id.
+    OpenSaved(String),
 }
 
 /// One open thread as Home lists it.
@@ -24,6 +26,8 @@ pub enum HomeEvent {
 pub struct ThreadRow {
     pub title: String,
     pub running: bool,
+    /// The id of a thread kept on disk that is not open. `None` for an open thread.
+    pub saved: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -201,7 +205,12 @@ impl HomeView {
             .flex_col()
             .gap(px(8.0))
             .children(rows.into_iter().map(|(index, row)| {
-                let status = if row.running { "Working" } else { "Idle" };
+                let status = match (&row.saved, row.running) {
+                    (Some(_), _) => "Saved",
+                    (None, true) => "Working",
+                    (None, false) => "Idle",
+                };
+                let saved = row.saved.clone();
                 div()
                     .id(("thread-row", index))
                     .flex()
@@ -215,7 +224,10 @@ impl HomeView {
                     .bg(color(theme::SURFACE))
                     .cursor_pointer()
                     .on_click(cx.listener(move |_home, _event, _window, cx| {
-                        cx.emit(HomeEvent::OpenThread(index));
+                        cx.emit(match &saved {
+                            Some(id) => HomeEvent::OpenSaved(id.clone()),
+                            None => HomeEvent::OpenThread(index),
+                        });
                     }))
                     .child(div().child(row.title))
                     .child(
