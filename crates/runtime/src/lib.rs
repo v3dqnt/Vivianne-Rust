@@ -15,6 +15,7 @@ mod history;
 pub mod checkpoints;
 pub mod instructions;
 pub mod store;
+pub mod thread_tools;
 pub mod title;
 mod prompt;
 pub mod resilience;

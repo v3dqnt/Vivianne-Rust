@@ -14,6 +14,7 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufRea
 use tokio::sync::{mpsc, oneshot, watch};
 
 use super::info::SessionInfo;
+use super::own_tools::{Bridge, Http, SERVER_NAME, serve};
 use super::permission::cancelled_outcome;
 use super::registry::{Harness, mark_ready, npx_cached_script};
 
@@ -189,6 +190,12 @@ pub(super) struct Conn {
     pub stderr_done: watch::Sender<bool>,
     /// How long after Stop the turn gets before its process tree is ended; a field so a test can shorten it.
     pub stop_kill_after: AtomicU64,
+    /// Vivianne's own tools as an MCP server on this connection (see `own_tools`).
+    pub mcp: Arc<Bridge>,
+    /// The local endpoint for it, for an agent that reaches MCP over HTTP rather than over this connection.
+    pub mcp_http: tokio::sync::Mutex<Option<Http>>,
+    /// What the agent was last told about where it runs, so it is said again only when it changes.
+    pub told: Mutex<Option<String>>,
 }
 
 impl Conn {
@@ -259,6 +266,59 @@ impl Conn {
     /// A capability whose home moved between versions.
     pub fn cap(&self, v2: &str, v1: &str) -> bool {
         self.flag(if self.speaks_v2() { v2 } else { v1 })
+    }
+
+    /// v1 makes stdio the baseline every agent must support; v2 makes it opt-in.
+    pub fn takes_stdio_mcp(&self) -> bool {
+        !self.speaks_v2() || self.flag("/capabilities/session/mcp/stdio")
+    }
+
+    pub fn takes_http_mcp(&self) -> bool {
+        self.cap("/capabilities/session/mcp/http", "/agentCapabilities/mcpCapabilities/http")
+    }
+
+    /// MCP over ACP: the agent talks to a server through this connection (`mcp/connect`, `mcp/message`). A v2 feature.
+    pub fn takes_acp_mcp(&self) -> bool {
+        self.speaks_v2() && self.flag("/capabilities/session/mcp/acp")
+    }
+
+    /// Answers one `mcp/*` request from the agent: Vivianne's tools as an MCP server on this connection. Works
+    /// outside a turn too (the agent lists its tools when the session opens); a call is refused unless a turn is
+    /// running.
+    pub async fn answer_mcp(self: Arc<Self>, id: Value, method: String, params: Value) {
+        let answer: Result<Value, (i64, String)> = match method.as_str() {
+            "mcp/connect" if params.get("serverId").and_then(Value::as_str) == Some(SERVER_NAME) => {
+                Ok(json!({ "connectionId": format!("{SERVER_NAME}-{}", self.next.fetch_add(1, Ordering::SeqCst)) }))
+            }
+            "mcp/connect" => Err((-32602, "no such MCP server".into())),
+            "mcp/disconnect" => Ok(json!({})),
+            "mcp/message" => match params.get("method").and_then(Value::as_str) {
+                Some(inner) => self.mcp.request(inner, params.get("params").unwrap_or(&Value::Null)).await,
+                None => Err((-32602, "no method".into())),
+            },
+            other => Err((-32601, format!("{other} isn't supported"))),
+        };
+        let _ = match answer {
+            Ok(result) => self.reply(id, result).await,
+            Err((code, message)) => self.write(&json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })).await,
+        };
+    }
+
+    /// Vivianne's own tools as an MCP server entry for `session/new`, in the way this agent can reach it: over
+    /// ACP when it takes that, else a local HTTP endpoint behind a token, else not at all.
+    pub async fn own_mcp_server(&self) -> Option<Value> {
+        if self.takes_acp_mcp() {
+            return Some(json!({ "type": "acp", "name": SERVER_NAME, "serverId": SERVER_NAME }));
+        }
+        if self.takes_http_mcp() {
+            let mut http = self.mcp_http.lock().await;
+            if http.is_none() {
+                *http = serve(self.mcp.clone()).await.map_err(|e| trace("harness", format!("couldn't open the endpoint for Vivianne's tools: {e}"))).ok();
+            }
+            let open = http.as_ref()?;
+            return Some(json!({ "type": "http", "name": SERVER_NAME, "url": open.url, "headers": [{ "name": "Authorization", "value": format!("Bearer {}", open.token) }] }));
+        }
+        None
     }
 
     pub fn takes_images(&self) -> bool {
@@ -409,6 +469,9 @@ pub(super) fn wire(
         stderr: Mutex::new(String::new()),
         stderr_done: watch::channel(false).0,
         stop_kill_after: AtomicU64::new(u64::try_from(STOP_KILL_AFTER.as_millis()).unwrap_or(u64::MAX)),
+        mcp: Bridge::new(),
+        mcp_http: tokio::sync::Mutex::new(None),
+        told: Mutex::new(None),
     });
     tokio::spawn(read_loop(stdout, Arc::downgrade(&conn), pending, sink, alive, who));
     conn
@@ -477,6 +540,13 @@ fn answer(pending: &Pending, id: &Value, msg: &Value) {
 /// offered (no file access, no terminal), and a permission or a form asked outside a prompt is answered as
 /// cancelled.
 async fn ask(conn: &Weak<Conn>, sink: &Sink, method: &str, id: Value, params: Value) {
+    // The agent's own requests to Vivianne's tools: answered on their own, a call may take a while.
+    if method.starts_with("mcp/") {
+        let Some(conn) = conn.upgrade() else { return };
+        let method = method.to_owned();
+        tokio::spawn(async move { conn.answer_mcp(id, method, params).await });
+        return;
+    }
     if matches!(method, "session/request_permission" | "elicitation/create") {
         let item = if method == "elicitation/create" { Incoming::Elicitation { id: id.clone() } } else { Incoming::Permission { id: id.clone(), params } };
         let sent = sink.lock().unwrap_or_else(PoisonError::into_inner).as_ref().map(|s| s.send(item).is_ok());

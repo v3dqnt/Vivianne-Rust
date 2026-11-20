@@ -99,6 +99,10 @@ pub struct TurnRequest<'a> {
     pub plan_mode: bool,
     /// Bypass mode: every request is allowed without asking.
     pub bypass: bool,
+    /// The user's MCP servers, handed to the agent when its session opens.
+    pub mcp_servers: &'a [super::own_tools::McpServerSpec],
+    /// Vivianne's own tools, offered to the agent for this turn.
+    pub own: Option<super::own_tools::OwnTools>,
 }
 
 /// What a turn produced.
@@ -584,9 +588,30 @@ fn build_prompt(conn: &Conn, harness: &Harness, request: &TurnRequest<'_>) -> Ve
         if let Some(digest) = digest(missed) {
             prompt.push(json!({ "type": "text", "text": digest }));
         }
+        // Where it is running and what it has: said once, and again only when that changes. Only to a turn that
+        // is for the user (one that carries Vivianne's tools), not to an internal check such as a sign-in probe.
+        let tools: &[super::own_tools::OfferedTool] = request.own.as_ref().map_or(&[], |own| &own.tools);
+        let told_now = if request.own.is_none() { None } else {
+            let mut last = conn.told.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let (send, now) = super::own_tools::next_instructions(&last, request.plan_mode, tools);
+            *last = now;
+            send
+        };
+        if let Some(text) = told_now {
+            prompt.push(json!({ "type": "text", "text": text }));
+        }
     }
     prompt.extend(prompt_json(request.prompt, conn.takes_images(), &harness.name));
     prompt
+}
+
+/// Ends the turn's access to Vivianne's tools when it is dropped, however the turn ends.
+struct EndOwnTools(Arc<Conn>);
+
+impl Drop for EndOwnTools {
+    fn drop(&mut self) {
+        self.0.mcp.end();
+    }
 }
 
 /// Stops the running prompt when this is dropped, so a cancelled turn doesn't keep the agent working.
@@ -610,6 +635,11 @@ pub(super) async fn run(
     cancel: &CancellationToken,
 ) -> TurnEnd {
     let prompt = build_prompt(conn, harness, request);
+    // Vivianne's own tools answer calls for this turn, and only this one.
+    let _own = request.own.as_ref().map(|own| {
+        conn.mcp.begin(own.call.clone());
+        EndOwnTools(conn.clone())
+    });
     let (tx, mut incoming) = mpsc::unbounded_channel();
     *conn.sink.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(tx);
     let (prompt_conn, session_id) = (conn.clone(), session.to_owned());
@@ -845,7 +875,7 @@ mod tests {
         let (conn, thread, stop, who) = (conn.clone(), thread(), cancel.clone(), harness("a"));
         let prompt = vec![PromptPart::Text(text.to_owned())];
         let turn = tokio::spawn(async move {
-            let request = TurnRequest { prompt: &prompt, earlier: &[], plan_mode, bypass };
+            let request = TurnRequest { prompt: &prompt, earlier: &[], plan_mode, bypass, mcp_servers: &[], own: None };
             let end = run(&conn, &who, SESSION, &thread, &request, &tx, &stop).await;
             forget_session(&session_key(&thread, "a"), SESSION);
             end
@@ -1079,7 +1109,7 @@ mod tests {
         let (turn_conn, who, stop) = (conn.clone(), harness("a"), CancellationToken::new());
         let turn = tokio::spawn(async move {
             let prompt = [PromptPart::Text("and 3+3?".into())];
-            let request = TurnRequest { prompt: &prompt, earlier: &earlier, plan_mode: false, bypass: false };
+            let request = TurnRequest { prompt: &prompt, earlier: &earlier, plan_mode: false, bypass: false, mcp_servers: &[], own: None };
             let thread = thread();
             let end = run(&turn_conn, &who, SESSION, &thread, &request, &tx, &stop).await;
             forget_session(&session_key(&thread, "a"), SESSION);
@@ -1102,7 +1132,7 @@ mod tests {
         let (turn_conn, who, stop) = (conn.clone(), harness("a"), CancellationToken::new());
         let turn = tokio::spawn(async move {
             let prompt = [PromptPart::Text("/review".into())];
-            let request = TurnRequest { prompt: &prompt, earlier: &earlier, plan_mode: false, bypass: false };
+            let request = TurnRequest { prompt: &prompt, earlier: &earlier, plan_mode: false, bypass: false, mcp_servers: &[], own: None };
             let thread = thread();
             let end = run(&turn_conn, &who, SESSION, &thread, &request, &tx, &stop).await;
             forget_session(&session_key(&thread, "a"), SESSION);

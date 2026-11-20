@@ -387,7 +387,10 @@ impl HarnessTurn {
     async fn run(self, events: &mpsc::UnboundedSender<AgentEvent>, stop: &CancellationToken) -> (String, Option<String>) {
         let (acp_tx, mut acp_rx) = mpsc::unbounded_channel();
         let prompt = [PromptPart::Text(self.text.clone())];
-        let request = TurnRequest { prompt: &prompt, earlier: &self.earlier, plan_mode: self.plan_mode, bypass: self.bypass };
+        // The agent gets Vivianne's own tools, and the MCP servers the user has added, beside its own.
+        let servers = super::own_tools::specs().await;
+        let own = super::own_tools::for_turn(std::path::Path::new(&self.cwd), self.plan_mode);
+        let request = TurnRequest { prompt: &prompt, earlier: &self.earlier, plan_mode: self.plan_mode, bypass: self.bypass, mcp_servers: &servers, own: Some(own) };
         let turn = async {
             let outcome = self.acp.run_turn(&self.thread, &self.id, &self.cwd, &request, &acp_tx, stop).await;
             drop(acp_tx);

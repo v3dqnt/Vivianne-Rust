@@ -147,7 +147,7 @@ async fn verify(conn: &std::sync::Arc<Conn>, harness: &Harness, cwd: &str, depth
         limit.cancel();
     });
     let prompt = [PromptPart::Text("Reply with the single word: ok".to_owned())];
-    let request = TurnRequest { prompt: &prompt, earlier: &[], plan_mode: true, bypass: false };
+    let request = TurnRequest { prompt: &prompt, earlier: &[], plan_mode: true, bypass: false, mcp_servers: &[], own: None };
     let thread = format!("{DELEGATE}auth-{}", harness.id);
     let end = turn::run(conn, harness, &session, &thread, &request, &events, &cancel).await;
     timer.abort();

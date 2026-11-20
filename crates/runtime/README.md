@@ -32,3 +32,6 @@ banners, the `@file` index.
 
 Not ported from the old loop: key rotation, the long-task ledger (24/7 mode), hooks, the "done means checked"
 verification nudge.
+
+- `thread_tools.rs`: `list_threads` and `read_thread`, read-only, limited to the project's own saved conversations.
+  Offered to coding agents over MCP.

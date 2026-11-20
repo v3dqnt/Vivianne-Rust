@@ -60,7 +60,8 @@ pub enum Mode {
 
 /// Tools that only look. Anything not named here (a new tool, an editing one such as `lsp_edit`) counts as one that
 /// changes things: a list of what is safe fails closed, a list of what is dangerous fails open.
-const LOOK_ONLY_TOOLS: [&str; 8] = ["read", "ls", "grep", "code_search", "glob", "diagnostics", "lsp", "repo_overview"];
+const LOOK_ONLY_TOOLS: [&str; 12] =
+    ["read", "ls", "grep", "code_search", "glob", "diagnostics", "lsp", "repo_overview", "recall", "reflect", "list_threads", "read_thread"];
 
 impl Mode {
     pub const ALL: [Self; 3] = [Self::Ask, Self::Auto, Self::Plan];

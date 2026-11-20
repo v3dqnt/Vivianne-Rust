@@ -19,6 +19,7 @@ mod auth;
 mod conn;
 mod info;
 mod install;
+mod own_tools;
 mod permission;
 mod registry;
 mod session;
@@ -39,6 +40,7 @@ pub use conn::trace_lines;
 pub use info::{AgentCommand, SessionInfo, context_usage};
 pub use install::InstallProgress;
 pub use registry::{Harness, find, harnesses, is_usable};
+pub use own_tools::{CallFn, McpServerSpec, OfferedTool, OwnTools, ToolOutput};
 pub use session::Line;
 pub use turn::{AcpEvent, Outcome, PermissionRequest, PromptPart, ToolInfo, TurnEnd, TurnRequest};
 
@@ -97,7 +99,13 @@ impl Acp {
         }
         trace(&harness.name, format!("turn: connecting (thread {thread})"));
         let conn = self.connection(thread, &harness, cwd).await?;
-        let session = session::open_session(&conn, &harness, thread, cwd).await?;
+        // What the agent is handed at session start: the user's MCP servers, and Vivianne's own tools beside them.
+        let mut servers = own_tools::servers_json(request.mcp_servers, conn.speaks_v2(), conn.takes_stdio_mcp(), conn.takes_http_mcp());
+        if let Some(own) = &request.own {
+            conn.mcp.offer(own.tools.clone());
+            servers.extend(conn.own_mcp_server().await);
+        }
+        let session = session::open_session(&conn, &harness, thread, cwd, &servers).await?;
         let end = turn::run(&conn, &harness, &session, thread, request, events, cancel).await;
         if !conn.is_alive() {
             // The next turn starts a fresh agent.
@@ -256,7 +264,7 @@ async fn walk(harness: &Harness, prompt: Option<String>, report: &mut DebugRepor
 
     let t = Instant::now();
     let thread = format!("{}debug-{}", session::DELEGATE, harness.id);
-    let session = match session::open_with(&conn, harness, None, &cwd).await {
+    let session = match session::open_with(&conn, harness, None, &cwd, &[]).await {
         Ok(session) => {
             report.steps.push(step("Open a session", true, t, format!("session {session}")));
             session
@@ -293,7 +301,7 @@ async fn walk(harness: &Harness, prompt: Option<String>, report: &mut DebugRepor
     });
     let text = prompt.unwrap_or_else(|| "Reply with the single word: ok".to_owned());
     let parts = [PromptPart::Text(text)];
-    let request = TurnRequest { prompt: &parts, earlier: &[], plan_mode: false, bypass: false };
+    let request = TurnRequest { prompt: &parts, earlier: &[], plan_mode: false, bypass: false, mcp_servers: &[], own: None };
     let end = turn::run(&conn, harness, &session, &thread, &request, &tx, &cancel).await;
     timer.abort();
     drop(tx);

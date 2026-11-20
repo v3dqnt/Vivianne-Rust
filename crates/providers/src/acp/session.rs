@@ -168,12 +168,12 @@ fn resume_method(conn: &Conn) -> Option<&'static str> {
 
 /// Opens the thread's session: resumes the saved one when the agent can, else starts a new one. Returns the
 /// session id and how much of the thread it has already seen.
-async fn setup_session(conn: &Conn, saved: Option<(String, usize)>, cwd: &str) -> Result<(String, usize), RpcError> {
+async fn setup_session(conn: &Conn, saved: Option<(String, usize)>, cwd: &str, servers: &[Value]) -> Result<(String, usize), RpcError> {
     if let Some((id, seen)) = saved {
         if let Some(method) = resume_method(conn) {
             // No `replayFrom` on a v2 resume: Vivianne doesn't re-render history, and the turn's digest
             // covers what the session missed.
-            match conn.request(method, json!({ "sessionId": id, "cwd": cwd, "mcpServers": [] }), Some(SESSION_TIMEOUT)).await {
+            match conn.request(method, json!({ "sessionId": id, "cwd": cwd, "mcpServers": servers }), Some(SESSION_TIMEOUT)).await {
                 Ok(_) => {
                     trace("harness", format!("reopened session {id} with {method}"));
                     return Ok((id, seen));
@@ -186,7 +186,7 @@ async fn setup_session(conn: &Conn, saved: Option<(String, usize)>, cwd: &str) -
             trace("harness", format!("it can't reopen session {id}; starting a new session"));
         }
     }
-    let opened = conn.request("session/new", json!({ "cwd": cwd, "mcpServers": [] }), Some(SESSION_TIMEOUT)).await?;
+    let opened = conn.request("session/new", json!({ "cwd": cwd, "mcpServers": servers }), Some(SESSION_TIMEOUT)).await?;
     let id = opened
         .get("sessionId")
         .and_then(Value::as_str)
@@ -196,9 +196,9 @@ async fn setup_session(conn: &Conn, saved: Option<(String, usize)>, cwd: &str) -
 }
 
 /// The thread's session on the agent: reopened after a restart when the agent can, otherwise new.
-pub(super) async fn open_session(conn: &Conn, harness: &Harness, thread: &str, cwd: &str) -> Result<String, String> {
+pub(super) async fn open_session(conn: &Conn, harness: &Harness, thread: &str, cwd: &str, servers: &[Value]) -> Result<String, String> {
     let saved = saved_sessions().remove(&session_key(thread, &harness.id));
-    let id = open_with(conn, harness, saved, cwd).await?;
+    let id = open_with(conn, harness, saved, cwd, servers).await?;
     // A session that has seen nothing is a new one: what the last said about how full it was no longer holds.
     if conn.seen.load(Ordering::SeqCst) == 0 {
         forget_context(thread);
@@ -208,14 +208,14 @@ pub(super) async fn open_session(conn: &Conn, harness: &Harness, thread: &str, c
 
 /// The rest of [`open_session`], with the saved session handed in so a test doesn't have to write the
 /// saved-sessions file.
-pub(super) async fn open_with(conn: &Conn, harness: &Harness, saved: Option<(String, usize)>, cwd: &str) -> Result<String, String> {
+pub(super) async fn open_with(conn: &Conn, harness: &Harness, saved: Option<(String, usize)>, cwd: &str, servers: &[Value]) -> Result<String, String> {
     let mut session = conn.session.lock().await;
     if session.is_none() {
-        let mut setup = setup_session(conn, saved, cwd).await;
+        let mut setup = setup_session(conn, saved, cwd, servers).await;
         // An agent that wants a sign-in first says so once, then goes on.
         if matches!(&setup, Err(e) if e.is_auth_required()) {
             sign_in(conn, harness).await?;
-            setup = setup_session(conn, None, cwd).await;
+            setup = setup_session(conn, None, cwd, servers).await;
         }
         let (id, seen) = setup.map_err(|e| explain_start_failure(harness, &e.to_string()))?;
         conn.seen.store(seen, Ordering::SeqCst);
@@ -278,7 +278,7 @@ mod tests {
         let (conn, mut agent) = start(2, json!({}), json!([])).await;
         let opened = tokio::spawn({
             let conn = conn.clone();
-            async move { open_with(&conn, &harness("a"), None, "/p").await }
+            async move { open_with(&conn, &harness("a"), None, "/p", &[]).await }
         });
         let asked = agent.open("s1").await;
         assert_eq!((asked["params"]["cwd"].as_str(), asked["params"]["mcpServers"].as_array().map(Vec::len)), (Some("/p"), Some(0)));
@@ -290,7 +290,7 @@ mod tests {
         let (conn, mut agent) = start(2, json!({"session": {}}), json!([])).await;
         let opened = tokio::spawn({
             let conn = conn.clone();
-            async move { open_with(&conn, &harness("a"), Some(("old".into(), 4)), "/p").await }
+            async move { open_with(&conn, &harness("a"), Some(("old".into(), 4)), "/p", &[]).await }
         });
         let msg = agent.recv().await;
         assert_eq!((msg["method"].as_str(), msg["params"]["sessionId"].as_str()), (Some("session/resume"), Some("old")));
@@ -304,7 +304,7 @@ mod tests {
         let (conn, mut agent) = start(2, json!({"session": {}}), json!([])).await;
         let opened = tokio::spawn({
             let conn = conn.clone();
-            async move { open_with(&conn, &harness("a"), Some(("gone".into(), 4)), "/p").await }
+            async move { open_with(&conn, &harness("a"), Some(("gone".into(), 4)), "/p", &[]).await }
         });
         let msg = agent.recv().await;
         agent.refuse(&msg["id"], -32002, "no such session", Value::Null).await;
@@ -318,7 +318,7 @@ mod tests {
         let (conn, mut agent) = start(1, json!({"loadSession": true}), json!([])).await;
         let opened = tokio::spawn({
             let conn = conn.clone();
-            async move { open_with(&conn, &harness("a"), Some(("old".into(), 2)), "/p").await }
+            async move { open_with(&conn, &harness("a"), Some(("old".into(), 2)), "/p", &[]).await }
         });
         let msg = agent.recv().await;
         assert_eq!(msg["method"], "session/load");
@@ -331,7 +331,7 @@ mod tests {
         let (conn, mut agent) = start(1, json!({}), json!([])).await;
         let opened = tokio::spawn({
             let conn = conn.clone();
-            async move { open_with(&conn, &harness("a"), Some(("old".into(), 2)), "/p").await }
+            async move { open_with(&conn, &harness("a"), Some(("old".into(), 2)), "/p", &[]).await }
         });
         agent.open("new").await;
         assert_eq!(opened.await.unwrap_or(Err(String::new())), Ok("new".to_owned()));
@@ -343,7 +343,7 @@ mod tests {
         let (conn, mut agent) = start(2, json!({}), auth).await;
         let opened = tokio::spawn({
             let conn = conn.clone();
-            async move { open_with(&conn, &harness("claude-acp"), None, "/p").await }
+            async move { open_with(&conn, &harness("claude-acp"), None, "/p", &[]).await }
         });
         let first = agent.recv().await;
         assert_eq!(first["method"], "session/new");
@@ -361,7 +361,7 @@ mod tests {
         let (conn, mut agent) = start(2, json!({}), auth).await;
         let opened = tokio::spawn({
             let conn = conn.clone();
-            async move { open_with(&conn, &harness("claude-acp"), None, "/p").await }
+            async move { open_with(&conn, &harness("claude-acp"), None, "/p", &[]).await }
         });
         let first = agent.recv().await;
         agent.refuse(&first["id"], -32000, "auth required", Value::Null).await;

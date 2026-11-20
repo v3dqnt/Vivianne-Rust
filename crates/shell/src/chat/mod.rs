@@ -3,6 +3,7 @@
 mod composer;
 mod items;
 mod models;
+mod own_tools;
 mod session;
 mod thread_usage;
 mod toolcalls;
