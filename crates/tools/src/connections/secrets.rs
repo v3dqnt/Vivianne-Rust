@@ -1,4 +1,4 @@
-#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, dead_code, unused, missing_debug_implementations)]
+#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, missing_debug_implementations)]
 //! Where connection secrets live: the OS keychain (Windows Credential
 //! Manager, macOS Keychain, Secret Service), one entry per key. If the
 //! keychain can't be reached, a file in Vivianne's home, readable only by the

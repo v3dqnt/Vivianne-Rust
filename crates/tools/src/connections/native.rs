@@ -1,4 +1,4 @@
-#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, dead_code, unused, missing_debug_implementations)]
+#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, missing_debug_implementations)]
 //! Connectors built into the app, for services with no hosted MCP server:
 //! each talks to the service's own API with the token the user pasted, and
 //! offers its actions as MCP tools (`mcp__telegram__send_message`…), so the

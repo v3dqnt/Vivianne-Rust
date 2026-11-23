@@ -79,20 +79,7 @@ pub fn project_trusted(_project: &str) -> bool {
     false
 }
 
-/// The app handle for delivering notes into a thread. The new runtime has none yet.
-#[derive(Debug)]
-pub struct AppHandle;
-
 /// Which thread the current turn belongs to. None until the runtime tells the tools.
 pub fn turn_thread() -> Option<String> {
     None
-}
-
-pub fn app() -> Option<AppHandle> {
-    None
-}
-
-/// Hand a note to a running thread.
-pub async fn deliver_if_running(_app: &AppHandle, _thread: &str, _note: &str) -> Result<(), String> {
-    Err("no running thread".to_owned())
 }

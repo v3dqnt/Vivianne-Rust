@@ -1,6 +1,6 @@
 // Copied from Vivianne's original tools (agent/tools/code/repo_tools.rs).
 // Kept as close to the original as possible; do not restyle.
-#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, dead_code, unused, unsafe_code, missing_debug_implementations)]
+#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, unsafe_code, missing_debug_implementations)]
 
 //! repo_clone / repo_overview — original Rust tools covering the same ground
 //! as opencode's tools of the same name: clone/cache a remote repo for

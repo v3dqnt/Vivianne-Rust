@@ -1,6 +1,6 @@
 // Copied from Vivianne's original tools (0901 lsp/client.rs).
 // Kept as close to the original as possible; do not restyle.
-#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, dead_code, unused, unsafe_code, missing_debug_implementations)]
+#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, unsafe_code, missing_debug_implementations)]
 
 //! A single language server connection: spawns the process, speaks LSP's Content-Length-framed JSON-RPC 2.0 over stdin/stdout, routes
 //! `textDocument/publishDiagnostics` into a shared map, and answers the requests a server sends back.
@@ -473,10 +473,6 @@ impl LspClient {
         self.capabilities.lock().await.clone()
     }
 
-    pub fn root(&self) -> &str {
-        &self.root
-    }
-
     /// The paths this server has open, and how many diagnostics it last published for each.
     pub async fn open_files(&self) -> Vec<String> {
         self.docs.lock().await.order.iter().map(|(_, uri)| uri_to_path(uri)).collect()
@@ -485,11 +481,6 @@ impl LspClient {
     /// Whether the client may be shut down for being idle: nothing is waiting on it, and it has been quiet for `timeout`.
     pub fn is_idle(&self, timeout: Duration) -> bool {
         self.in_flight.load(Ordering::SeqCst) == 0 && self.last_activity.lock().unwrap_or_else(|e| e.into_inner()).elapsed() > timeout
-    }
-
-    /// The server's last words on stderr, joined: why it died.
-    pub fn stderr_tail(&self) -> String {
-        self.stderr.lock().unwrap_or_else(|e| e.into_inner()).iter().cloned().collect::<Vec<_>>().join(" | ")
     }
 
     /// Wait until the server reports no work in progress (project load, indexing), for at most `limit`. `true` when it is idle.
@@ -503,22 +494,6 @@ impl LspClient {
                 return false;
             }
             tokio::time::sleep(POLL).await;
-        }
-    }
-
-    /// `workspace/didChangeWatchedFiles` for files changed on disk by something other than the server (type 1 created, 2 changed, 3 deleted).
-    pub async fn notify_watched(&self, changes: &[(String, u8)]) {
-        if changes.is_empty() {
-            return;
-        }
-        let events: Vec<Value> = changes.iter().map(|(p, t)| json!({ "uri": path_to_uri(p), "type": t })).collect();
-        let _ = tokio::time::timeout(Duration::from_secs(2), self.notify("workspace/didChangeWatchedFiles", json!({ "changes": events }))).await;
-    }
-
-    /// Tell the server a file on disk was written by someone else (a workspace edit, a rename) so its view matches.
-    pub async fn refresh(&self, path: &str) {
-        if self.docs.lock().await.version.contains_key(&path_key(path)) {
-            let _ = self.touch_file(path).await;
         }
     }
 

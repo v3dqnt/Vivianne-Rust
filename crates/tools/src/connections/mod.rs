@@ -1,4 +1,4 @@
-#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, dead_code, unused, missing_debug_implementations)]
+#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, missing_debug_implementations)]
 //! Connections: the apps people use every day, connected in one click.
 //!
 //! Each connection is an MCP server under the hood (`crate::mcp`), named by

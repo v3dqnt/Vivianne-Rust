@@ -20,7 +20,7 @@ pub mod files;
 #[rustfmt::skip]
 pub mod connections;
 #[rustfmt::skip]
-#[allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, dead_code, unused, missing_debug_implementations)]
+#[allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, missing_debug_implementations)]
 pub mod dap;
 #[rustfmt::skip]
 mod lsp;

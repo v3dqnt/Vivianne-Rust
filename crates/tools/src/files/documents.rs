@@ -1,6 +1,6 @@
 // Copied from Vivianne's original tools (agent/tools/files/documents.rs).
 // Kept as close to the original as possible; do not restyle.
-#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, dead_code, unused, unsafe_code, missing_debug_implementations)]
+#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, unsafe_code, missing_debug_implementations)]
 
 //! Documents: `create_document` makes PDF, Word, Excel and PowerPoint files;
 //! `inspect_document` and `edit_document` change one part of an existing one.

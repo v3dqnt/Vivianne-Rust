@@ -1,6 +1,6 @@
 // Copied from Vivianne's original tools (0901 lsp/mod.rs).
 // Kept as close to the original as possible; do not restyle.
-#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, dead_code, unused, unsafe_code, missing_debug_implementations)]
+#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, unsafe_code, missing_debug_implementations)]
 
 //! LSP — a best-effort Language Server Protocol client. Implemented directly
 //! against the public LSP spec (JSON-RPC 2.0 over stdio, Content-Length
@@ -12,15 +12,15 @@
 //! notifications so tools (edit/write/apply_patch) can surface fresh errors
 //! right after a change.
 
-pub mod check;
 pub mod client;
 pub mod edits;
-pub mod ledger;
 pub mod manager;
 pub mod servers;
 pub mod uri;
 
-use std::collections::HashMap;
+/// The most errors listed for one file; the rest are counted.
+pub const MAX_LISTED: usize = 50;
+
 
 /// Standard LSP `languageId` values, keyed by file extension (without the dot).
 /// This is public protocol metadata (the languageId identifiers themselves are
@@ -180,7 +180,7 @@ pub struct Diagnostic {
 }
 
 /// Format one file's diagnostics as a small `<diagnostics>` block for tool output,
-/// capped (`ledger::MAX_LISTED`) so large error counts don't bloat context.
+/// capped (`MAX_LISTED`) so large error counts don't bloat context.
 pub fn format_diagnostics(file: &str, diagnostics: &[Diagnostic]) -> Option<String> {
     format_with_note(file, diagnostics, None)
 }
@@ -215,10 +215,10 @@ pub fn format_with_note(file: &str, diagnostics: &[Diagnostic], note: Option<&st
     };
     let lines: Vec<String> = errors
         .iter()
-        .take(ledger::MAX_LISTED)
+        .take(MAX_LISTED)
         .map(|d| format!("{} [{}:{}] {}", severity_label(d.severity.unwrap_or(1)), d.range.start.line + 1, d.range.start.character + 1, strip_noise(&d.message)))
         .collect();
-    let more = errors.len().saturating_sub(ledger::MAX_LISTED);
+    let more = errors.len().saturating_sub(MAX_LISTED);
     let mut body = lines.join("\n");
     if more > 0 {
         body.push_str(&format!("\n... and {more} more"));
@@ -229,8 +229,6 @@ pub fn format_with_note(file: &str, diagnostics: &[Diagnostic], note: Option<&st
     }
     Some(format!("<diagnostics file=\"{file}\">\n{body}\n</diagnostics>"))
 }
-
-pub type DiagnosticsByFile = HashMap<String, Vec<Diagnostic>>;
 
 #[cfg(test)]
 mod format_tests {

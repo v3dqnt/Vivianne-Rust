@@ -1,6 +1,6 @@
 // Copied from Vivianne's original tools (0901 agent/tools/files/guard.rs).
 // Kept as close to the original as possible; do not restyle.
-#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, dead_code, unused, unsafe_code, missing_debug_implementations)]
+#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, unsafe_code, missing_debug_implementations)]
 
 //! What every file mutation goes through: one writer per file at a time, a check that the file hasn't changed since the agent last read
 //! it, and a write that can't leave a half-written file behind.

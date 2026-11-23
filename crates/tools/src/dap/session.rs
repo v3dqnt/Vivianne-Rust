@@ -2178,29 +2178,6 @@ mod tests {
         assert!(q.contains("/usr/bin/curl"), "an executable of its own is always asked about: {q}");
     }
 
-    /// A session whose adapter may ask for programs to be run, started against a scripted adapter; returns it with the adapter's end.
-    async fn started_with_approver(approver: Approver) -> (Arc<Session>, Adapter) {
-        let (client, events, mut adapter) = scripted();
-        let script = tokio::spawn(async move {
-            let init = adapter.expect("initialize").await;
-            assert_eq!(init["arguments"]["supportsRunInTerminalRequest"], true, "offered only when someone can be asked");
-            adapter.respond(&init, json!({ "supportsConfigurationDoneRequest": true })).await;
-            let launch = adapter.expect("launch").await;
-            adapter.event("initialized", json!({})).await;
-            let done = adapter.expect("configurationDone").await;
-            adapter.respond(&done, Value::Null).await;
-            adapter.respond(&launch, Value::Null).await;
-            adapter.event("stopped", json!({ "reason": "entry", "threadId": 1 })).await;
-            let trace = adapter.expect("stackTrace").await;
-            adapter.respond(&trace, json!({ "stackFrames": [], "totalFrames": 0 })).await;
-            adapter
-        });
-        let mut sp = spec("debug-term", "mock", false, "/w/app.py", json!({}), vec![]);
-        sp.approver = Some(approver);
-        let session = Session::start(sp, client, events).await.expect("a session");
-        (session, script.await.unwrap())
-    }
-
     #[cfg(unix)]
     #[tokio::test]
     async fn a_program_the_adapter_asks_to_run_runs_only_if_allowed_and_ends_with_the_session() {

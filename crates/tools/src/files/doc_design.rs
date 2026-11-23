@@ -1,6 +1,6 @@
 // Copied from Vivianne's original tools (agent/tools/files/doc_design.rs).
 // Kept as close to the original as possible; do not restyle.
-#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, dead_code, unused, unsafe_code, missing_debug_implementations)]
+#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, unsafe_code, missing_debug_implementations)]
 
 //! The design layer shared by every document format: themes, the content
 //! vocabulary (blocks with inline formatting), and an HTML/CSS renderer that

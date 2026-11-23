@@ -1,6 +1,6 @@
 // Copied from Vivianne's original tools (agent/tools/builtin.rs).
 // Kept as close to the original as possible; do not restyle.
-#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, dead_code, unused, unsafe_code, missing_debug_implementations)]
+#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, unsafe_code, missing_debug_implementations)]
 
 use async_trait::async_trait;
 use serde_json::json;
@@ -46,8 +46,6 @@ pub trait Tool: Send + Sync {
 const MAX_GREP_MATCHES: usize = 100;
 const MAX_GREP_BYTES: usize = 256_000;
 const MAX_GREP_LINE_CHARS: usize = 1000;
-const DEFAULT_BASH_TIMEOUT_SECS: u64 = 120;
-const MAX_BASH_TIMEOUT_SECS: u64 = 600;
 
 /// Directories that are always skipped during recursive walks — shared by
 /// every walker in this module (`walk_files` here, `IgnoreSet::always_skip`
@@ -59,25 +57,6 @@ pub(crate) const ALWAYS_SKIP_DIRS: &[&str] = &[
     ".git", "node_modules", "target", "dist", "build", ".next", ".venv", "venv", "__pycache__",
     ".turbo", ".cache", "vendor",
 ];
-
-/// Parse YAML frontmatter (`---\n...\n---\n`) from markdown content into
-/// `T`, returning `T::default()` and the whole input as the body when
-/// there's no frontmatter fence or the YAML fails to parse. Shared by
-/// `skills.rs` and `subagent_profiles.rs`, which had byte-identical copies
-/// of this regex over two different frontmatter structs.
-pub(crate) fn parse_frontmatter<T: serde::de::DeserializeOwned + Default>(content: &str) -> (T, &str) {
-    lazy_static::lazy_static! {
-        static ref FRONTMATTER_RE: regex::Regex = regex::Regex::new(r"(?s)^---\s*\n(.*?)\n---\s*\n(.*)$").unwrap();
-    }
-    if let Some(caps) = FRONTMATTER_RE.captures(content) {
-        let yaml_text = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-        let body = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-        let frontmatter: T = serde_yaml::from_str(yaml_text).unwrap_or_default();
-        (frontmatter, body)
-    } else {
-        (T::default(), content)
-    }
-}
 
 /// Truncate `text` to at most `max_lines` lines AND `max_bytes` bytes (whichever
 /// limit is hit first), UTF-8-safely, appending a notice when truncated.
@@ -428,10 +407,6 @@ impl Tool for CodeSearchTool {
 // ═══ glob, powershell, notebooks, web, sleep, todos, diagnostics ═══
 
 const MAX_GLOB_RESULTS: usize = 100;
-const MAX_WEB_BYTES: usize = 100_000;
-const DEFAULT_PS_TIMEOUT_SECS: u64 = 120;
-const MAX_PS_TIMEOUT_SECS: u64 = 600;
-const MAX_SLEEP_SECS: u64 = 60;
 
 pub(crate) fn err(msg: impl Into<String>) -> ToolResult {
     ToolResult { content: format!("Error: {}", msg.into()), is_error: true, details: None }
