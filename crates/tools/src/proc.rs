@@ -11,6 +11,7 @@
 //! the user asked for, an app being opened) use `Command::new` directly.
 
 use std::ffi::OsStr;
+#[cfg(not(windows))]
 use std::time::Duration;
 
 #[cfg(windows)]
@@ -39,6 +40,7 @@ pub fn quiet_std(program: impl AsRef<OsStr>) -> std::process::Command {
 
 
 /// How long a command gets to exit on SIGTERM before it is killed outright.
+#[cfg(not(windows))]
 const KILL_GRACE: Duration = Duration::from_secs(3);
 
 /// End a process and everything it started (`npm run dev` → `sh` → `node`), not just the process itself, which would leave orphans holding the

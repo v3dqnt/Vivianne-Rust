@@ -20,7 +20,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
-use super::client::{LspClient, SyncMark};
+use super::client::LspClient;
 use super::servers::{self, ServerDef};
 use super::uri::{path_key, path_to_uri};
 use super::Diagnostic;
@@ -230,7 +230,6 @@ pub enum Report {
 /// What an edit's check found, and, when the server hadn't answered, what to wait on afterwards.
 struct Outcome {
     report: Report,
-    waiting: Option<(Arc<LspClient>, SyncMark)>,
 }
 
 async fn check(path: &str, root_dir: &str, wait: Duration) -> Outcome {
@@ -241,26 +240,26 @@ async fn check(path: &str, root_dir: &str, wait: Duration) -> Outcome {
     };
     let client = match tokio::time::timeout(wait + START_GRACE, start).await {
         Ok(Ok(Ok(Some(c)))) => c,
-        Ok(Ok(Ok(None))) | Ok(Err(_)) => return Outcome { report: Report::NoServer, waiting: None },
+        Ok(Ok(Ok(None))) | Ok(Err(_)) => return Outcome { report: Report::NoServer },
         // A server that is installed but would not start is not a file without problems.
         Ok(Ok(Err(e))) => {
             log::warn!("lsp: {e}");
-            return Outcome { report: Report::NoServer, waiting: None };
+            return Outcome { report: Report::NoServer };
         }
-        Err(_) => return Outcome { report: Report::NotReported, waiting: None },
+        Err(_) => return Outcome { report: Report::NotReported },
     };
     // What the server said before this edit is not an answer about it: only a report for the text just sent counts.
     let mark = match client.touch_file(path).await {
         Ok(mark) => mark,
         Err(e) => {
             log::warn!("lsp: touch_file failed for {path}: {e}");
-            return Outcome { report: Report::NotReported, waiting: None };
+            return Outcome { report: Report::NotReported };
         }
     };
     client.did_save(path).await;
     match client.fresh_report(path, &mark, wait).await {
-        Some(items) => Outcome { report: Report::Published(items), waiting: None },
-        None => Outcome { report: Report::NotReported, waiting: Some((client, mark)) },
+        Some(items) => Outcome { report: Report::Published(items) },
+        None => Outcome { report: Report::NotReported },
     }
 }
 

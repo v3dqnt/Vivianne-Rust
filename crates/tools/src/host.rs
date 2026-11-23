@@ -1,3 +1,5 @@
+#![allow(clippy::pedantic)] // stand-in: mirrors the original signatures
+
 //! What the copied tools need from the old app, in one place: where files live under `~/.viv`, the settings
 //! file, an atomic write, and the two seams the new runtime has not filled yet (the running thread, and
 //! whether a project folder is trusted). Each seam answers "none"/`false` today; the copied code already

@@ -69,7 +69,6 @@ pub struct LspClient {
     started: Instant,
     docs: Mutex<OpenDocs>,
     capabilities: Mutex<Value>,
-    root: String,
     /// Requests waiting for an answer: a client with any is never idle (omp issue #8390).
     in_flight: Arc<AtomicUsize>,
     last_activity: StdMutex<Instant>,
@@ -222,7 +221,6 @@ impl LspClient {
             started: Instant::now(),
             docs: Mutex::new(OpenDocs::default()),
             capabilities: Mutex::new(Value::Null),
-            root: root.to_string(),
             in_flight: Arc::new(AtomicUsize::new(0)),
             last_activity: StdMutex::new(Instant::now()),
             progress,
