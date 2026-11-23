@@ -100,6 +100,10 @@ impl Toolbox {
         toolbox.add(simple::EditFile::new(workspace));
         toolbox.add(results::ReadToolResult);
         toolbox.add(present::Present::new(root));
+        // Only where a LibreOffice is installed: a tool that cannot work is not offered.
+        if files::office_pdf::tool::available() {
+            toolbox.add(files::office_pdf::tool::ConvertToPdf::new(root));
+        }
         toolbox
     }
 

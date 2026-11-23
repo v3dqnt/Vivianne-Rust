@@ -18,8 +18,8 @@ pub use recorder::Recorder;
 pub use types::{ChangedFile, ChangesSummary, FileDiff, Hunk, Limits, SnapshotIds};
 
 /// The tools that write a file, and the arguments that name the file they write.
-const EDITING_TOOLS: [&str; 4] = ["write", "edit", "str_replace_editor", "lsp_edit"];
-const PATH_ARGUMENTS: [&str; 3] = ["path", "file_path", "filePath"];
+const EDITING_TOOLS: [&str; 5] = ["write", "edit", "str_replace_editor", "lsp_edit", "convert_to_pdf"];
+const PATH_ARGUMENTS: [&str; 4] = ["path", "file_path", "filePath", "output"];
 
 /// The paths a tool call is about to change, when it is one that writes a file.
 #[must_use]
