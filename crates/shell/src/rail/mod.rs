@@ -111,6 +111,8 @@ pub struct Rail {
     context: Option<ContextView>,
     /// What the newest run changed, with the means to undo it.
     changes: Option<vivianne_runtime::checkpoints::LastRun>,
+    /// The newest run per file with line counts; preferred over `changes` for what is listed.
+    summary: Option<vivianne_runtime::changes::ChangesSummary>,
     /// The editors on this machine, looked up once.
     open_apps: Vec<vivianne_tools::open_apps::OpenApp>,
     /// How the project's dev server starts, when it has one.
@@ -139,6 +141,7 @@ impl Rail {
             debug: None,
             context: None,
             changes: None,
+            summary: None,
             open_apps: vivianne_tools::open_apps::list(),
             dev_command,
             badge: None,
@@ -255,12 +258,22 @@ impl Rail {
                     let lag = t * t * (3.0 - 2.0 * t);
                     let lag = lag * lag.sqrt().max(0.0);
                     let (left, right) = if to >= from {
-                        (from_l + (to_l - from_l) * lag, from_r + (to_r - from_r) * lead)
+                        (
+                            from_l + (to_l - from_l) * lag,
+                            from_r + (to_r - from_r) * lead,
+                        )
                     } else {
-                        (from_l + (to_l - from_l) * lead, from_r + (to_r - from_r) * lag)
+                        (
+                            from_l + (to_l - from_l) * lead,
+                            from_r + (to_r - from_r) * lag,
+                        )
                     };
                     // Shorter at the middle of the move, full height at the ends.
-                    let squash = if from == to { 0.0 } else { 5.0 * (t * std::f32::consts::PI).sin() };
+                    let squash = if from == to {
+                        0.0
+                    } else {
+                        5.0 * (t * std::f32::consts::PI).sin()
+                    };
                     pill.left(relative(left))
                         .w(relative((right - left).max(0.0)))
                         .top(px(squash / 2.0))
@@ -276,41 +289,36 @@ impl Rail {
             .mb(px(6.0))
             .rounded(px(9.0))
             .bg(theme::glass_lift(0x14))
-            .child(
-                div()
-                    .relative()
-                    .flex()
-                    .w_full()
-                    .child(pill)
-                    .children(TABS.iter().enumerate().map(|(index, (tab, label))| {
-                        let (tab, selected) = (*tab, self.tab == *tab);
-                        div()
-                            .id(("rail-tab", index))
-                            .h(px(28.0))
-                            .flex_1()
-                            .min_w_0()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded(px(7.0))
-                            .cursor_pointer()
-                            .text_size(px(theme::TEXT_SM))
-                            .whitespace_nowrap()
-                            .font_weight(if selected {
-                                gpui_kit::FontWeight::SEMIBOLD
-                            } else {
-                                gpui_kit::FontWeight::MEDIUM
-                            })
-                            .text_color(color(if selected { theme::TEXT } else { theme::MUTED }))
-                            .when(!selected, |segment| {
-                                segment.hover(|style| style.text_color(color(theme::TEXT)))
-                            })
-                            .on_click(cx.listener(move |rail, _event, window, cx| {
-                                rail.show_tab(tab, window, cx);
-                            }))
-                            .child(*label)
-                    })),
-            )
+            .child(div().relative().flex().w_full().child(pill).children(
+                TABS.iter().enumerate().map(|(index, (tab, label))| {
+                    let (tab, selected) = (*tab, self.tab == *tab);
+                    div()
+                        .id(("rail-tab", index))
+                        .h(px(28.0))
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(7.0))
+                        .cursor_pointer()
+                        .text_size(px(theme::TEXT_SM))
+                        .whitespace_nowrap()
+                        .font_weight(if selected {
+                            gpui_kit::FontWeight::SEMIBOLD
+                        } else {
+                            gpui_kit::FontWeight::MEDIUM
+                        })
+                        .text_color(color(if selected { theme::TEXT } else { theme::MUTED }))
+                        .when(!selected, |segment| {
+                            segment.hover(|style| style.text_color(color(theme::TEXT)))
+                        })
+                        .on_click(cx.listener(move |rail, _event, window, cx| {
+                            rail.show_tab(tab, window, cx);
+                        }))
+                        .child(*label)
+                }),
+            ))
     }
 
     /// Shows the active chat's context window. Redraws only when it changed.
@@ -333,16 +341,22 @@ impl Rail {
     pub fn set_changes(
         &mut self,
         changes: Option<vivianne_runtime::checkpoints::LastRun>,
+        summary: Option<vivianne_runtime::changes::ChangesSummary>,
         cx: &mut Context<Self>,
     ) {
-        if self.changes != changes {
+        if self.changes != changes || self.summary != summary {
             self.changes = changes;
+            self.summary = summary;
             cx.notify();
         }
     }
 
     /// The newest run's files with an Undo button, or nothing when it changed none.
     fn last_run(&self, cx: &mut Context<Self>) -> Option<gpui_kit::AnyElement> {
+        // Per file with line counts, and covering edits git does not see, when the recorder has the run.
+        if let Some(summary) = self.summary.as_ref().filter(|s| s.total > 0) {
+            return Some(self.summary_card(summary, cx));
+        }
         let run = self.changes.as_ref().filter(|run| !run.files.is_empty())?;
         let undo = Button::new("undo-run")
             .ghost()
@@ -386,6 +400,86 @@ impl Rail {
             }
         );
         Some(section_with(&title, Some(undo.into_any_element()), lines).into_any_element())
+    }
+
+    /// The newest run as the recorder saw it: each file with `+added -deleted`. Undo is offered only while the
+    /// checkpoints can undo it (a project in a repository).
+    fn summary_card(
+        &self,
+        summary: &vivianne_runtime::changes::ChangesSummary,
+        cx: &mut Context<Self>,
+    ) -> gpui_kit::AnyElement {
+        const SHOWN: usize = 12;
+        let undo = self
+            .changes
+            .as_ref()
+            .filter(|run| !run.files.is_empty())
+            .map(|_| {
+                Button::new("undo-run")
+                    .ghost()
+                    .xsmall()
+                    .label("Undo")
+                    .tooltip("Put the project back the way it was before this run")
+                    .on_click(
+                        cx.listener(|_rail, _event, _window, cx| cx.emit(RailEvent::UndoLastRun)),
+                    )
+                    .into_any_element()
+            });
+        let mut lines: Vec<gpui_kit::AnyElement> = summary
+            .files
+            .iter()
+            .take(SHOWN)
+            .map(|file| {
+                let counts = if file.binary {
+                    div()
+                        .text_color(color(theme::MUTED))
+                        .child("binary".to_owned())
+                } else if file.oversized {
+                    div()
+                        .text_color(color(theme::MUTED))
+                        .child("large".to_owned())
+                } else {
+                    div()
+                        .flex()
+                        .gap(px(6.0))
+                        .child(
+                            div()
+                                .text_color(color(theme::OK))
+                                .child(format!("+{}", file.added)),
+                        )
+                        .child(
+                            div()
+                                .text_color(color(theme::DANGER))
+                                .child(format!("\u{2212}{}", file.deleted)),
+                        )
+                };
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .child(
+                        div()
+                            .w(px(64.0))
+                            .flex_none()
+                            .font_family(theme::MONO)
+                            .text_size(px(theme::TEXT_XS))
+                            .child(counts),
+                    )
+                    .child(div().min_w_0().truncate().child(file.display.clone()))
+                    .into_any_element()
+            })
+            .collect();
+        if summary.total > SHOWN {
+            lines.push(muted(format!("and {} more", summary.total - SHOWN)).into_any_element());
+        }
+        let title = format!(
+            "Last run \u{b7} {} {} \u{b7} +{} \u{2212}{}",
+            summary.total,
+            if summary.total == 1 { "file" } else { "files" },
+            summary.added,
+            summary.deleted
+        );
+        section_with(&title, undo, lines).into_any_element()
     }
 
     /// Start or stop the project's dev server, and watch it until it has said where it is or has failed.

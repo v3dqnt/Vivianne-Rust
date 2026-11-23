@@ -82,6 +82,8 @@ pub struct ChatView {
     title: Option<(String, &'static str)>,
     /// What the newest run changed in the project, for the side panel and for undoing it.
     changes: Option<vivianne_runtime::checkpoints::LastRun>,
+    /// The same run per file with line counts, including edits git does not see; kept for the conversation's life.
+    summary: Option<vivianne_runtime::changes::ChangesSummary>,
     /// What the person picks on a notification arrives here, from whatever thread the system uses.
     toasts: futures::channel::mpsc::UnboundedSender<(String, crate::notify::Choice)>,
     /// What an automation still has to say after the reply it is waiting for, one step at a time.
@@ -174,6 +176,7 @@ impl ChatView {
             context,
             title: None,
             changes: None,
+            summary: None,
             toasts,
             steps: VecDeque::new(),
             _input_events: input_events,
@@ -679,8 +682,15 @@ impl ChatView {
         self.changes.as_ref()
     }
 
+    /// What the newest run changed per file, with line counts.
+    #[must_use]
+    pub fn change_summary(&self) -> Option<&vivianne_runtime::changes::ChangesSummary> {
+        self.summary.as_ref()
+    }
+
     fn refresh_changes(&mut self, cx: &mut Context<Self>) {
         let Ok(session) = &self.session else { return };
+        let recorder = session.change_recorder();
         let (folder, thread) = (
             session.folder().to_path_buf(),
             session.thread_id().to_owned(),
@@ -688,10 +698,18 @@ impl ChatView {
         let chat = cx.entity().downgrade();
         crate::backend::run(
             cx,
-            async move { vivianne_runtime::checkpoints::last_run(&folder, &thread).await },
-            move |found, cx| {
+            async move {
+                let run = vivianne_runtime::checkpoints::last_run(&folder, &thread).await;
+                let summary = match &recorder {
+                    Some(recorder) => recorder.latest().await,
+                    None => None,
+                };
+                (run, summary)
+            },
+            move |(found, summary), cx| {
                 chat.update(cx, |chat, cx| {
                     chat.changes = found.ok().flatten();
+                    chat.summary = summary;
                     cx.notify();
                 })
                 .ok();

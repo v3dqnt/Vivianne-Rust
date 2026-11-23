@@ -13,6 +13,7 @@ pub mod builtin;
 pub mod browser;
 pub mod computer;
 pub mod git;
+pub mod present;
 #[rustfmt::skip]
 pub mod code;
 #[rustfmt::skip]
@@ -98,6 +99,7 @@ impl Toolbox {
         toolbox.add(simple::WriteFile::new(workspace.clone()));
         toolbox.add(simple::EditFile::new(workspace));
         toolbox.add(results::ReadToolResult);
+        toolbox.add(present::Present::new(root));
         toolbox
     }
 

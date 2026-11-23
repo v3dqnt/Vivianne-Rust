@@ -90,6 +90,8 @@ pub struct Agent {
     window: AtomicU32,
     /// What is added to the conversation before each model call: instruction files, the clock, the terminal's place.
     workspace: Option<WorkspaceContext>,
+    /// What each run changed, per file, when asked for.
+    changes: Option<Arc<crate::changes::Recorder>>,
     /// Asked for a block of standing context (core memory) at the start of every run.
     context_source: Option<ContextSource>,
     context: Mutex<Option<String>>,
@@ -143,6 +145,7 @@ impl Agent {
             asking: Mutex::default(),
             window: AtomicU32::new(0),
             workspace: None,
+            changes: None,
             context_source: None,
             context: Mutex::new(None),
             attachments: None,
@@ -254,11 +257,25 @@ impl Agent {
     /// clock and the terminal's place to the conversation as durable messages before each model call. The first folder is
     /// the working directory. An edit to a file lands on the next call, and nothing unchanged is said twice.
     #[must_use]
+    #[allow(clippy::needless_pass_by_value)]
     pub fn with_instructions(mut self, folders: Vec<String>) -> Self {
         if let Some(cwd) = folders.first() {
             self.workspace = Some(WorkspaceContext::new(std::path::Path::new(cwd)));
         }
         self
+    }
+
+    /// Records what each run changes in the working folder: files with their line counts, and each file's comparison.
+    #[must_use]
+    pub fn with_changes(mut self, recorder: Arc<crate::changes::Recorder>) -> Self {
+        self.changes = Some(recorder);
+        self
+    }
+
+    /// The recorder of this conversation's runs, if one was attached.
+    #[must_use]
+    pub fn changes(&self) -> Option<&Arc<crate::changes::Recorder>> {
+        self.changes.as_ref()
     }
 
     /// Tells the clock which time zones the client reported for the open turn (a browser's, or the machine's own).
@@ -317,6 +334,26 @@ impl Agent {
     /// [`run`](Self::run) that also stops when `cancel` is triggered. A stopped run leaves `history`
     /// consistent: every tool call the model made has an answer.
     pub async fn run_until(
+        &self,
+        history: &mut Vec<Message>,
+        events: &UnboundedSender<AgentEvent>,
+        thinking: Thinking,
+        cancel: &CancellationToken,
+    ) -> Result<(), AgentError> {
+        if let Some(recorder) = &self.changes {
+            recorder
+                .start(vivianne_context::time::turn_of(history))
+                .await;
+        }
+        let outcome = self.run_loop(history, events, thinking, cancel).await;
+        if let Some(recorder) = &self.changes {
+            // However the run ended, what it changed so far is recorded.
+            let _ = recorder.finish().await;
+        }
+        outcome
+    }
+
+    async fn run_loop(
         &self,
         history: &mut Vec<Message>,
         events: &UnboundedSender<AgentEvent>,
@@ -656,6 +693,12 @@ impl Agent {
                 details: None,
             }
         } else {
+            if let Some(recorder) = &self.changes {
+                // The file is copied before the tool changes it, so both sides of its comparison survive later edits.
+                for path in crate::changes::edited_paths(&call.name, &call.args) {
+                    recorder.capture(std::path::Path::new(&path)).await;
+                }
+            }
             self.tools
                 .execute(&call.name, &call.args)
                 .await
@@ -1299,6 +1342,79 @@ mod tests {
             .unwrap();
         drop(tx);
         assert_eq!(drain(rx).await.last(), Some(&AgentEvent::StepLimit));
+    }
+
+    /// Writes `content` to `path` inside its folder, like the real `write` tool.
+    struct Writer(std::path::PathBuf);
+
+    #[async_trait]
+    impl Tool for Writer {
+        fn name(&self) -> &'static str {
+            "write"
+        }
+        async fn execute(&self, args: &Value, _cwd: &str) -> ToolResult {
+            let path = self.0.join(args["path"].as_str().unwrap_or_default());
+            let ok = std::fs::write(path, args["content"].as_str().unwrap_or_default()).is_ok();
+            ToolResult {
+                content: "written".into(),
+                is_error: !ok,
+                details: None,
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn a_run_that_edits_a_file_with_a_tool_is_recorded_with_its_before_and_after() {
+        let dir = std::env::temp_dir().join(format!(
+            "viv-agent-changes-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&dir).expect("dir");
+        std::fs::write(
+            dir.join("notes.txt"),
+            "one
+two
+",
+        )
+        .expect("seed");
+        let write = ChatEvent::ToolCall(ToolCall {
+            id: "w".into(),
+            name: "write".into(),
+            args: json!({ "path": "notes.txt", "content": "one
+two
+three
+" }),
+        });
+        let provider = Scripted::new(vec![
+            vec![write, ChatEvent::Done],
+            vec![ChatEvent::Text("ok".into()), ChatEvent::Done],
+        ]);
+        let mut tools = Toolbox::new(&dir);
+        tools.add(Writer(dir.clone()));
+        let recorder = Arc::new(
+            crate::changes::Recorder::new(&dir, crate::changes::Limits::default())
+                .expect("recorder"),
+        );
+        let agent = Agent::new(provider, "m", None, tools).with_changes(recorder.clone());
+        let (tx, _rx) = unbounded_channel();
+        let mut history = user("add a line");
+        agent
+            .run(&mut history, &tx, Thinking::default())
+            .await
+            .expect("runs");
+        let summary = recorder.latest().await.expect("the run changed a file");
+        assert_eq!(
+            (summary.turn, summary.total, summary.added, summary.deleted),
+            (1, 1, 1, 0)
+        );
+        assert_eq!(summary.files[0].display, "notes.txt");
+        let crate::changes::FileDiff::Text { hunks, .. } =
+            recorder.diff(1, 0).await.expect("reads").expect("a diff")
+        else {
+            panic!("text")
+        };
+        assert!(hunks[0].lines.contains(&"+three".to_owned()));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test(start_paused = true)]

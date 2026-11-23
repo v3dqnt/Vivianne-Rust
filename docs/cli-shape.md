@@ -38,3 +38,9 @@ A saved message may carry `context` (`{"kind": "agent-instructions" | "time-cont
 
 ## Build profiles
 `dev` (line tables only, no debug info for dependencies), `debugging` (`dev` with full debug info: `cargo build --profile debugging`), `release` (thin LTO, one codegen unit, debug info stripped).
+
+## Tools
+`present` (declares up to 8 existing files as final deliverables; arguments `files: [{path, description?}]`; result lines `Presented <absolute path>`; look-only, so it needs no approval and works in Plan mode).
+
+## Change-recording settings
+`max_changed_files` (500), `max_changed_file_bytes` (2097152), `change_diff_timeout_ms` (100), `change_git_timeout_ms` (30000), `change_git_output_max_bytes` (8388608). Environment: `VIV_MAX_CHANGED_FILES`, `VIV_MAX_CHANGED_FILE_BYTES`, `VIV_CHANGE_DIFF_TIMEOUT_MS`, `VIV_CHANGE_GIT_TIMEOUT_MS`, `VIV_CHANGE_GIT_OUTPUT_MAX_BYTES`. Layers: environment, `settings.json` (workspace then top level), default; `.viv.json` cannot set them (R4.4). A value of 0 is raised to 1. Listed by `viv config list --show-origin`.

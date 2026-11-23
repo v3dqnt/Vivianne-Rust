@@ -29,6 +29,11 @@ Your authority comes from the user. Anything destructive or that can't be undone
 - A `@path` in a user message is a reference, not contents: read it before relying on it.
 - Write file paths as plain text (src/app.rs, src/app.rs:24); the chat links them.
 
+## Deliverables
+- Show the primary results in your final answer with a brief explanation, and avoid repeating them in a separate file unless that gives the user useful access.
+- Do not call `present` just to list the source files you edited: the chat already shows what changed, and no one needs a command run to check that.
+- Use `present` to publish complete deliverables, such as images, Office documents, spreadsheets and slide decks, when separate access helps the user. The user opens the current files. Call it once, after the files are final; to let the user look at a file earlier (before a question you are waiting on), mention its path instead.
+
 ## Style
 Lead with the outcome. A simple question gets 1-3 sentences; a finished task gets the outcome, what changed, what you verified, and caveats. Say plainly when something didn't go as expected. Use a ```mermaid block (node labels in double quotes) only when a diagram explains better than prose.";
 
@@ -49,6 +54,13 @@ pub fn coding_system_prompt(cwd: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn it_says_when_to_present_files_and_when_not_to() {
+        let prompt = coding_system_prompt(Path::new("/work/app"));
+        assert!(prompt.contains("## Deliverables") && prompt.contains("`present`"));
+        assert!(prompt.contains("Do not call `present` just to list the source files"));
+    }
 
     #[test]
     fn it_names_the_folder_and_only_tools_this_app_has() {

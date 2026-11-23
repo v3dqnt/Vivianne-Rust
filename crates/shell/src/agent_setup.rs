@@ -131,7 +131,7 @@ fn build_agent(
     for warning in &settings.warnings {
         vivianne_core::debuglog::log("app", warning.clone());
     }
-    Agent::new(provider, model, Some(system), tools)
+    let agent = Agent::new(provider, model, Some(system), tools)
         .with_max_steps(settings.max_agent_steps.value)
         .with_context(ContextSource::new(move || {
             let root = root.clone();
@@ -139,7 +139,18 @@ fn build_agent(
         }))
         .with_instructions(vec![workspace.display().to_string()])
         .with_fallbacks(fallbacks)
-        .with_retry(retry)
+        .with_retry(retry);
+    // What each run changed, per file with line counts, kept for as long as the conversation's agent lives.
+    match vivianne_runtime::changes::Recorder::new(
+        workspace,
+        settings.change_limits(),
+    ) {
+        Ok(recorder) => agent.with_changes(std::sync::Arc::new(recorder)),
+        Err(error) => {
+            vivianne_core::debuglog::log("app", error);
+            agent
+        }
+    }
 }
 
 /// The saved fallback models other than the one chosen, as places to send a request.

@@ -24,6 +24,8 @@ chrono = "0.4"
 cron = "0.12"
 uuid = { version = "1", features = ["v4"] }
 rand = "0.9"
+similar = "2"
+sha2 = "0.10"
 
 [dev-dependencies]
 uuid = { version = "1", features = ["v4"] }
