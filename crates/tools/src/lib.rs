@@ -28,10 +28,7 @@ mod lsp;
 mod lsp_nav;
 pub mod schemas;
 
-mod files_simple;
-mod shell;
 mod simple;
-mod workspace;
 
 use std::path::Path;
 
@@ -85,7 +82,7 @@ impl Toolbox {
     pub fn coding(root: &Path) -> Self {
         let mut toolbox = Self::new(root);
         let cwd = toolbox.cwd.clone();
-        let workspace = workspace::Workspace::new(root);
+        let workspace = simple::Workspace::new(root);
         toolbox.add(builtin::ReadTool::new(cwd.clone()));
         toolbox.add(builtin::LsTool::new(cwd.clone()));
         toolbox.add(builtin::GrepTool::new(cwd.clone()));
@@ -97,9 +94,9 @@ impl Toolbox {
         toolbox.add(dap::DebugTool::new(cwd.clone(), false));
         toolbox.add(dap::DebugTool::new(cwd.clone(), true));
         toolbox.add(lsp_nav::LspTool::new(cwd));
-        toolbox.add(shell::Shell::new(workspace.clone()));
-        toolbox.add(files_simple::WriteFile::new(workspace.clone()));
-        toolbox.add(files_simple::EditFile::new(workspace));
+        toolbox.add(simple::Shell::new(workspace.clone()));
+        toolbox.add(simple::WriteFile::new(workspace.clone()));
+        toolbox.add(simple::EditFile::new(workspace));
         toolbox.add(results::ReadToolResult);
         toolbox
     }
