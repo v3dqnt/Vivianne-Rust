@@ -347,6 +347,8 @@ mod tests {
             tool_calls: vec![],
             tool_call_id: Some(id.into()),
             attachments: vec![],
+            context: None,
+            at: None,
         }
     }
 

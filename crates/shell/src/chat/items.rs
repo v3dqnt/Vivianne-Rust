@@ -38,6 +38,8 @@ pub fn from_history(history: &[vivianne_core::Message]) -> Vec<Item> {
     let mut items = Vec::new();
     for message in history {
         match message.role {
+            // Instruction files, the clock and the like are for the model, not the transcript.
+            Role::User if message.context.is_some() => {}
             Role::User if message.text.trim_start().starts_with("<compacted_history>") => {}
             Role::User => items.push(Item::User(message.text.clone())),
             Role::Assistant => {

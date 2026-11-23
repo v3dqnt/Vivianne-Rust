@@ -1,0 +1,24 @@
+[package]
+name = "vivianne-context"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+vivianne-core = { path = "../core" }
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+# R6.1: IANA zone names for the clock reading (the browser-zone policy of the original needs real zone rules).
+chrono-tz = "0.10"
+iana-time-zone = "0.1"
+base64 = "0.22"
+
+[dev-dependencies]
+uuid = { version = "1", features = ["v4"] }
+
+[lints]
+workspace = true

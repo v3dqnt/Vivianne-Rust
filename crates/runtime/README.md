@@ -14,8 +14,7 @@ tools it asks for, feeds results back, and stops when the model answers without 
 - `attempts.rs`: remembers failing calls so a retry-with-small-variations is shown what already failed.
 - `context.rs`: splits a request into system prompt, tool definitions, you, assistant and tool results with one
   token estimate (four characters), so the parts add up.
-- `instructions.rs`: AGENTS.md / CLAUDE.md (and `.local.md`, `@imports`) from the user's `~/.viv` and from the project
-  up to the repository root, added to the system prompt at the start of every run, with a note when one changed.
+- `workspace_context.rs`: what is added to a conversation before each model call: the AGENTS.md / CLAUDE.md files (rules in `vivianne-context`), the clock and the tmux pane, as durable messages; keeps the single-line `@import` of an instruction file.
 - `store.rs`: threads kept on disk (`~/.viv/agent/threads/<id>.json`), listed per project folder.
 - `title.rs`: a thread's title: the cleaned first sentence, replaced by a model-written one (`Agent::title`); a
   name the user gave is never replaced.

@@ -691,6 +691,7 @@ impl HarnessTurn {
 fn lines_of(history: &[Message]) -> Vec<Line> {
     history
         .iter()
+        .filter(|m| m.context.is_none())
         .filter_map(|m| match m.role {
             Role::User => Some(Line {
                 who: "User",

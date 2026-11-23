@@ -56,6 +56,10 @@ pub fn shrinks(summary: &str, replaced_tokens: u32) -> bool {
 pub fn render_transcript(messages: &[Message], preview: usize) -> String {
     let mut out = String::new();
     for message in messages {
+        // What the app added is added again after the cut, so it is not part of what is condensed.
+        if message.context.is_some() {
+            continue;
+        }
         let text = message.text.trim();
         match message.role {
             Role::User | Role::System if !text.is_empty() => {
@@ -102,7 +106,7 @@ pub fn replace_head(history: &mut Vec<Message>, cut: usize, summary: &str) {
     let note = checkpoint(summary);
     let mut kept = history.split_off(cut);
     match kept.first_mut() {
-        Some(next) if next.role == Role::User => next.text = format!("{note}\n\n{}", next.text),
+        Some(next) if next.is_typed() => next.text = format!("{note}\n\n{}", next.text),
         _ => kept.insert(0, Message::new(Role::User, note)),
     }
     *history = kept;

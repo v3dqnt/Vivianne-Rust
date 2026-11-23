@@ -1,0 +1,1 @@
+Mentions of other conversations. `uri` (canonical `viv-session:` links and mentions), `retain` (what is kept of a conversation inside a byte budget), `mod` (candidates, limits, preparing the snapshot message).

@@ -114,6 +114,8 @@ impl Tool for ReadThread {
         let mut out = format!("# {}\n\n", thread.title);
         for message in &thread.history {
             match message.role {
+                // What the app added (instructions, the clock) is not part of the conversation being read.
+                Role::User if message.context.is_some() => {}
                 Role::User => out.push_str(&format!("User: {}\n\n", message.text.trim())),
                 Role::Assistant => {
                     if !message.text.trim().is_empty() {

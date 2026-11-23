@@ -16,7 +16,6 @@ pub mod config;
 pub mod context;
 mod event;
 pub mod history;
-pub mod instructions;
 pub mod ledger;
 pub mod orchestration;
 pub mod profiles;
@@ -26,6 +25,7 @@ pub mod resilience;
 pub mod store;
 pub mod thread_tools;
 pub mod title;
+pub mod workspace_context;
 
 pub use agent::{Agent, AgentError, ContextSource, Target};
 pub use event::AgentEvent;
