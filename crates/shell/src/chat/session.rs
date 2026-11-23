@@ -86,6 +86,15 @@ impl Session {
         }
     }
 
+    /// Records what each run changed, when this conversation runs on Vivianne's own loop.
+    #[must_use]
+    pub fn change_recorder(&self) -> Option<Arc<vivianne_runtime::changes::Recorder>> {
+        match &self.engine {
+            Engine::Own(agent) => agent.changes().cloned(),
+            Engine::Harness { .. } => None,
+        }
+    }
+
     /// The project folder.
     #[must_use]
     pub fn folder(&self) -> &std::path::Path {

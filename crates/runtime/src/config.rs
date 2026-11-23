@@ -179,7 +179,34 @@ fn resolve_number(
 pub struct Resolved {
     pub max_agent_steps: Setting<usize>,
     pub max_tool_result_bytes: Setting<usize>,
+    /// What the per-run change recorder may spend; none of these can be set by a repository's `.viv.json`.
+    pub changes: ChangeSettings,
     pub warnings: Vec<String>,
+}
+
+/// The change recorder's limits with where each came from (see `changes::Limits`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangeSettings {
+    pub max_files: Setting<usize>,
+    pub max_file_bytes: Setting<usize>,
+    pub diff_timeout_ms: Setting<usize>,
+    pub git_timeout_ms: Setting<usize>,
+    pub git_output_max_bytes: Setting<usize>,
+}
+
+impl Resolved {
+    /// The recorder's limits; a value of zero is raised to one.
+    #[must_use]
+    pub fn change_limits(&self) -> crate::changes::Limits {
+        let at_least_one = |s: &Setting<usize>| s.value.max(1);
+        crate::changes::Limits {
+            timeout_ms: at_least_one(&self.changes.git_timeout_ms) as u64,
+            output_max_bytes: at_least_one(&self.changes.git_output_max_bytes),
+            max_files: at_least_one(&self.changes.max_files),
+            max_file_bytes: at_least_one(&self.changes.max_file_bytes),
+            diff_timeout_ms: at_least_one(&self.changes.diff_timeout_ms) as u64,
+        }
+    }
 }
 
 /// Resolves the settings from the layers it is given (so a test can pass its own).
@@ -205,7 +232,49 @@ pub fn resolve_with(
         DEFAULT_MAX_RESULT_BYTES,
     );
     bytes.value = bytes.value.max(MIN_RESULT_BYTES);
+    let user_only = |key: &str, env_name: &str, default: usize| {
+        resolve_number(
+            key,
+            env_name,
+            None,
+            env,
+            settings,
+            &ws,
+            None,
+            &project_path,
+            default,
+        )
+    };
+    let defaults = crate::changes::Limits::default();
+    let changes = ChangeSettings {
+        max_files: user_only(
+            "max_changed_files",
+            "VIV_MAX_CHANGED_FILES",
+            defaults.max_files,
+        ),
+        max_file_bytes: user_only(
+            "max_changed_file_bytes",
+            "VIV_MAX_CHANGED_FILE_BYTES",
+            defaults.max_file_bytes,
+        ),
+        diff_timeout_ms: user_only(
+            "change_diff_timeout_ms",
+            "VIV_CHANGE_DIFF_TIMEOUT_MS",
+            defaults.diff_timeout_ms as usize,
+        ),
+        git_timeout_ms: user_only(
+            "change_git_timeout_ms",
+            "VIV_CHANGE_GIT_TIMEOUT_MS",
+            defaults.timeout_ms as usize,
+        ),
+        git_output_max_bytes: user_only(
+            "change_git_output_max_bytes",
+            "VIV_CHANGE_GIT_OUTPUT_MAX_BYTES",
+            defaults.output_max_bytes,
+        ),
+    };
     Resolved {
+        changes,
         max_agent_steps: resolve_number(
             "max_agent_steps",
             "VIV_MAX_AGENT_STEPS",
@@ -248,6 +317,31 @@ pub fn list(resolved: &Resolved) -> Vec<(&'static str, String, String)> {
             resolved.max_tool_result_bytes.value.to_string(),
             resolved.max_tool_result_bytes.origin.to_string(),
         ),
+        (
+            "max_changed_files",
+            resolved.changes.max_files.value.to_string(),
+            resolved.changes.max_files.origin.to_string(),
+        ),
+        (
+            "max_changed_file_bytes",
+            resolved.changes.max_file_bytes.value.to_string(),
+            resolved.changes.max_file_bytes.origin.to_string(),
+        ),
+        (
+            "change_diff_timeout_ms",
+            resolved.changes.diff_timeout_ms.value.to_string(),
+            resolved.changes.diff_timeout_ms.origin.to_string(),
+        ),
+        (
+            "change_git_timeout_ms",
+            resolved.changes.git_timeout_ms.value.to_string(),
+            resolved.changes.git_timeout_ms.origin.to_string(),
+        ),
+        (
+            "change_git_output_max_bytes",
+            resolved.changes.git_output_max_bytes.value.to_string(),
+            resolved.changes.git_output_max_bytes.origin.to_string(),
+        ),
     ]
 }
 
@@ -277,6 +371,48 @@ mod tests {
         assert!(c.warnings.iter().any(|w| w.contains("permission_mode")));
         assert!(parse_project("[1,2]").warnings[0].contains("not a JSON object"));
         assert!(parse_project("not json").max_agent_steps.is_none());
+    }
+
+    #[test]
+    fn the_change_limits_come_from_the_user_layers_and_never_from_a_repository_file() {
+        let ws = Path::new("C:/work/app");
+        let settings = json!({"max_changed_files": 10, "workspaces": {"C:/work/app": {"max_changed_file_bytes": 4096}}});
+        let env = |n: &str| (n == "VIV_CHANGE_DIFF_TIMEOUT_MS").then(|| "250".to_owned());
+        let got = resolve_with(ws, None, &env, &settings, &ProjectConfig::default());
+        assert_eq!(got.changes.max_files.value, 10);
+        assert_eq!(got.changes.max_file_bytes.origin, Origin::WorkspaceSettings);
+        assert_eq!(
+            got.changes.diff_timeout_ms.origin,
+            Origin::Env("VIV_CHANGE_DIFF_TIMEOUT_MS".into())
+        );
+        let limits = got.change_limits();
+        assert_eq!(
+            (
+                limits.max_files,
+                limits.max_file_bytes,
+                limits.diff_timeout_ms
+            ),
+            (10, 4096, 250)
+        );
+        assert_eq!(
+            limits.timeout_ms, 30_000,
+            "an unset value keeps its default"
+        );
+        let project = parse_project(r#"{"max_changed_files": 1}"#);
+        assert!(
+            project
+                .warnings
+                .iter()
+                .any(|w| w.contains("max_changed_files"))
+        );
+        let zero = resolve_with(
+            ws,
+            None,
+            &no_env,
+            &json!({"max_changed_files": 0}),
+            &ProjectConfig::default(),
+        );
+        assert_eq!(zero.change_limits().max_files, 1, "zero is raised to one");
     }
 
     #[test]
@@ -340,7 +476,7 @@ mod tests {
         );
         assert_eq!(low.max_tool_result_bytes.value, MIN_RESULT_BYTES);
         let listed = list(&low);
-        assert_eq!(listed.len(), 2);
+        assert_eq!(listed.len(), 7);
         assert!(
             listed.iter().any(|(k, _, o)| *k == "max_tool_result_bytes"
                 && o.contains("VIV_MAX_TOOL_RESULT_BYTES"))

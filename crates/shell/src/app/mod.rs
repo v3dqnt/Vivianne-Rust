@@ -504,15 +504,19 @@ impl Render for AppView {
         if let Page::Thread(index) = self.page
             && let Some(thread) = self.threads.get(index)
         {
-            let (context, changes) = {
+            let (context, changes, summary) = {
                 let chat = thread.chat.read(cx);
-                (chat.context(), chat.changes().cloned())
+                (
+                    chat.context(),
+                    chat.changes().cloned(),
+                    chat.change_summary().cloned(),
+                )
             };
             let badge = self.views.git.read(cx).badge();
             self.views.rail.update(cx, |rail, cx| {
                 rail.set_badge(badge, cx);
                 rail.set_context(context, cx);
-                rail.set_changes(changes, cx);
+                rail.set_changes(changes, summary, cx);
             });
         }
         div()
