@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/core",
     "crates/attachments",
+    "crates/context",
     "crates/runtime",
     "crates/providers",
     "crates/tools",
@@ -66,3 +67,24 @@ todo = "deny"
 module_name_repetitions = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
+
+# Build profiles: small target/ and quick rebuilds in development, an optimized binary for release.
+[profile.dev]
+opt-level = 0
+# File and line for backtraces, without full debug info (a large share of target/).
+debug = "line-tables-only"
+incremental = true
+
+# Dependencies carry no debug info; `cargo build --profile debugging` has it all when a debugger is needed.
+[profile.dev.package."*"]
+debug = false
+
+[profile.debugging]
+inherits = "dev"
+debug = true
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"

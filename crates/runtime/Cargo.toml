@@ -12,6 +12,7 @@ vivianne-ai.workspace = true
 vivianne-providers.workspace = true
 vivianne-tools.workspace = true
 vivianne-attachments = { path = "../attachments" }
+vivianne-context = { path = "../context" }
 futures.workspace = true
 serde.workspace = true
 serde_json.workspace = true

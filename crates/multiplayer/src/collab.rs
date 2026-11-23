@@ -674,6 +674,8 @@ mod tests {
                 tool_calls: vec![],
                 tool_call_id: Some("4".into()),
                 attachments: vec![],
+                context: None,
+                at: None,
             },
         ];
         let e = summarise_run("Ana", "fix the parser\nplease", &messages, "/w");

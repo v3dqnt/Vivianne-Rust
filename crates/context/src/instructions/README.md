@@ -1,0 +1,1 @@
+Workspace instructions. `config` (limits, file names, homes), `files` (the disk behind the `Fs` trait, discovery, duplicates), `render` (the message text and budgets), `state` (what each file said last, what changed), `engine` (one conversation's loader).

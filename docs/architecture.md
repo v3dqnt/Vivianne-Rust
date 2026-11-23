@@ -5,6 +5,7 @@
 | Crate | Role |
 |---|---|
 | `core` | Domain types: threads, messages, plans, memory, attachment references. No I/O. |
+| `context` | What is added to a conversation beside the person's words: workspace instruction files, the clock, the tmux pane, mentioned sessions, `@file` completion. |
 | `attachments` | Durable images and files attached to messages: content-addressed store, image normalization, request-sized versions. |
 | `plugins` | Context, typed services and events, reversible registrations. |
 | `providers` | One trait, adapters for OpenAI-compatible, Anthropic, Google, local. |
@@ -39,8 +40,9 @@ graph TD
   remote --> runtime & providers & tools & core & ai
   memory --> tools & core & ai
   multiplayer --> tools & core & ai
-  runtime --> providers & tools & core & ai & attachments
+  runtime --> providers & tools & core & ai & attachments & context
   attachments --> core
+  context --> core
   providers --> core & ai
   telemetry --> ai
   tools

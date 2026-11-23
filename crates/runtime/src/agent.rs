@@ -20,6 +20,7 @@ use crate::compact;
 use crate::context::{self, Breakdown};
 use crate::history;
 use crate::resilience::{Chain, Failure, RetryPolicy, Stopped, retry};
+use crate::workspace_context::{WorkspaceContext, touched_paths};
 
 /// Same ceiling the old app used for chats.
 const DEFAULT_MAX_STEPS: usize = 100;
@@ -87,10 +88,8 @@ pub struct Agent {
     asking: Mutex<HashMap<String, oneshot::Sender<bool>>>,
     /// How many tokens the chosen model can hold, 0 when its provider does not say.
     window: AtomicU32,
-    /// Where to look for AGENTS.md and CLAUDE.md, and the name this conversation is told about changes under.
-    instructions_from: Option<(Vec<String>, String)>,
-    /// What those files said at the start of the current run.
-    instructions: Mutex<Option<String>>,
+    /// What is added to the conversation before each model call: instruction files, the clock, the terminal's place.
+    workspace: Option<WorkspaceContext>,
     /// Asked for a block of standing context (core memory) at the start of every run.
     context_source: Option<ContextSource>,
     context: Mutex<Option<String>>,
@@ -143,8 +142,7 @@ impl Agent {
             mode: Mutex::new(Mode::Auto),
             asking: Mutex::default(),
             window: AtomicU32::new(0),
-            instructions_from: None,
-            instructions: Mutex::new(None),
+            workspace: None,
             context_source: None,
             context: Mutex::new(None),
             attachments: None,
@@ -206,11 +204,6 @@ impl Agent {
 
     /// The system prompt as sent: the standing instructions, the project's, then the mode's.
     fn system_prompt(&self, mode: Mode) -> Option<String> {
-        let project = self
-            .instructions
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone();
         let standing = self
             .context
             .lock()
@@ -218,7 +211,6 @@ impl Agent {
             .clone();
         let parts: Vec<&str> = [
             self.system.as_deref(),
-            project.as_deref(),
             standing.as_deref(),
             mode.prompt_section(),
         ]
@@ -258,12 +250,22 @@ impl Agent {
         )
     }
 
-    /// Reads the project's instruction files (AGENTS.md, CLAUDE.md, and the user's own in `~/.viv`) at the start of
-    /// every run and adds them to the system prompt, so an edit lands on the next message.
+    /// Adds the project's instruction files (AGENTS.md, CLAUDE.md, and the user's own in `~/.viv` and `~/.agents`), the
+    /// clock and the terminal's place to the conversation as durable messages before each model call. The first folder is
+    /// the working directory. An edit to a file lands on the next call, and nothing unchanged is said twice.
     #[must_use]
     pub fn with_instructions(mut self, folders: Vec<String>) -> Self {
-        self.instructions_from = Some((folders, uuid::Uuid::new_v4().to_string()));
+        if let Some(cwd) = folders.first() {
+            self.workspace = Some(WorkspaceContext::new(std::path::Path::new(cwd)));
+        }
         self
+    }
+
+    /// Tells the clock which time zones the client reported for the open turn (a browser's, or the machine's own).
+    pub fn report_time_zones(&self, zones: Vec<String>) {
+        if let Some(workspace) = &self.workspace {
+            workspace.report_zones(zones);
+        }
     }
 
     /// Adds a block of standing context (such as core memory) to the system prompt, asked for at the start of every
@@ -274,7 +276,6 @@ impl Agent {
         self
     }
 
-    #[must_use]
     /// Lets the agent send what is attached to messages: images as pictures, files as a line naming their copy.
     #[must_use]
     pub fn with_attachments(mut self, store: Arc<vivianne_attachments::Store>) -> Self {
@@ -324,20 +325,15 @@ impl Agent {
     ) -> Result<(), AgentError> {
         // The connected MCP servers' tools, read again if a server changed its list.
         self.tools.refresh().await;
-        if let Some((folders, key)) = &self.instructions_from {
-            let loaded = crate::instructions::load_for(Some(key), folders).await;
-            *self
-                .instructions
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner) = loaded;
-        }
         if let Some(source) = &self.context_source {
             let standing = (source.0)().await;
             *self.context.lock().unwrap_or_else(PoisonError::into_inner) = standing;
         }
         let mut attempts = Attempts::default();
         let mut condensed_for_overflow = false;
-        for _ in 0..self.max_steps {
+        // Paths the tools used since the last model call: a folder they reach may hold instructions of its own.
+        let mut touched: Vec<String> = Vec::new();
+        for step in 1..=self.max_steps {
             // A run that was cut off earlier may have left calls without results, which a provider refuses.
             history::repair(history);
             let made_room = tokio::select! {
@@ -349,6 +345,10 @@ impl Agent {
                 return Ok(());
             }
             history::mask_old_results(history);
+            if let Some(workspace) = &self.workspace {
+                workspace.prepare(history, step, &touched);
+            }
+            touched.clear();
             let streamed = tokio::select! {
                 () = cancel.cancelled() => None,
                 streamed = self.stream_step(history, events, thinking, cancel) => Some(streamed),
@@ -383,6 +383,7 @@ impl Agent {
                 send(events, AgentEvent::Done);
                 return Ok(());
             }
+            touched.extend(calls.iter().flat_map(|c| touched_paths(&c.args)));
             let stopped = self
                 .run_tools(&calls, history, events, cancel, &mut attempts)
                 .await;

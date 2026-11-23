@@ -2,6 +2,7 @@
 //! No I/O and no async here; this crate stays dependency-light on purpose.
 
 pub mod attachment;
+pub mod context;
 pub mod debuglog;
 
 use serde::{Deserialize, Serialize};
@@ -259,6 +260,25 @@ pub struct Message {
     /// Images and files the person attached to a user message, as durable references (never paths or bytes).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<attachment::AttachmentRef>,
+    /// Set when the app, not the person, added this user-role message (instructions, the clock, a referenced session).
+    /// A kind this version does not know reads as an ordinary message, so a newer thread still opens.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "lenient_context"
+    )]
+    pub context: Option<context::ContextSource>,
+    /// When the message was added, in milliseconds since the Unix epoch. Absent in threads saved before it existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<u64>,
+}
+
+fn lenient_context<'de, D>(deserializer: D) -> Result<Option<context::ContextSource>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<Value>::deserialize(deserializer)?;
+    Ok(value.and_then(|v| serde_json::from_value(v).ok()))
 }
 
 impl Message {
@@ -270,7 +290,31 @@ impl Message {
             tool_calls: Vec::new(),
             tool_call_id: None,
             attachments: Vec::new(),
+            context: None,
+            at: None,
         }
+    }
+
+    /// A user-role message the app adds (not the person), tagged with where it came from.
+    #[must_use]
+    pub fn context(text: impl Into<String>, source: context::ContextSource) -> Self {
+        Self {
+            context: Some(source),
+            ..Self::new(Role::User, text)
+        }
+    }
+
+    /// The message with the time it was added.
+    #[must_use]
+    pub fn at(mut self, millis: u64) -> Self {
+        self.at = Some(millis);
+        self
+    }
+
+    /// Whether the person typed this: a user message the app did not add.
+    #[must_use]
+    pub fn is_typed(&self) -> bool {
+        self.role == Role::User && self.context.is_none()
     }
 
     /// The message with these attachments beside its text.

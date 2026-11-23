@@ -3,7 +3,7 @@
 //! Until a model writes one, the first message cleaned into a sentence is the title ([`fallback_title`]). A title
 //! the user typed is never replaced (see [`decide`]).
 
-use vivianne_core::{Message, Role};
+use vivianne_core::Message;
 
 use crate::compact::OPEN;
 
@@ -128,9 +128,7 @@ pub fn first_ask(messages: &[Message]) -> Option<&str> {
     messages
         .iter()
         .find(|m| {
-            m.role == Role::User
-                && !m.text.trim().is_empty()
-                && !m.text.trim_start().starts_with(OPEN)
+            m.is_typed() && !m.text.trim().is_empty() && !m.text.trim_start().starts_with(OPEN)
         })
         .map(|m| m.text.as_str())
 }
@@ -138,6 +136,7 @@ pub fn first_ask(messages: &[Message]) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use vivianne_core::Role;
 
     #[test]
     fn a_title_is_the_first_sentence_cleaned_and_cut_at_a_word() {
