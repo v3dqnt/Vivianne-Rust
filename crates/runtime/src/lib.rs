@@ -3,16 +3,30 @@
 //! One turn: stream the model, run the tools it asks for, feed results back,
 //! repeat until it answers without tools. No UI types here: callers watch
 //! [`AgentEvent`]s on a channel. Retry, compaction and repetition guards from
-//! the old loop are ported on top of this in later steps. Retrying, backing off and falling back to
+//! the old loop are ported on top of this: retrying, backing off and falling back to
 //! other models live in [`resilience`].
 
 mod agent;
+pub mod attachments;
+mod attempts;
+pub mod automation;
+pub mod checkpoints;
+mod compact;
+pub mod config;
+pub mod context;
 mod event;
+pub mod history;
+pub mod instructions;
+pub mod ledger;
+pub mod orchestration;
+pub mod profiles;
+pub mod projects;
+mod prompt;
 pub mod resilience;
+pub mod store;
+pub mod thread_tools;
+pub mod title;
 
-pub use agent::{Agent, AgentError, Target};
+pub use agent::{Agent, AgentError, ContextSource, Target};
 pub use event::AgentEvent;
-
-/// Default instructions for the coding agent.
-pub const CODING_SYSTEM_PROMPT: &str =
-    "You are Vivianne, a coding agent. Use the tools to inspect and change the project. Be brief.";
+pub use prompt::coding_system_prompt;

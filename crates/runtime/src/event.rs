@@ -16,7 +16,13 @@ pub enum AgentEvent {
         is_error: bool,
         /// What the tool tells the UI beyond its text (the original tools' `details`).
         details: Option<serde_json::Value>,
+        /// The call's arguments, when they are only known now (a coding agent's edit knows its before and
+        /// after at the end). `None` leaves what the start said.
+        args: Option<serde_json::Value>,
     },
+    /// Something a coding agent wants to do and asks first. The answer goes back through whoever holds the
+    /// request, by `id`.
+    Approval { id: String, title: String },
     /// A model call failed for a passing reason and will be made again after `delay`.
     Retrying {
         attempt: u32,
@@ -30,6 +36,21 @@ pub enum AgentEvent {
         to: String,
         reason: String,
     },
+    /// What one model call used, sent when it ends (before the call's tool results). The loop does not know
+    /// which thread it runs for, so whoever does records it.
+    Usage {
+        provider: String,
+        model: String,
+        input: u64,
+        output: u64,
+        cache_read: u64,
+        cache_write: u64,
+        /// `None` when the model has no known price: unknown, never zero.
+        cost: Option<f64>,
+    },
+    /// The older part of the conversation was condensed into a summary to make room, from `before` tokens to
+    /// `after`.
+    Compacted { before: u32, after: u32 },
     /// The step ceiling was hit before the model finished.
     StepLimit,
     /// The run was stopped by the user.

@@ -1,7 +1,6 @@
 // Copied from Vivianne's original tools (agent/tools/code/repo_tools.rs).
-// Kept as close to the original as possible; do not restyle. Paths such as
-// `crate::agent::tools::...` resolve through the re-exports in `lib.rs`.
-#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, dead_code, unused, unsafe_code, missing_debug_implementations)]
+// Kept as close to the original as possible; do not restyle.
+#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, unsafe_code, missing_debug_implementations)]
 
 //! repo_clone / repo_overview — original Rust tools covering the same ground
 //! as opencode's tools of the same name: clone/cache a remote repo for
@@ -14,7 +13,7 @@ use serde_json::json;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use crate::agent::tools::builtin::{Tool, ToolResult};
+use crate::builtin::{Tool, ToolResult};
 
 const STRUCTURE_LIMIT: usize = 200;
 const DEPENDENCY_FILES: &[&str] = &[
@@ -55,7 +54,7 @@ fn parse_repo_reference(input: &str) -> Result<(String, String), String> {
 }
 
 fn cache_root() -> PathBuf {
-    crate::agent::system::paths::viv_home_path(&["repo-cache"])
+    crate::host::viv_home_path(&["repo-cache"])
 }
 
 fn cache_path_for(label: &str) -> PathBuf {
@@ -223,7 +222,7 @@ fn walk_structure(root: &Path, depth: usize) -> (Vec<String>, bool) {
             .flatten()
             .filter_map(|e| {
                 let name = e.file_name().to_string_lossy().to_string();
-                if crate::agent::tools::builtin::ALWAYS_SKIP_DIRS.contains(&name.as_str()) { return None; }
+                if crate::builtin::ALWAYS_SKIP_DIRS.contains(&name.as_str()) { return None; }
                 let ft = e.file_type().ok()?;
                 Some((name, e.path(), ft.is_dir()))
             })

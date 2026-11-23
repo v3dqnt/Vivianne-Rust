@@ -6,7 +6,7 @@ mod view;
 
 use gpui_kit::component::input::TextareaState;
 use gpui_kit::{AppContext as _, Context, Entity, Window};
-pub use vivianne_core::Thinking;
+pub use vivianne_core::{Mode, Thinking};
 
 pub use attachments::{AttachedFile, compose_message, display_message};
 pub use view::render;
@@ -29,6 +29,7 @@ pub struct Composer {
     pub input: Entity<TextareaState>,
     pub attachments: Vec<AttachedFile>,
     pub thinking: Thinking,
+    pub mode: Mode,
 }
 
 impl Composer {
@@ -43,6 +44,7 @@ impl Composer {
             input,
             attachments: Vec::new(),
             thinking: Thinking::default(),
+            mode: Mode::default(),
         }
     }
 

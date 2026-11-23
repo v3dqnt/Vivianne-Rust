@@ -1,0 +1,163 @@
+//! The app's services that live outside the window (keys, ChatGPT sign-in), opened once at start, and a
+//! way for the UI to run async work on them and get the answer back on the UI thread.
+
+use std::future::Future;
+use std::sync::{Arc, OnceLock};
+
+use gpui_kit::App;
+use tokio::runtime::{Handle, Runtime};
+use vivianne_ai::events::Events;
+use vivianne_ai::inference::usage_store;
+use vivianne_ai::providers::Hub;
+use vivianne_providers::acp::Acp;
+
+pub struct Backend {
+    handle: Handle,
+    /// The service registry the provider layer and memory use to find the keys.
+    pub events: Events,
+    pub hub: Arc<Hub>,
+    /// The coding agents that are running.
+    pub acp: Arc<Acp>,
+}
+
+static BACKEND: OnceLock<Backend> = OnceLock::new();
+
+/// Opens the services. Call once, before the window.
+pub fn init(runtime: &Runtime) {
+    let events = Events::new();
+    let hub = runtime.block_on(Hub::start(&events));
+    // The MCP servers added in an earlier session reconnect in the background, so a slow one holds nothing up.
+    runtime.spawn(async {
+        vivianne_tools::mcp::restore_servers(vivianne_tools::mcp::load_persisted_configs().await)
+            .await
+    });
+    // Multiplayer listens from the start, so a partner can connect without this side doing anything. It needs the
+    // network; without it, pairing is simply unavailable.
+    runtime.spawn(async {
+        let _ = vivianne_multiplayer::Multiplayer::start(std::sync::Arc::new(
+            crate::pair::PairedProjects,
+        ))
+        .await;
+    });
+    // Computer use, when the person turned it on: its server connects in the background. A failure (the program is
+    // gone, say) leaves it off and is shown on its Settings page.
+    runtime.spawn(async {
+        if let Err(e) = vivianne_tools::computer::apply().await {
+            vivianne_core::debuglog::log("app", format!("computer use: {e}"));
+        }
+    });
+    runtime.spawn(async {
+        if let Err(e) = vivianne_tools::browser::apply().await {
+            vivianne_core::debuglog::log("app", format!("browser: {e}"));
+        }
+    });
+    runtime.spawn(async {
+        vivianne_core::debuglog::log("app", "services started");
+    });
+    // Ledgers of tasks that ended a month ago are not kept.
+    runtime.spawn(async { vivianne_runtime::ledger::prune(30) });
+    // Usage is kept in memory and written on a timer, so the last of a session is not lost to a crash.
+    runtime.spawn(usage_store::flush_periodically());
+    let _ = BACKEND.set(Backend {
+        handle: runtime.handle().clone(),
+        events,
+        hub,
+        acp: Arc::new(Acp::new()),
+    });
+    // The saved machines connect in the background; a machine that is down never holds anything up.
+    sync_machines();
+}
+
+/// Brings the links to the saved machines in line with the catalog (after it changed, and at start).
+pub fn sync_machines() {
+    let Some(backend) = get() else { return };
+    match vivianne_remote::catalog::Catalog::load() {
+        Ok(catalog) => vivianne_remote::client::Hub::global().sync(&catalog, &backend.handle),
+        Err(_) => {
+            // An unreadable catalog leaves the current links as they are; the Machines page says so.
+        }
+    }
+}
+
+#[must_use]
+pub fn get() -> Option<&'static Backend> {
+    BACKEND.get()
+}
+
+/// Starts memory's background tidying for these project folders: it runs while nothing is working.
+pub fn start_memory(projects: Vec<String>) {
+    let Some(backend) = get() else { return };
+    let _entered = backend.handle.enter();
+    vivianne_memory::sleep::start(backend.events.clone(), projects);
+}
+
+/// Starts a dev server. It is a child process watched by tasks on the async runtime, so it is started with that
+/// runtime entered.
+pub fn start_dev_server(id: &str, cwd: &str, command: &str) -> Result<(), String> {
+    let backend = get().ok_or("The background services did not start.")?;
+    let _entered = backend.handle.enter();
+    vivianne_tools::dev_server::DEV_SERVERS.start(id, cwd, command)
+}
+
+/// Writes the usage still in memory when the app quits. GPUI waits for this a moment (a fraction of a second),
+/// and writing a few small files takes far less.
+pub fn flush_on_quit(cx: &mut App) {
+    cx.on_app_quit(|_cx| async {
+        // A dev server started from the app would otherwise outlive it.
+        vivianne_tools::dev_server::DEV_SERVERS.stop_all();
+        if let Some(done) = spawn(vivianne_tools::mcp::shutdown_all()) {
+            let _ = done.await;
+        }
+        if let Some(flushed) = spawn(usage_store::flush_all()) {
+            let _ = flushed.await;
+        }
+    })
+    .detach();
+}
+
+/// Runs `work` on the async runtime and calls `done` with its answer on the UI thread. Nothing happens
+/// if the services never opened.
+pub fn run<T: Send + 'static>(
+    cx: &mut App,
+    work: impl Future<Output = T> + Send + 'static,
+    done: impl FnOnce(T, &mut App) + 'static,
+) {
+    let Some(backend) = get() else { return };
+    let (tx, rx) = futures::channel::oneshot::channel();
+    backend.handle.spawn(async move {
+        let _ = tx.send(work.await);
+    });
+    cx.spawn(async move |cx| {
+        if let Ok(answer) = rx.await {
+            cx.update(|cx| done(answer, cx));
+        }
+    })
+    .detach();
+}
+
+/// Starts `work` on the async runtime and gives back where its answer will arrive, for code that waits for it
+/// inside its own async task. `None` if the services never opened.
+pub fn spawn<T: Send + 'static>(
+    work: impl Future<Output = T> + Send + 'static,
+) -> Option<futures::channel::oneshot::Receiver<T>> {
+    let backend = get()?;
+    let (tx, rx) = futures::channel::oneshot::channel();
+    backend.handle.spawn(async move {
+        let _ = tx.send(work.await);
+    });
+    Some(rx)
+}
+
+/// Notes how a coding agent's sign-in ended: which agent and the outcome, nothing else.
+pub fn note_sign_in(agent: &str, result: &Result<vivianne_providers::acp::AuthState, String>) {
+    use vivianne_providers::acp::AuthState;
+    let outcome = match result {
+        Ok(AuthState::SignedIn) => "signed_in",
+        Ok(AuthState::NeedsSignIn(_)) => "needs_sign_in",
+        Ok(AuthState::Failed(_)) | Err(_) => "failed",
+    };
+    vivianne_telemetry::track(
+        "agent.sign_in",
+        serde_json::json!({ "agent": agent, "outcome": outcome }),
+    );
+}

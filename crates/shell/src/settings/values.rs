@@ -7,49 +7,24 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
+use super::provider_state::ProviderState;
+
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Default)]
 pub struct Values {
-    // Account & usage — filled by `demo::fill`.
+    // Account & usage — real data is read in as it is wired up.
     pub usage_days: Vec<UsageDay>,
     pub model_usage: Vec<ModelUsage>,
     /// Heatmap view: 0 daily, 1 weekly, 2 cumulative.
     pub usage_mode: u8,
     /// Usage-by-model range: "7", "30" or "all".
     pub usage_range: String,
+    /// The usage has been read from where it is kept.
+    pub usage_loaded: bool,
+    pub usage_loading: bool,
 
-    // Providers.
-    pub open_provider: String,
-    pub api_keys: BTreeMap<String, String>,
-    pub pool: BTreeMap<String, Vec<PoolKey>>,
-    pub rotation: BTreeMap<String, String>,
-    pub chatgpt_connected: bool,
-    pub chatgpt_email: String,
-    pub chatgpt_shared_at_signin: bool,
-    pub routing_enabled: bool,
-    pub quick_model: String,
-    pub tier_easy: String,
-    pub tier_medium: String,
-    pub tier_hard: String,
-    pub routing_probe: Option<String>,
-    pub agents: Vec<CodingAgent>,
-    pub agent_trace: Option<Vec<String>>,
-    pub agent_log: String,
-    pub agents_show_all: bool,
-    pub custom_providers: Vec<CustomProvider>,
-    pub open_custom_provider: Option<usize>,
-    /// Draft text of every transient input, keyed by element id
-    /// (`ckey:{provider}`, `cname:{id}`, pool drafts, the routing probe…).
-    pub key_drafts: BTreeMap<String, String>,
-    /// Whether each provider's key-pool panel is expanded.
-    pub pool_open: BTreeMap<String, bool>,
-    /// Staged state while a brand-new custom provider is built up: the
-    /// provider object holds the format and its models before the first save.
-    pub custom_draft: Option<CustomProvider>,
-    /// "Match the model to the task" — only meaningful with routing on.
-    pub routing_auto: bool,
-    /// Whether the add-model dialog's Advanced section is open.
-    pub add_model_advanced: bool,
+    // Providers: read from where the keys and settings live.
+    pub providers: ProviderState,
 
     // Local models.
     pub local_tab: usize,
@@ -69,6 +44,9 @@ pub struct Values {
     pub sd_progress: Option<u32>,
     pub sd_path: Option<String>,
     pub image_models: Vec<ImageModel>,
+
+    /// Text typed into inputs that are not saved yet, by name.
+    pub key_drafts: BTreeMap<String, String>,
 
     // Reliability.
     pub retry_transient: bool,
@@ -138,6 +116,10 @@ pub struct Values {
     // Diagnostics.
     pub share_diagnostics: bool,
     pub share_endpoint: String,
+    /// Settings and the recorded events have been read.
+    pub diag_loaded: bool,
+    pub diag_loading: bool,
+    pub report_sending: bool,
     pub diag_events: u32,
     pub diag_since: String,
     pub diag_kinds: Vec<(String, u32)>,
@@ -180,7 +162,10 @@ pub struct UsageDay {
     pub requests: u32,
     pub input: u64,
     pub output: u64,
+    /// `None` when none of the day's requests could be priced: unknown, never $0.
     pub cost: Option<f64>,
+    /// At least one request had no known price, so `cost` is only part of the spend.
+    pub unpriced: bool,
 }
 
 /// Tokens and spend attributed to one model over the selected range.
@@ -192,56 +177,8 @@ pub struct ModelUsage {
     pub input: u64,
     pub output: u64,
     pub cost: Option<f64>,
-}
-
-/// A key registered in a provider's pool.
-#[derive(Debug, Clone)]
-pub struct PoolKey {
-    pub label: String,
-    pub key: String,
-    pub requests: u32,
-    /// 0 ready, 1 quota/billing, 2 rate limited, 3 failed.
-    pub state: u8,
-}
-
-pub const KEY_READY: u8 = 0;
-pub const KEY_QUOTA: u8 = 1;
-pub const KEY_RATE: u8 = 2;
-pub const KEY_FAIL: u8 = 3;
-
-/// A coding agent the Agent Client Protocol can run.
-#[derive(Debug, Clone)]
-pub struct CodingAgent {
-    pub id: String,
-    pub name: String,
-    pub desc: String,
-    pub launcher: String,
-    /// 0 ready, 1 needs setup, 2 not installed.
-    pub state: u8,
-    /// Downloaded bytes, total bytes, while `Set up` runs.
-    pub downloading: Option<(u64, u64)>,
-}
-
-pub const AGENT_READY: u8 = 0;
-pub const AGENT_SETUP: u8 = 1;
-pub const AGENT_MISSING: u8 = 2;
-
-/// A user-defined provider: base URL, API format and its models.
-#[derive(Debug, Clone)]
-pub struct CustomProvider {
-    pub id: String,
-    pub name: String,
-    pub base_url: String,
-    pub format: String,
-    pub has_key: bool,
-    pub models: Vec<CustomModel>,
-}
-
-#[derive(Debug, Clone)]
-pub struct CustomModel {
-    pub id: String,
-    pub ctx: u64,
-    pub max_out: Option<u64>,
+    /// At least one request had no known price, so `cost` is only part of the spend.
+    pub unpriced: bool,
 }
 
 /// A model served by llama.cpp or mistral.rs on this machine.
@@ -358,6 +295,14 @@ pub struct AppEntry {
     pub connected: bool,
     pub pending: bool,
     pub desc: String,
+    /// What the one pasted field is called (token apps only), and how to get it.
+    pub field: String,
+    pub help: String,
+    pub help_url: String,
+    /// The last thing that went wrong connecting it.
+    pub error: String,
+    /// The site its icon comes from.
+    pub domain: String,
 }
 
 pub const AUTH_OAUTH: u8 = 0;
@@ -466,8 +411,9 @@ pub struct ComponentEntry {
 }
 
 /// Where the Updates page stands.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum UpdateStatus {
+    #[default]
     Idle,
     Checking,
     Available(String),
@@ -479,12 +425,6 @@ pub struct Release {
     pub version: String,
     pub date: String,
     pub notes: Vec<String>,
-}
-
-impl Default for UpdateStatus {
-    fn default() -> Self {
-        Self::Idle
-    }
 }
 
 impl Values {

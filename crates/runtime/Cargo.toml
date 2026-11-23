@@ -11,15 +11,21 @@ vivianne-core.workspace = true
 vivianne-ai.workspace = true
 vivianne-providers.workspace = true
 vivianne-tools.workspace = true
+vivianne-attachments = { path = "../attachments" }
 futures.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+async-trait.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util = "0.7"
+chrono = "0.4"
+cron = "0.12"
+uuid = { version = "1", features = ["v4"] }
 rand = "0.9"
 
 [dev-dependencies]
-async-trait.workspace = true
+uuid = { version = "1", features = ["v4"] }
 tokio = { workspace = true, features = ["test-util"] }
 
 [lints]

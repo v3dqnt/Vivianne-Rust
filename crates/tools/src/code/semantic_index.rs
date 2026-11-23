@@ -1,7 +1,6 @@
 // Copied from Vivianne's original tools (agent/tools/code/semantic_index.rs).
-// Kept as close to the original as possible; do not restyle. Paths such as
-// `crate::agent::tools::...` resolve through the re-exports in `lib.rs`.
-#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, dead_code, unused, unsafe_code, missing_debug_implementations)]
+// Kept as close to the original as possible; do not restyle.
+#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, unsafe_code, missing_debug_implementations)]
 
 //! Semantic code search: a per-project embedding index plus BM25, combined.
 //!
@@ -90,25 +89,12 @@ impl Embedder {
 /// installed (weaker on code, but no key and no network). `None` = keyword
 /// search only.
 pub async fn pick_embedder() -> Option<(Embedder, String)> {
-    for (e, store_ids, env) in [
-        (Embedder::OpenAi, &["openai"][..], "OPENAI_API_KEY"),
-        (Embedder::Nvidia, &["nvidia", "nvidia-nim"][..], "NVIDIA_API_KEY"),
-    ] {
-        for id in store_ids {
-            if let Some(k) = crate::ai::auth::stored_api_key(id).await {
-                return Some((e, k));
-            }
-        }
+    for (e, env) in [(Embedder::OpenAi, "OPENAI_API_KEY"), (Embedder::Nvidia, "NVIDIA_API_KEY")] {
         if let Ok(k) = std::env::var(env) {
             if !k.trim().is_empty() {
                 return Some((e, k));
             }
         }
-    }
-    match crate::ai::local_onnx::active() {
-        Some(crate::ai::local_onnx::LocalModel::Gemma) => return Some((Embedder::LocalGemma, String::new())),
-        Some(crate::ai::local_onnx::LocalModel::MiniLm) => return Some((Embedder::Local, String::new())),
-        None => {}
     }
     None
 }
@@ -136,7 +122,7 @@ fn index_path(root: &Path) -> Option<PathBuf> {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     std::hash::Hash::hash(&canon.to_string_lossy().to_lowercase(), &mut hasher);
     let id = std::hash::Hasher::finish(&hasher);
-    let dir = crate::agent::system::paths::viv_home().ok()?.join("index");
+    let dir = crate::host::viv_home().ok()?.join("index");
     std::fs::create_dir_all(&dir).ok()?;
     Some(dir.join(format!("{id:016x}.json")))
 }
@@ -266,11 +252,7 @@ fn http() -> &'static reqwest::Client {
 
 async fn embed(embedder: Embedder, key: &str, inputs: &[String], query: bool) -> Result<Vec<Vec<f32>>, String> {
     if matches!(embedder, Embedder::Local | Embedder::LocalGemma) {
-        let purpose = if query { crate::ai::local_onnx::Purpose::Query } else { crate::ai::local_onnx::Purpose::Document };
-        return match crate::ai::local_onnx::embed_local_batch(inputs, purpose).await? {
-            Some(vectors) => Ok(vectors.into_iter().map(normalise).collect()),
-            None => Err("the local embedding model isn't available".to_string()),
-        };
+        return Err("the local embedding model isn't available".to_string());
     }
     let mut body = serde_json::json!({ "model": embedder.model(), "input": inputs, "encoding_format": "float" });
     if embedder == Embedder::Nvidia {
@@ -349,7 +331,7 @@ async fn refresh(root: &Path, embedder: Option<(Embedder, String)>) -> (Index, S
     let root_buf = root.to_path_buf();
     let seen: Vec<(String, u64, u64, PathBuf)> = tokio::task::spawn_blocking(move || {
         let mut out = Vec::new();
-        crate::agent::tools::builtin::walk_files(&root_buf, MAX_FILES, |p| {
+        crate::builtin::walk_files(&root_buf, MAX_FILES, |p| {
             let ext_ok = p.extension().and_then(|e| e.to_str()).is_some_and(|e| SEARCHABLE_EXTS.contains(&e.to_ascii_lowercase().as_str()));
             if !ext_ok {
                 return true;
@@ -426,7 +408,7 @@ async fn refresh(root: &Path, embedder: Option<(Embedder, String)>) -> (Index, S
 
     if let Some(p) = path {
         if let Ok(json) = serde_json::to_string(&index) {
-            let _ = crate::agent::runtime::commands::write_session_file_atomic(&p, &json);
+            let _ = crate::host::write_session_file_atomic(&p, &json);
         }
     }
     (index, status)
@@ -543,9 +525,6 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn semantic_live() {
-        if crate::ai::keychain_store::KeychainCredentialStore::is_available() {
-            crate::ai::auth::set_global(std::sync::Arc::new(crate::ai::auth::AuthState::with_keychain_store()));
-        }
         let dir = std::env::temp_dir().join(format!("viv-sem-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("math.py"), "def add(a, b):\n    return a + b\n").unwrap();

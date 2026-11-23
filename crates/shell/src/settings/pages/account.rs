@@ -1,11 +1,11 @@
 //! Account & usage — a port of the old app's `UsageSection` and
 //! `UsageByModel`: lifetime totals, streaks, a year-long token heatmap with a
 //! daily/weekly/cumulative view, and spend per model over a chosen range.
-//! Every figure is derived from the daily series in `values.usage_days`;
-//! nothing here is stubbed.
+//! Every figure is derived from the daily series in `values.usage_days` and
+//! the per-model rows in `values.model_usage`, which `usage_data` reads from
+//! the usage the app keeps the first time the page is drawn.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use gpui_kit::base::{h_flex, v_flex};
 use gpui_kit::component::IconName;
@@ -19,6 +19,7 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled, div, px, relative,
 };
 
+use crate::settings::usage_data;
 use crate::settings::values::{ModelUsage, Shared, Values};
 use crate::settings::widgets;
 use crate::theme::{self, color};
@@ -35,18 +36,16 @@ const EMPTY_CELL: u32 = 0x272b31;
 
 // ------------------------------------------------------------------ dates ---
 
-/// Today as a whole epoch day. The demo store keys days by offset from
-/// today, so whole-day UTC arithmetic lines up with the local calendar the
-/// old app used for its `YYYY-MM-DD` keys.
+/// Today as a whole epoch day, by the local calendar: the usage store files
+/// each day under its local `YYYY-MM-DD`, so a UTC day would be a day off
+/// for part of every day outside Greenwich.
 fn today() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| (d.as_secs() / 86_400) as i64)
+    usage_data::today()
 }
 
 /// Civil date from a whole epoch day — Howard Hinnant's `civil_from_days`,
 /// in plain integer arithmetic so no calendar crate is needed.
-fn civil(epoch_day: i64) -> (i64, u32, u32) {
+pub(super) fn civil(epoch_day: i64) -> (i64, u32, u32) {
     let z = epoch_day + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z - era * 146_097;
@@ -69,7 +68,7 @@ fn date(epoch_day: i64) -> String {
 
 /// 12.4M / 340.0K / 512 — magnitudes read at a glance; a raw nine-digit token
 /// count does not. Same output as the old app's `compact`.
-fn compact(n: u64) -> String {
+pub(super) fn compact(n: u64) -> String {
     if n >= 1_000_000_000 {
         format!("{:.1}B", n as f64 / 1e9)
     } else if n >= 1_000_000 {
@@ -87,7 +86,7 @@ fn thousands(n: u64) -> String {
     let len = digits.len();
     let mut out = String::with_capacity(digits.len() + digits.len() / 3);
     for (i, c) in digits.chars().enumerate() {
-        if i > 0 && (len - i) % 3 == 0 {
+        if i > 0 && (len - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(c);
@@ -177,6 +176,8 @@ struct Cell {
     output: u64,
     /// `None` when the day had only unpriced requests.
     cost: Option<f64>,
+    /// At least one request that day had no known price.
+    unpriced: bool,
     /// Whatever the current view mode is colouring by.
     value: u64,
 }
@@ -222,6 +223,7 @@ fn compute(v: &Values, mode: Mode) -> Grid {
             input: day.map_or(0, |d| d.input),
             output: day.map_or(0, |d| d.output),
             cost: day.and_then(|d| d.cost),
+            unpriced: day.is_some_and(|d| d.unpriced),
             value: day.map_or(0, |d| d.input + d.output),
         });
     }
@@ -255,7 +257,8 @@ fn compute(v: &Values, mode: Mode) -> Grid {
     let mut last_month: i64 = -1;
     for col in 0..WEEKS {
         let m = civil(start + (col * 7) as i64).1;
-        if m as i64 != last_month {
+        // A month that starts in the last two weeks has no room for its name before the edge, so it is not labelled.
+        if m as i64 != last_month && col + 2 < WEEKS {
             months.push((col, MONTH_NAMES[m as usize - 1]));
             last_month = m as i64;
         }
@@ -272,10 +275,9 @@ fn compute(v: &Values, mode: Mode) -> Grid {
     for c in &cells {
         input += c.input;
         output += c.output;
-        match c.cost {
-            Some(day_cost) => cost += day_cost,
-            None => unknown = true,
-        }
+        // A day with no activity has no cost to know: only a day that spent something unpriced makes the total partial.
+        cost += c.cost.unwrap_or(0.0);
+        unknown |= c.unpriced;
         requests += u64::from(c.requests);
         if c.requests > 0 {
             active_days += 1;
@@ -351,50 +353,40 @@ fn chip(
 /// The page: stat band, heatmap, spend per model, insights — the old
 /// UsageSection + UsageByModel, in order.
 pub fn page(values: &Shared) -> SettingPage {
+    start_loading(values);
     SettingPage::new("Account & usage")
         .icon(IconName::User)
-        .description("Your account, and what Vivianne has spent across providers.")
-        .group(SettingGroup::new().item(stat_band_item(values)))
+        .description("You, and what Vivianne has spent across providers and coding agents.")
+        .group(SettingGroup::new().item(super::account_profile::item(values)))
+        .group(SettingGroup::new().item(overview_item(values)))
         .group(activity_group(values))
+        .group(super::account_agents::group(values))
         .group(by_model_group(values))
-        .group(insights_group(values))
 }
 
-fn stat_band_item(values: &Shared) -> SettingItem {
-    SettingItem::render({
-        let values = values.clone();
-        move |_options, _window, _cx| {
-            let v = values.borrow();
-            let grid = compute(&v, Mode::Daily);
-            let (current, longest) = streaks(&v);
-            let days = |n: u32| {
-                if n == 1 {
-                    "1 day".to_owned()
-                } else {
-                    format!("{n} days")
-                }
-            };
-            let tiles = [
-                (compact(grid.input + grid.output), "Lifetime tokens"),
-                (compact(grid.peak_tokens), "Peak day"),
-                (grid.active_days.to_string(), "Active days"),
-                (days(current), "Current streak"),
-                (days(longest), "Longest streak"),
-            ];
-            h_flex()
-                .rounded(px(10.0))
-                .border_1()
-                .border_color(color(theme::BORDER))
-                .overflow_hidden()
-                .children(
-                    tiles
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, (value, label))| tile(value, label, i > 0)),
-                )
-                .into_any_element()
+/// Marks the usage as wanted the first time the page is built. The page is built without an `App`, so the
+/// read itself starts at the next draw that has one ([`run_pending_load`]), as the Providers page does.
+fn start_loading(values: &Shared) {
+    {
+        let v = values.borrow();
+        if v.usage_loaded || v.usage_loading {
+            return;
         }
-    })
+    }
+    values.borrow_mut().usage_loading = true;
+    LOAD_REQUEST.with(|slot| *slot.borrow_mut() = Some(values.clone()));
+}
+
+thread_local! {
+    static LOAD_REQUEST: std::cell::RefCell<Option<Shared>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Starts the read asked for by [`start_loading`]. Called from a draw, which has an `App`.
+fn run_pending_load(cx: &mut App) {
+    let Some(values) = LOAD_REQUEST.with(|slot| slot.borrow_mut().take()) else {
+        return;
+    };
+    usage_data::load(&values, cx);
 }
 
 fn activity_group(values: &Shared) -> SettingGroup {
@@ -410,35 +402,43 @@ fn activity_group(values: &Shared) -> SettingGroup {
                 })
             };
         h_flex()
-            .justify_end()
-            .gap_1()
-            .child(chip_for(
-                "usage-mode-daily",
-                "Daily",
-                Mode::Daily,
-                &values_mode,
-                mode,
-            ))
-            .child(chip_for(
-                "usage-mode-weekly",
-                "Weekly",
-                Mode::Weekly,
-                &values_mode,
-                mode,
-            ))
-            .child(chip_for(
-                "usage-mode-cumulative",
-                "Cumulative",
-                Mode::Cumulative,
-                &values_mode,
-                mode,
-            ))
+            .items_center()
+            .justify_between()
+            .child(
+                div()
+                    .text_size(px(17.0))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(color(theme::TEXT))
+                    .child("Token activity"),
+            )
+            .child(
+                h_flex()
+                    .gap_1()
+                    .child(chip_for(
+                        "usage-mode-daily",
+                        "Daily",
+                        Mode::Daily,
+                        &values_mode,
+                        mode,
+                    ))
+                    .child(chip_for(
+                        "usage-mode-weekly",
+                        "Weekly",
+                        Mode::Weekly,
+                        &values_mode,
+                        mode,
+                    ))
+                    .child(chip_for(
+                        "usage-mode-cumulative",
+                        "Cumulative",
+                        Mode::Cumulative,
+                        &values_mode,
+                        mode,
+                    )),
+            )
             .into_any_element()
     });
-    SettingGroup::new()
-        .title("Token activity")
-        .item(toggle)
-        .item(heatmap_item(values))
+    SettingGroup::new().item(toggle).item(heatmap_item(values))
 }
 
 fn heatmap_item(values: &Shared) -> SettingItem {
@@ -499,6 +499,7 @@ fn heatmap_item(values: &Shared) -> SettingItem {
                     div()
                         .absolute()
                         .left(px(*col as f32 * (CELL + CELL_GAP)))
+                        .whitespace_nowrap()
                         .text_xs()
                         .text_color(color(theme::MUTED))
                         .child(*name)
@@ -511,7 +512,11 @@ fn heatmap_item(values: &Shared) -> SettingItem {
                         .text_xs()
                         .text_color(color(theme::MUTED))
                         .mt(px(6.0))
-                        .child("No usage recorded yet — this fills in as you use real provider models."),
+                        .child(if v.usage_loaded {
+                            "No usage recorded yet — this fills in as you chat."
+                        } else {
+                            "Reading your usage…"
+                        }),
                 );
             }
             out.into_any_element()
@@ -519,9 +524,16 @@ fn heatmap_item(values: &Shared) -> SettingItem {
     })
 }
 
-fn by_model_group(values: &Shared) -> SettingGroup {
+/// The 7 days / 30 days / All picker, shared by the lists that depend on the range.
+pub(super) fn range_item(values: &Shared, again: bool) -> SettingItem {
     let values_range = values.clone();
-    let range = SettingItem::render(move |_options, _window, _cx| {
+    SettingItem::render(move |_options, _window, _cx| {
+        // The picker is drawn in two lists at once; their buttons need ids of their own.
+        let keys = if again {
+            ["usage-range-7-b", "usage-range-30-b", "usage-range-all-b"]
+        } else {
+            ["usage-range-7", "usage-range-30", "usage-range-all"]
+        };
         let current = values_range.borrow().usage_range.clone();
         let chip_for = |key: &'static str,
                         label: &'static str,
@@ -532,38 +544,24 @@ fn by_model_group(values: &Shared) -> SettingGroup {
             let selected = current == value;
             chip(key, label, selected, move |_, _, cx| {
                 values.borrow_mut().usage_range = value.to_owned();
+                usage_data::load_models(&values, cx);
                 cx.refresh_windows();
             })
         };
         h_flex()
             .justify_end()
             .gap_1()
-            .child(chip_for(
-                "usage-range-7",
-                "7 days",
-                "7",
-                &values_range,
-                &current,
-            ))
-            .child(chip_for(
-                "usage-range-30",
-                "30 days",
-                "30",
-                &values_range,
-                &current,
-            ))
-            .child(chip_for(
-                "usage-range-all",
-                "All",
-                "all",
-                &values_range,
-                &current,
-            ))
+            .child(chip_for(keys[0], "7 days", "7", &values_range, &current))
+            .child(chip_for(keys[1], "30 days", "30", &values_range, &current))
+            .child(chip_for(keys[2], "All", "all", &values_range, &current))
             .into_any_element()
-    });
+    })
+}
+
+fn by_model_group(values: &Shared) -> SettingGroup {
     SettingGroup::new()
         .title("By model")
-        .item(range)
+        .item(range_item(values, true))
         .item(model_rows_item(values))
 }
 
@@ -574,13 +572,21 @@ fn model_rows_item(values: &Shared) -> SettingItem {
         let values = values.clone();
         move |_options, _window, _cx| {
             let v = values.borrow();
-            let mut rows: Vec<&ModelUsage> = v.model_usage.iter().collect();
-            rows.sort_by(|a, b| (b.input + b.output).cmp(&(a.input + a.output)));
+            let mut rows: Vec<&ModelUsage> = v
+                .model_usage
+                .iter()
+                .filter(|r| r.provider != super::account_agents::PROVIDER)
+                .collect();
+            rows.sort_by_key(|r| std::cmp::Reverse(r.input + r.output));
             if rows.is_empty() {
                 return div()
                     .text_xs()
                     .text_color(color(theme::MUTED))
-                    .child("Nothing in this range yet. Per-model usage starts counting from now.")
+                    .child(if v.usage_loaded {
+                        "Nothing in this range yet. Per-model usage fills in as you chat."
+                    } else {
+                        "Reading your usage…"
+                    })
                     .into_any_element();
             }
             let max = rows
@@ -591,12 +597,17 @@ fn model_rows_item(values: &Shared) -> SettingItem {
                 .max(1);
             let total_tokens: u64 = rows.iter().map(|r| r.input + r.output).sum();
             let total_cost: f64 = rows.iter().filter_map(|r| r.cost).sum();
-            let unknown = rows.iter().any(|r| r.cost.is_none());
+            let unknown = rows.iter().any(|r| r.cost.is_none() || r.unpriced);
 
             let mut list = v_flex().gap_3();
             for r in rows {
                 let tokens = r.input + r.output;
                 let (cost_text, cost_tip) = match r.cost {
+                    Some(c) if r.unpriced => (
+                        format!("{}+", money(c)),
+                        "Some requests had no known price, so the real cost is at least this much"
+                            .to_owned(),
+                    ),
                     Some(c) => (
                         money(c),
                         "Cost at the model\u{2019}s listed price".to_owned(),
@@ -614,6 +625,7 @@ fn model_rows_item(values: &Shared) -> SettingItem {
                             h_flex()
                                 .items_baseline()
                                 .gap_2()
+                                .child(crate::brand::tile(&r.provider, &r.provider, 20.0))
                                 .child(
                                     div()
                                         .flex_1()
@@ -724,25 +736,38 @@ fn model_rows_item(values: &Shared) -> SettingItem {
     })
 }
 
-fn insights_group(values: &Shared) -> SettingGroup {
-    SettingGroup::new()
-        .title("Activity insights")
-        .item(insights_item(values))
-}
-
-fn insights_item(values: &Shared) -> SettingItem {
+/// One card for everything the totals say: the five headline numbers across the top, and under a hairline the
+/// detail (requests, input and output tokens, the average day, the busiest day, the cost), two rows of three. It
+/// replaces the stat band and the insights list that said the same things twice.
+fn overview_item(values: &Shared) -> SettingItem {
     SettingItem::render({
         let values = values.clone();
-        move |_options, _window, _cx| {
+        move |_options, _window, cx| {
+            run_pending_load(cx);
             let v = values.borrow();
             let grid = compute(&v, Mode::Daily);
+            let (current, longest) = streaks(&v);
             let lifetime = grid.input + grid.output;
-            let rows = [
-                ("Total requests", thousands(grid.requests)),
+            let days = |n: u32| {
+                if n == 1 {
+                    "1 day".to_owned()
+                } else {
+                    format!("{n} days")
+                }
+            };
+            let headline = [
+                (compact(lifetime), "Lifetime tokens"),
+                (compact(grid.peak_tokens), "Peak day"),
+                (grid.active_days.to_string(), "Active days"),
+                (days(current), "Current streak"),
+                (days(longest), "Longest streak"),
+            ];
+            let detail = [
+                ("Requests", thousands(grid.requests)),
                 ("Input tokens", thousands(grid.input)),
                 ("Output tokens", thousands(grid.output)),
                 (
-                    "Avg tokens / active day",
+                    "Average per active day",
                     if grid.active_days > 0 {
                         compact(lifetime / u64::from(grid.active_days))
                     } else {
@@ -762,39 +787,59 @@ fn insights_item(values: &Shared) -> SettingItem {
                     cost_label(grid.cost, grid.unknown, grid.requests),
                 ),
             ];
-
-            let mut list = v_flex();
-            for (i, (label, value)) in rows.into_iter().enumerate() {
-                list = list.child(
-                    h_flex()
-                        .items_center()
-                        .justify_between()
-                        .gap_4()
-                        .py_1()
-                        .when(i > 0, |r| r.border_t_1().border_color(color(theme::BORDER)))
-                        .child(div().text_sm().text_color(color(theme::MUTED)).child(label))
-                        .child(
-                            div()
-                                .font_family(theme::MONO)
-                                .text_sm()
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(color(theme::TEXT))
-                                .child(value),
-                        ),
+            let cell = |label: &'static str, value: String| {
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(px(4.0))
+                    .child(
+                        div()
+                            .text_size(px(theme::TEXT_SM))
+                            .text_color(color(theme::MUTED))
+                            .child(label),
+                    )
+                    .child(
+                        div()
+                            .font_family(theme::MONO)
+                            .text_size(px(theme::TEXT_LG))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(color(theme::TEXT))
+                            .child(value),
+                    )
+            };
+            let mut rows = v_flex().gap(px(18.0)).px(px(20.0)).py(px(18.0));
+            for chunk in detail.chunks(3) {
+                rows = rows.child(
+                    h_flex().gap(px(16.0)).children(
+                        chunk
+                            .iter()
+                            .map(|(label, value)| cell(label, value.clone())),
+                    ),
                 );
             }
-            if grid.unknown {
-                list = list.child(
-                    div()
-                        .text_xs()
-                        .text_color(color(theme::MUTED))
-                        .mt(px(6.0))
-                        .child(
-                            "Cost is partial — some requests used a model without known pricing, so the real total is at least this much.",
-                        ),
-                );
-            }
-            list.into_any_element()
+            v_flex()
+                .rounded(px(theme::RADIUS_SURFACE))
+                .bg(color(theme::SURFACE))
+                .overflow_hidden()
+                .child(h_flex().children(
+                    headline
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, (value, label))| tile(value, label, i > 0)),
+                ))
+                .child(div().h(px(1.0)).w_full().bg(color(theme::HAIRLINE)))
+                .child(rows)
+                .when(grid.unknown, |card| {
+                    card.child(
+                        div()
+                            .px(px(20.0))
+                            .pb(px(16.0))
+                            .text_size(px(theme::TEXT_XS))
+                            .text_color(color(theme::MUTED))
+                            .child("Cost is partial: some requests used a model without known pricing, so the real total is at least this much."),
+                    )
+                })
+                .into_any_element()
         }
     })
 }

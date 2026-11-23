@@ -2,12 +2,19 @@
 //! them. `all()` returns them for the dialog's sidebar.
 
 mod account;
+mod account_agents;
+mod account_profile;
 mod appearance;
+mod automations;
+mod browser;
+mod characters;
 mod components;
+mod computer;
 mod connections;
 mod diagnostics;
 mod layout;
 mod local;
+mod machines;
 mod memory;
 mod mods;
 mod providers;
@@ -29,12 +36,17 @@ pub fn all(values: &Shared) -> Vec<SettingPage> {
         reliability::page(values),
         mods::page(values),
         connections::page(values),
+        machines::page(values),
+        computer::page(values),
+        browser::page(values),
         web::page(values),
         memory::page(values),
         vault::page(values),
         skills::page(values),
+        automations::page(values),
         diagnostics::page(values),
         appearance::page(values),
+        characters::page(values),
         layout::page(values),
         components::page(values),
         updates::page(values),

@@ -4,5 +4,42 @@ The single agent loop for chats and (later) 24/7 agents. `Agent::run` streams th
 tools it asks for, feeds results back, and stops when the model answers without tools or hits the
 100-step ceiling. Callers watch `AgentEvent`s on a channel; there are no UI or Tauri types here.
 
-Still to port from the old loop: retry with backoff, context-overflow compaction, repetition guards,
-key rotation, long-task ledger (the 24/7 mode), permission prompts.
+- `agent.rs`: the loop. Retries, fallback models, the mode (`set_mode`: Plan offers only tools that look, Ask
+  emits `AgentEvent::Approval` and waits for `Agent::answer`, Auto runs; the default here is Auto since a library
+  caller has nobody to ask) and condensing the conversation when it fills the window.
+- `history.rs`: keeps the history fit to send: every call answered (`repair`), old bulky tool output masked in
+  batches (`mask_old_results`), and balanced cuts for condensing (`pick_cut`).
+- `compact.rs`: the checkpoint summary (fixed sections, an earlier checkpoint merged forward, discarded if not
+  smaller). Starts at 80% of the window (`set_context_window`) or when a provider says a request was too large.
+- `attempts.rs`: remembers failing calls so a retry-with-small-variations is shown what already failed.
+- `context.rs`: splits a request into system prompt, tool definitions, you, assistant and tool results with one
+  token estimate (four characters), so the parts add up.
+- `instructions.rs`: AGENTS.md / CLAUDE.md (and `.local.md`, `@imports`) from the user's `~/.viv` and from the project
+  up to the repository root, added to the system prompt at the start of every run, with a note when one changed.
+- `store.rs`: threads kept on disk (`~/.viv/agent/threads/<id>.json`), listed per project folder.
+- `title.rs`: a thread's title: the cleaned first sentence, replaced by a model-written one (`Agent::title`); a
+  name the user gave is never replaced.
+- `checkpoints.rs`: a snapshot of the whole working tree after each run, as hidden git refs (`refs/viv/checkpoints/...`;
+  the user's branch, index and stash are never touched). Gives a run's changed files, its diff, and a rollback that
+  restores changed files and removes created ones (a safety checkpoint is taken first, so a rollback can be undone).
+  Shell-made changes are included; ignored files are not.
+- `prompt.rs`: the coding agent's standing instructions (the old directive without the tools and teams this app
+  lacks).
+- `resilience/`: retry, backoff and the fallback chain.
+
+Not ported from the old app's sessions: the one-thread-per-day model, per-thread git worktrees, project icons and
+banners, the `@file` index.
+
+Not ported from the old loop: key rotation, the long-task ledger (24/7 mode), hooks, the "done means checked"
+verification nudge.
+
+- `thread_tools.rs`: `list_threads` and `read_thread`, read-only, limited to the project's own saved conversations.
+  Offered to coding agents over MCP.
+- `config.rs`: settings in layers (flag, environment, settings.json, the repository's `.viv.json` with repo-safe fields only, default), each with its origin.
+- `profiles.rs`: agent profiles from `~/.viv/agents` and the repository's `.viv/agents` (a repository profile cannot set `permission_mode`).
+
+## Boundary and checks
+
+- **May depend on** (R1.1, `scripts/check-boundaries.sh`): `core`, `ai`, `providers`, `tools`, `attachments`.
+- **State it owns** (R1.6): saved threads (`~/.viv/agent/threads/<id>.json`), settings layers, agent profiles, run checkpoints (hidden git refs in the project) and the task ledger.
+- **Check it:** `cargo test -p vivianne-runtime` and `cargo clippy -p vivianne-runtime --all-targets`. Tests read no real `~/.viv` and need no network (R7.3).

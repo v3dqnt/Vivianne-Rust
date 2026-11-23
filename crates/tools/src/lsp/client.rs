@@ -1,7 +1,6 @@
 // Copied from Vivianne's original tools (0901 lsp/client.rs).
-// Kept as close to the original as possible; do not restyle. Paths such as
-// `crate::agent::tools::...` resolve through the re-exports in `lib.rs`.
-#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, dead_code, unused, unsafe_code, missing_debug_implementations)]
+// Kept as close to the original as possible; do not restyle.
+#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, unsafe_code, missing_debug_implementations)]
 
 //! A single language server connection: spawns the process, speaks LSP's Content-Length-framed JSON-RPC 2.0 over stdin/stdout, routes
 //! `textDocument/publishDiagnostics` into a shared map, and answers the requests a server sends back.
@@ -80,7 +79,7 @@ pub struct LspClient {
     closed: Arc<AtomicBool>,
     child: Mutex<Option<tokio::process::Child>>,
     /// Ends the server and whatever it started when the client is dropped.
-    _tree: Option<crate::agent::runtime::streaming::TreeKillOnDrop>,
+    _tree: Option<crate::proc::TreeKillOnDrop>,
 }
 
 #[derive(Default)]
@@ -170,8 +169,8 @@ impl LspClient {
     /// Spawn `command args...` and perform the LSP `initialize`/`initialized` handshake.
     pub async fn spawn(command: &str, args: &[&str], root_dir: &str, init_options: &Value, settings: &Value) -> Result<Arc<Self>, String> {
         let mut cmd = crate::proc::quiet(command);
-        crate::agent::tools::code::sandbox::scrub_env(&mut cmd);
-        crate::agent::runtime::streaming::own_group(&mut cmd);
+        crate::code::sandbox::scrub_env(&mut cmd);
+        crate::proc::own_group(&mut cmd);
         let mut child = cmd
             .args(args)
             .current_dir(root_dir)
@@ -229,7 +228,7 @@ impl LspClient {
             progress,
             stderr,
             closed,
-            _tree: child.as_ref().map(|c| crate::agent::runtime::streaming::TreeKillOnDrop { pid: c.id() }),
+            _tree: child.as_ref().map(|c| crate::proc::TreeKillOnDrop { pid: c.id() }),
             child: Mutex::new(child),
         })
     }
@@ -474,10 +473,6 @@ impl LspClient {
         self.capabilities.lock().await.clone()
     }
 
-    pub fn root(&self) -> &str {
-        &self.root
-    }
-
     /// The paths this server has open, and how many diagnostics it last published for each.
     pub async fn open_files(&self) -> Vec<String> {
         self.docs.lock().await.order.iter().map(|(_, uri)| uri_to_path(uri)).collect()
@@ -486,11 +481,6 @@ impl LspClient {
     /// Whether the client may be shut down for being idle: nothing is waiting on it, and it has been quiet for `timeout`.
     pub fn is_idle(&self, timeout: Duration) -> bool {
         self.in_flight.load(Ordering::SeqCst) == 0 && self.last_activity.lock().unwrap_or_else(|e| e.into_inner()).elapsed() > timeout
-    }
-
-    /// The server's last words on stderr, joined: why it died.
-    pub fn stderr_tail(&self) -> String {
-        self.stderr.lock().unwrap_or_else(|e| e.into_inner()).iter().cloned().collect::<Vec<_>>().join(" | ")
     }
 
     /// Wait until the server reports no work in progress (project load, indexing), for at most `limit`. `true` when it is idle.
@@ -507,28 +497,12 @@ impl LspClient {
         }
     }
 
-    /// `workspace/didChangeWatchedFiles` for files changed on disk by something other than the server (type 1 created, 2 changed, 3 deleted).
-    pub async fn notify_watched(&self, changes: &[(String, u8)]) {
-        if changes.is_empty() {
-            return;
-        }
-        let events: Vec<Value> = changes.iter().map(|(p, t)| json!({ "uri": path_to_uri(p), "type": t })).collect();
-        let _ = tokio::time::timeout(Duration::from_secs(2), self.notify("workspace/didChangeWatchedFiles", json!({ "changes": events }))).await;
-    }
-
-    /// Tell the server a file on disk was written by someone else (a workspace edit, a rename) so its view matches.
-    pub async fn refresh(&self, path: &str) {
-        if self.docs.lock().await.version.contains_key(&path_key(path)) {
-            let _ = self.touch_file(path).await;
-        }
-    }
-
     pub async fn shutdown(&self) {
         let _ = tokio::time::timeout(std::time::Duration::from_secs(3), self.request("shutdown", Value::Null)).await;
         let _ = self.notify("exit", Value::Null).await;
         if let Some(child) = self.child.lock().await.as_mut() {
             if let Some(pid) = child.id() {
-                crate::agent::runtime::streaming::kill_tree(pid).await;
+                crate::proc::kill_tree(pid).await;
             }
             let _ = child.kill().await;
         }

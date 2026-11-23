@@ -1,0 +1,20 @@
+[package]
+name = "vivianne-telemetry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+# The shared HTTP client, the settings file and the `~/.viv` paths.
+vivianne-ai.workspace = true
+log = "0.4"
+
+[dev-dependencies]
+tokio.workspace = true
+
+[lints]
+workspace = true

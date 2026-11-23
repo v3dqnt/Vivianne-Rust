@@ -1,7 +1,6 @@
 // Copied from Vivianne's original tools (0901 agent/tools/code/sandbox.rs).
-// Kept as close to the original as possible; do not restyle. Paths such as
-// `crate::agent::tools::...` resolve through the re-exports in `lib.rs`.
-#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, dead_code, unused, unsafe_code, missing_debug_implementations)]
+// Kept as close to the original as possible; do not restyle.
+#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, unsafe_code, missing_debug_implementations)]
 
 //! Sandbox — least-privilege guards applied to every shell command the agent
 //! runs (bash + powershell). Ported from kilocode's `kilo-sandbox` package,

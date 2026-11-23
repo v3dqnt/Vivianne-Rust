@@ -1,7 +1,6 @@
 // Copied from Vivianne's original tools (0901 lsp/edits.rs).
-// Kept as close to the original as possible; do not restyle. Paths such as
-// `crate::agent::tools::...` resolve through the re-exports in `lib.rs`.
-#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, dead_code, unused, unsafe_code, missing_debug_implementations)]
+// Kept as close to the original as possible; do not restyle.
+#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, unsafe_code, missing_debug_implementations)]
 
 //! Applying what a language server sends back as edits: `WorkspaceEdit` (rename, code actions, server-initiated `workspace/applyEdit`) and
 //! `TextEdit[]` (formatting), plus the formatting options a file asks for.
@@ -9,7 +8,7 @@
 //! All or nothing: every file's new content is worked out and every path checked against the workspace before anything is written, and each write
 //! goes through the file-safety layer's atomic replace. A path outside the workspace refuses the whole edit.
 
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -180,7 +179,7 @@ pub async fn apply_workspace_edit(root: &str, edit: &Value) -> Result<Vec<String
     for step in steps {
         match step {
             Step::Write(path, text) => {
-                crate::agent::tools::files::guard::write_atomic(&path, text.as_bytes()).await.map_err(|e| format!("can't write {}: {e}", path.display()))?;
+                crate::files::guard::write_atomic(&path, text.as_bytes()).await.map_err(|e| format!("can't write {}: {e}", path.display()))?;
                 done.push(format!("edited {}", path.display()));
             }
             Step::Create(path) => {
@@ -211,170 +210,12 @@ pub async fn apply_workspace_edit(root: &str, edit: &Value) -> Result<Vec<String
     Ok(done)
 }
 
-/// What applying `edit` would do, one line per file or operation, without doing it.
-pub fn describe(root: &str, edit: &Value) -> Result<Vec<String>, String> {
-    let steps = plan(root, edit)?;
-    Ok(steps
-        .into_iter()
-        .map(|s| match s {
-            Step::Write(p, _) => format!("would edit {}", p.display()),
-            Step::Create(p) => format!("would create {}", p.display()),
-            Step::Rename(a, b) => format!("would rename {} to {}", a.display(), b.display()),
-            Step::Delete(p) => format!("would delete {}", p.display()),
-        })
-        .collect())
-}
-
-/// `(path, type)` for `workspace/didChangeWatchedFiles`: 1 created, 2 changed, 3 deleted. Call after the edit was applied.
-pub fn watched_changes(edit: &Value) -> Vec<(String, u8)> {
-    let mut out: Vec<(String, u8)> = Vec::new();
-    if let Some(c) = edit.get("changes").and_then(|c| c.as_object()) {
-        out.extend(c.keys().map(|u| (uri_to_path(u), 2)));
-    }
-    for ch in edit.get("documentChanges").and_then(|c| c.as_array()).into_iter().flatten() {
-        match ch.get("kind").and_then(|k| k.as_str()) {
-            Some("create") => out.extend(ch.get("uri").and_then(|u| u.as_str()).map(|u| (uri_to_path(u), 1))),
-            Some("delete") => out.extend(ch.get("uri").and_then(|u| u.as_str()).map(|u| (uri_to_path(u), 3))),
-            Some("rename") => {
-                out.extend(ch.get("oldUri").and_then(|u| u.as_str()).map(|u| (uri_to_path(u), 3)));
-                out.extend(ch.get("newUri").and_then(|u| u.as_str()).map(|u| (uri_to_path(u), 1)));
-            }
-            _ => out.extend(ch.pointer("/textDocument/uri").and_then(|u| u.as_str()).map(|u| (uri_to_path(u), 2))),
-        }
-    }
-    out
-}
-
-/// The paths a `WorkspaceEdit` touches, for telling the server and for the result.
-pub fn touched(edit: &Value) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    if let Some(c) = edit.get("changes").and_then(|c| c.as_object()) {
-        out.extend(c.keys().map(|u| uri_to_path(u)));
-    }
-    for ch in edit.get("documentChanges").and_then(|c| c.as_array()).into_iter().flatten() {
-        if let Some(u) = ch.pointer("/textDocument/uri").or_else(|| ch.get("uri")).or_else(|| ch.get("newUri")).and_then(|u| u.as_str()) {
-            out.push(uri_to_path(u));
-        }
-    }
-    out
-}
-
 // ── Formatting options ──────────────────────────────────────────────────────
-
-/// `FormattingOptions` for `path`: `.editorconfig` (nearest first, up to the workspace root), else what the file already does.
-pub fn formatting_options(path: &Path, content: &str, root: &str) -> Value {
-    let (mut use_tabs, mut size): (Option<bool>, Option<u32>) = (None, None);
-    let mut trim: Option<bool> = None;
-    let mut final_nl: Option<bool> = None;
-    let mut dir = path.parent();
-    let mut chain: Vec<PathBuf> = Vec::new();
-    while let Some(d) = dir {
-        chain.push(d.join(".editorconfig"));
-        if path_key(&d.to_string_lossy()) == path_key(root) {
-            break;
-        }
-        dir = d.parent();
-    }
-    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    for file in chain {
-        let Ok(text) = std::fs::read_to_string(&file) else { continue };
-        let mut applies = false;
-        let mut root_file = false;
-        // Within one file a later matching section wins; a nearer file wins over a farther one.
-        let (mut f_tabs, mut f_size, mut f_trim, mut f_nl): (Option<bool>, Option<u32>, Option<bool>, Option<bool>) = (None, None, None, None);
-        for line in text.lines().map(str::trim) {
-            if line.starts_with('#') || line.starts_with(';') || line.is_empty() {
-                continue;
-            }
-            if let Some(glob) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
-                applies = glob_matches(glob, &name);
-            } else if let Some((k, v)) = line.split_once('=') {
-                let (k, v) = (k.trim().to_lowercase(), v.trim().to_lowercase());
-                if !applies {
-                    if k == "root" && v == "true" {
-                        root_file = true;
-                    }
-                    continue;
-                }
-                match k.as_str() {
-                    "indent_style" => f_tabs = Some(v == "tab"),
-                    "indent_size" | "tab_width" => f_size = v.parse().ok().or(f_size),
-                    "trim_trailing_whitespace" => f_trim = Some(v == "true"),
-                    "insert_final_newline" => f_nl = Some(v == "true"),
-                    _ => {}
-                }
-            }
-        }
-        use_tabs = use_tabs.or(f_tabs);
-        size = size.or(f_size);
-        trim = trim.or(f_trim);
-        final_nl = final_nl.or(f_nl);
-        if root_file {
-            break;
-        }
-    }
-    let (sniff_tabs, sniff_size) = sniff_indent(content);
-    let mut o = json!({ "tabSize": size.or(sniff_size).unwrap_or(4), "insertSpaces": !use_tabs.unwrap_or(sniff_tabs) });
-    if let Some(t) = trim {
-        o["trimTrailingWhitespace"] = json!(t);
-    }
-    if let Some(n) = final_nl {
-        o["insertFinalNewline"] = json!(n);
-    }
-    o
-}
-
-/// The `[glob]` forms an `.editorconfig` uses most: `*`, `*.ext`, `*.{a,b}`, an exact name.
-fn glob_matches(glob: &str, name: &str) -> bool {
-    glob.split(',').flat_map(|g| expand_braces(g.trim())).any(|g| {
-        let g = g.trim_start_matches("**/");
-        if g == "*" {
-            return true;
-        }
-        match g.strip_prefix("*.") {
-            Some(ext) => name.ends_with(&format!(".{ext}")),
-            None => g == name,
-        }
-    })
-}
-
-fn expand_braces(g: &str) -> Vec<String> {
-    match (g.find('{'), g.find('}')) {
-        (Some(a), Some(b)) if a < b => g[a + 1..b].split(',').map(|alt| format!("{}{}{}", &g[..a], alt, &g[b + 1..])).collect(),
-        _ => vec![g.to_string()],
-    }
-}
-
-/// Tabs or spaces, and how wide, from the file's own lines: the commonest step between one line's indent and the next.
-fn sniff_indent(content: &str) -> (bool, Option<u32>) {
-    let (mut tabs, mut spaces) = (0u32, 0u32);
-    let mut steps: BTreeMap<u32, u32> = BTreeMap::new();
-    let mut prev = 0u32;
-    for line in content.lines().take(400) {
-        if line.trim().is_empty() {
-            continue;
-        }
-        if line.starts_with('\t') {
-            tabs += 1;
-        } else if line.starts_with(' ') {
-            spaces += 1;
-            let w = line.len() - line.trim_start_matches(' ').len();
-            let w = w as u32;
-            if w > prev {
-                *steps.entry(w - prev).or_default() += 1;
-            }
-            prev = w;
-            continue;
-        }
-        prev = 0;
-    }
-    let width = steps.into_iter().filter(|(s, _)| (1..=8).contains(s)).max_by_key(|(_, n)| *n).map(|(s, _)| s);
-    (tabs > spaces, width)
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     fn tmp() -> PathBuf {
         let d = std::env::temp_dir().join(format!("viv-edits-{}", uuid::Uuid::new_v4()));
@@ -452,23 +293,6 @@ mod tests {
     }
 
     #[test]
-    fn editorconfig_decides_and_the_file_decides_otherwise() {
-        let root = tmp();
-        std::fs::write(root.join(".editorconfig"), "root = true\n[*]\nindent_style = space\nindent_size = 2\n[*.go]\nindent_style = tab\n").unwrap();
-        let ts = root.join("a.ts");
-        assert_eq!(formatting_options(&ts, "", &root.to_string_lossy()), json!({ "tabSize": 2, "insertSpaces": true }));
-        let go = root.join("a.go");
-        assert_eq!(formatting_options(&go, "", &root.to_string_lossy())["insertSpaces"], false);
-        // No config: sniffed from the content.
-        let bare = tmp();
-        let o = formatting_options(&bare.join("b.py"), "def f():\n    x = 1\n    if x:\n        y = 2\n", &bare.to_string_lossy());
-        assert_eq!(o, json!({ "tabSize": 4, "insertSpaces": true }));
-        let o = formatting_options(&bare.join("c.c"), "int f() {\n\treturn 1;\n}\n", &bare.to_string_lossy());
-        assert_eq!(o["insertSpaces"], false);
-        std::fs::remove_dir_all(&root).ok();
-    }
-
-    #[test]
     fn a_snippet_edit_is_refused_and_a_repeated_edit_is_one() {
         let snippet = vec![json!({ "range": range(0, 0, 0, 0), "newText": "fn ${1:name}() {}", "insertTextFormat": 2 })];
         assert!(apply_text_edits("", &snippet).unwrap_err().contains("snippet"));
@@ -476,18 +300,4 @@ mod tests {
         assert_eq!(apply_text_edits("abcdef", &twice).unwrap(), "Xdef");
     }
 
-    #[test]
-    fn a_preview_lists_what_would_change_and_changes_nothing() {
-        let root = tmp();
-        let a = root.join("a.txt");
-        std::fs::write(&a, "hello").unwrap();
-        let edit = json!({ "changes": { super::super::uri::path_to_uri(&a.to_string_lossy()): [{ "range": range(0, 0, 0, 5), "newText": "bye" }] } });
-        let lines = describe(&root.to_string_lossy(), &edit).unwrap();
-        assert_eq!(lines.len(), 1);
-        assert!(lines[0].starts_with("would edit"), "{lines:?}");
-        assert_eq!(std::fs::read_to_string(&a).unwrap(), "hello");
-        let w = watched_changes(&json!({ "documentChanges": [{ "kind": "rename", "oldUri": "file:///a", "newUri": "file:///b" }, { "kind": "delete", "uri": "file:///c" }] }));
-        assert_eq!(w, vec![("/a".to_string(), 3), ("/b".to_string(), 1), ("/c".to_string(), 3)]);
-        std::fs::remove_dir_all(&root).ok();
-    }
 }

@@ -7,11 +7,11 @@
 //! The stop signal uses `Arc<AtomicBool>` instead of `oneshot` to avoid
 //! pinning issues inside `tokio::spawn` + `tokio::select!`.
 
+use crate::events::Events;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use crate::events::Events;
 use tokio::io::AsyncBufReadExt;
 use tokio::process::Child;
 
@@ -216,10 +216,14 @@ const DEFAULT_CACHE_RAM_MIB: i32 = 2048;
 /// defaulting rules above can be tested without spawning a process.
 pub(crate) fn llama_cpp_args(config: &LlamaProcessConfig) -> Vec<String> {
     let mut args: Vec<String> = vec![
-        "-m".into(), config.model_path.clone(),
-        "--port".into(), config.port.to_string(),
-        "--ctx-size".into(), config.ctx_size.to_string(),
-        "--host".into(), "127.0.0.1".into(),
+        "-m".into(),
+        config.model_path.clone(),
+        "--port".into(),
+        config.port.to_string(),
+        "--ctx-size".into(),
+        config.ctx_size.to_string(),
+        "--host".into(),
+        "127.0.0.1".into(),
         // Without this, llama-server ignores the GGUF's embedded chat
         // template and falls back to a plain completion format: the model
         // still sees the `tools` schema in the prompt and tries to answer
@@ -233,7 +237,12 @@ pub(crate) fn llama_cpp_args(config: &LlamaProcessConfig) -> Vec<String> {
     }
 
     let t = &config.tuning;
-    let set = |v: &Option<String>| v.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(String::from);
+    let set = |v: &Option<String>| {
+        v.as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+    };
     if let Some(dev) = set(&t.device) {
         args.extend(["--device".into(), dev]);
     }
@@ -247,7 +256,14 @@ pub(crate) fn llama_cpp_args(config: &LlamaProcessConfig) -> Vec<String> {
     if kv != "f16" {
         // Asking for Flash Attention explicitly means a build where auto
         // declines still gets a working K/V pair rather than failing to start.
-        args.extend(["-fa".into(), flash.clone().unwrap_or_else(|| "on".into()), "-ctk".into(), kv.clone(), "-ctv".into(), kv]);
+        args.extend([
+            "-fa".into(),
+            flash.clone().unwrap_or_else(|| "on".into()),
+            "-ctk".into(),
+            kv.clone(),
+            "-ctv".into(),
+            kv,
+        ]);
     } else if let Some(f) = flash {
         args.extend(["-fa".into(), f]);
     }
@@ -262,7 +278,10 @@ pub(crate) fn llama_cpp_args(config: &LlamaProcessConfig) -> Vec<String> {
     if spec != "none" {
         args.extend(["--spec-type".into(), spec]);
     }
-    args.extend(["--cache-ram".into(), t.cache_ram_mib.unwrap_or(DEFAULT_CACHE_RAM_MIB).to_string()]);
+    args.extend([
+        "--cache-ram".into(),
+        t.cache_ram_mib.unwrap_or(DEFAULT_CACHE_RAM_MIB).to_string(),
+    ]);
     if let Some(secs) = t.sleep_idle_seconds.filter(|s| *s > 0) {
         args.extend(["--sleep-idle-seconds".into(), secs.to_string()]);
     }
@@ -270,7 +289,10 @@ pub(crate) fn llama_cpp_args(config: &LlamaProcessConfig) -> Vec<String> {
     if let Some(n) = t.n_cpu_moe.filter(|n| *n > 0) {
         args.extend(["--n-cpu-moe".into(), n.to_string()]);
     }
-    if let Some(ts) = set(&t.tensor_split).filter(|s| s.chars().all(|c| c.is_ascii_digit() || matches!(c, ',' | '.' | '/'))) {
+    if let Some(ts) = set(&t.tensor_split).filter(|s| {
+        s.chars()
+            .all(|c| c.is_ascii_digit() || matches!(c, ',' | '.' | '/'))
+    }) {
         args.extend(["-ts".into(), ts]);
     }
     if let Some(mg) = t.main_gpu {
@@ -280,7 +302,12 @@ pub(crate) fn llama_cpp_args(config: &LlamaProcessConfig) -> Vec<String> {
         args.push("--no-mmap".into());
     }
     // Throughput.
-    for (flag, v) in [("-b", t.batch_size), ("-ub", t.ubatch_size), ("-np", t.parallel), ("-tb", t.threads_batch)] {
+    for (flag, v) in [
+        ("-b", t.batch_size),
+        ("-ub", t.ubatch_size),
+        ("-np", t.parallel),
+        ("-tb", t.threads_batch),
+    ] {
         if let Some(n) = v.filter(|n| *n > 0) {
             args.extend([flag.into(), n.to_string()]);
         }
@@ -357,20 +384,17 @@ impl LlamaManager {
     /// sync from settings on app load.
     pub fn register(&self, config: LlamaProcessConfig) {
         let mut map = self.instances.lock().expect("llama manager lock");
-        map.entry(config.id.clone()).or_insert_with(|| LlamaInstance {
-            config,
-            status: LlamaStatus::Stopped,
-            stop_flag: Arc::new(AtomicBool::new(false)),
-            child: None,
-        });
+        map.entry(config.id.clone())
+            .or_insert_with(|| LlamaInstance {
+                config,
+                status: LlamaStatus::Stopped,
+                stop_flag: Arc::new(AtomicBool::new(false)),
+                child: None,
+            });
     }
 
     /// Start (or restart) a llama-server process for the given id.
-    pub async fn start(
-        &self,
-        id: &str,
-        app: &Events,
-    ) -> Result<LlamaStatus, String> {
+    pub async fn start(&self, id: &str, app: &Events) -> Result<LlamaStatus, String> {
         // Stop any running instance first (async kill)
         self.kill_internal(id).await;
 
@@ -413,10 +437,14 @@ impl LlamaManager {
             LocalEngine::MistralRs => {
                 cmd.args([
                     "serve",
-                    "-f", &config.model_path,
-                    "-p", &config.port.to_string(),
-                    "--host", "127.0.0.1",
-                    "--max-seq-len", &config.ctx_size.to_string(),
+                    "-f",
+                    &config.model_path,
+                    "-p",
+                    &config.port.to_string(),
+                    "--host",
+                    "127.0.0.1",
+                    "--max-seq-len",
+                    &config.ctx_size.to_string(),
                 ]);
                 // 0 = let mistral.rs auto-select CPU/GPU on its own; a
                 // nonzero value pins that many layers to the first device,
@@ -458,8 +486,9 @@ impl LlamaManager {
         // with `Stdio::piped()` and nothing reading it, the pipe buffer fills
         // and llama-server blocks forever inside its own logging.
         let mut child = child;
-        let stderr_tail: Arc<Mutex<std::collections::VecDeque<String>>> =
-            Arc::new(Mutex::new(std::collections::VecDeque::with_capacity(STDERR_TAIL_LINES)));
+        let stderr_tail: Arc<Mutex<std::collections::VecDeque<String>>> = Arc::new(Mutex::new(
+            std::collections::VecDeque::with_capacity(STDERR_TAIL_LINES),
+        ));
         if let Some(pipe) = child.stderr.take() {
             let tail = stderr_tail.clone();
             tokio::spawn(async move {
@@ -527,7 +556,10 @@ impl LlamaManager {
                 if exited {
                     break;
                 }
-                if client.get(&health_url).send().await
+                if client
+                    .get(&health_url)
+                    .send()
+                    .await
                     .map(|r| r.status().is_success())
                     .unwrap_or(false)
                 {
@@ -560,10 +592,13 @@ impl LlamaManager {
                     }
                 }
             }
-            let _ = app_clone.emit("llama-status-changed", serde_json::json!({
-                "id": id_clone,
-                "status": if ready { "running" } else { "stopped" },
-            }));
+            let _ = app_clone.emit(
+                "llama-status-changed",
+                serde_json::json!({
+                    "id": id_clone,
+                    "status": if ready { "running" } else { "stopped" },
+                }),
+            );
 
             // Phase 2: if running, poll health every 10s for crash detection
             if ready {
@@ -582,17 +617,23 @@ impl LlamaManager {
                             consecutive_failures += 1;
                             if consecutive_failures >= 3 {
                                 if let Some(manager) = app_clone.try_state::<Arc<LlamaManager>>() {
-                                    let mut map = manager.instances.lock().expect("llama manager lock");
+                                    let mut map =
+                                        manager.instances.lock().expect("llama manager lock");
                                     if let Some(inst) = map.get_mut(&id_clone) {
                                         if inst.status == LlamaStatus::Running {
-                                            inst.status = LlamaStatus::Crashed(format!("{binary} process exited unexpectedly"));
+                                            inst.status = LlamaStatus::Crashed(format!(
+                                                "{binary} process exited unexpectedly"
+                                            ));
                                         }
                                     }
                                 }
-                                let _ = app_clone.emit("llama-status-changed", serde_json::json!({
-                                    "id": id_clone,
-                                    "status": "crashed",
-                                }));
+                                let _ = app_clone.emit(
+                                    "llama-status-changed",
+                                    serde_json::json!({
+                                        "id": id_clone,
+                                        "status": "crashed",
+                                    }),
+                                );
                                 break;
                             }
                         }
@@ -614,11 +655,17 @@ impl LlamaManager {
 
         {
             let map = self.instances.lock().expect("llama manager lock");
-            let status = map.get(id).map(|i| i.status.clone()).unwrap_or(LlamaStatus::Starting);
-            let _ = app.emit("llama-status-changed", serde_json::json!({
-                "id": id,
-                "status": "starting",
-            }));
+            let status = map
+                .get(id)
+                .map(|i| i.status.clone())
+                .unwrap_or(LlamaStatus::Starting);
+            let _ = app.emit(
+                "llama-status-changed",
+                serde_json::json!({
+                    "id": id,
+                    "status": "starting",
+                }),
+            );
             Ok(status)
         }
     }
@@ -629,9 +676,9 @@ impl LlamaManager {
         // Extract child under the lock, then drop the guard before .await
         let child_opt = {
             let mut map = self.instances.lock().expect("llama manager lock");
-            let inst = map.get_mut(id).ok_or_else(|| {
-                format!("No llama endpoint registered with id '{id}'.")
-            })?;
+            let inst = map
+                .get_mut(id)
+                .ok_or_else(|| format!("No llama endpoint registered with id '{id}'."))?;
             inst.stop_flag.store(true, Ordering::SeqCst);
             let child = inst.child.take();
             inst.status = LlamaStatus::Stopped;
@@ -651,7 +698,13 @@ impl LlamaManager {
     /// it, a locally-running model kept holding its RAM/GPU allocation as an
     /// orphaned process after the app quit.
     pub async fn stop_all(&self) {
-        let ids: Vec<String> = self.instances.lock().expect("llama manager lock").keys().cloned().collect();
+        let ids: Vec<String> = self
+            .instances
+            .lock()
+            .expect("llama manager lock")
+            .keys()
+            .cloned()
+            .collect();
         for id in ids {
             let _ = self.stop(&id).await;
         }
@@ -749,24 +802,22 @@ pub async fn cmd_llama_status(
 }
 
 /// List all registered llama instances with their config and current status.
-pub async fn cmd_llama_list(
-    manager: &Arc<LlamaManager>,
-) -> Result<Vec<serde_json::Value>, String> {
+pub async fn cmd_llama_list(manager: &Arc<LlamaManager>) -> Result<Vec<serde_json::Value>, String> {
     Ok(manager.list())
 }
 
 /// Register a llama process config (used during initial sync from settings).
 /// Does NOT auto-start — call `cmd_llama_start` separately.
-pub async fn cmd_llama_register(config: LlamaProcessConfig, manager: &Arc<LlamaManager>) -> Result<(), String> {
+pub async fn cmd_llama_register(
+    config: LlamaProcessConfig,
+    manager: &Arc<LlamaManager>,
+) -> Result<(), String> {
     manager.register(config);
     Ok(())
 }
 
 /// Unregister a llama instance (stops it first, then removes).
-pub async fn cmd_llama_unregister(
-    id: String,
-    manager: &Arc<LlamaManager>,
-) -> Result<(), String> {
+pub async fn cmd_llama_unregister(id: String, manager: &Arc<LlamaManager>) -> Result<(), String> {
     manager.stop(&id).await?;
     manager.remove(&id);
     Ok(())
@@ -791,14 +842,22 @@ mod tests {
     }
 
     fn has(args: &[String], pair: &[&str]) -> bool {
-        args.windows(pair.len()).any(|w| w.iter().zip(pair).all(|(a, b)| a == b))
+        args.windows(pair.len())
+            .any(|w| w.iter().zip(pair).all(|(a, b)| a == b))
     }
 
     #[test]
     fn untuned_endpoint_gets_the_memory_and_speed_defaults() {
         let args = llama_cpp_args(&config(NGL_ALL, LlamaTuning::default()));
-        assert!(!args.iter().any(|a| a == "-ngl"), "offload-all must leave -ngl unset so --fit can work: {args:?}");
-        assert!(has(&args, &["-ctk", "q8_0"]) && has(&args, &["-ctv", "q8_0"]) && has(&args, &["-fa", "on"]));
+        assert!(
+            !args.iter().any(|a| a == "-ngl"),
+            "offload-all must leave -ngl unset so --fit can work: {args:?}"
+        );
+        assert!(
+            has(&args, &["-ctk", "q8_0"])
+                && has(&args, &["-ctv", "q8_0"])
+                && has(&args, &["-fa", "on"])
+        );
         assert!(has(&args, &["--cache-reuse", "256"]));
         assert!(has(&args, &["--spec-type", "ngram-mod"]));
         assert!(has(&args, &["--cache-ram", "2048"]));
@@ -808,17 +867,22 @@ mod tests {
 
     #[test]
     fn explicit_values_opt_out_of_each_default() {
-        let args = llama_cpp_args(&config(20, LlamaTuning {
-            kv_cache_type: Some("f16".into()),
-            cache_reuse: Some(0),
-            speculative: Some("none".into()),
-            cache_ram_mib: Some(0),
-            sleep_idle_seconds: Some(600),
-            extra_args: Some("--no-context-shift  -np 1".into()),
-            ..Default::default()
-        }));
+        let args = llama_cpp_args(&config(
+            20,
+            LlamaTuning {
+                kv_cache_type: Some("f16".into()),
+                cache_reuse: Some(0),
+                speculative: Some("none".into()),
+                cache_ram_mib: Some(0),
+                sleep_idle_seconds: Some(600),
+                extra_args: Some("--no-context-shift  -np 1".into()),
+                ..Default::default()
+            },
+        ));
         assert!(has(&args, &["-ngl", "20"]));
-        assert!(!args.iter().any(|a| a == "-ctk" || a == "--cache-reuse" || a == "--spec-type"));
+        assert!(!args
+            .iter()
+            .any(|a| a == "-ctk" || a == "--cache-reuse" || a == "--spec-type"));
         assert!(has(&args, &["--cache-ram", "0"]));
         assert!(has(&args, &["--sleep-idle-seconds", "600"]));
         assert!(args.ends_with(&["--no-context-shift".to_string(), "-np".into(), "1".into()]));
@@ -827,8 +891,30 @@ mod tests {
     #[test]
     fn the_new_knobs_become_flags_and_unset_ones_add_nothing() {
         let plain = llama_cpp_args(&config(NGL_ALL, LlamaTuning::default()));
-        for flag in ["--n-cpu-moe", "-ts", "-mg", "--no-mmap", "-b", "-ub", "-np", "-tb", "--temp", "--top-p", "--top-k", "--min-p", "--repeat-penalty", "--alias", "--chat-template", "--mmproj", "--lora", "--rope-scale"] {
-            assert!(!plain.iter().any(|a| a == flag), "{flag} must be absent by default");
+        for flag in [
+            "--n-cpu-moe",
+            "-ts",
+            "-mg",
+            "--no-mmap",
+            "-b",
+            "-ub",
+            "-np",
+            "-tb",
+            "--temp",
+            "--top-p",
+            "--top-k",
+            "--min-p",
+            "--repeat-penalty",
+            "--alias",
+            "--chat-template",
+            "--mmproj",
+            "--lora",
+            "--rope-scale",
+        ] {
+            assert!(
+                !plain.iter().any(|a| a == flag),
+                "{flag} must be absent by default"
+            );
         }
         let args = llama_cpp_args(&config(
             NGL_ALL,
@@ -883,7 +969,13 @@ mod tests {
 
     #[test]
     fn a_tensor_split_that_is_not_numbers_is_dropped() {
-        let args = llama_cpp_args(&config(NGL_ALL, LlamaTuning { tensor_split: Some("3,1; rm -rf".into()), ..LlamaTuning::default() }));
+        let args = llama_cpp_args(&config(
+            NGL_ALL,
+            LlamaTuning {
+                tensor_split: Some("3,1; rm -rf".into()),
+                ..LlamaTuning::default()
+            },
+        ));
         assert!(!args.iter().any(|a| a == "-ts"));
     }
 
@@ -891,16 +983,32 @@ mod tests {
     fn flash_attention_follows_the_user_but_quantised_kv_defaults_it_on() {
         let on = llama_cpp_args(&config(NGL_ALL, LlamaTuning::default()));
         assert!(has(&on, &["-fa", "on"]));
-        let auto = llama_cpp_args(&config(NGL_ALL, LlamaTuning { flash_attn: Some("auto".into()), ..LlamaTuning::default() }));
+        let auto = llama_cpp_args(&config(
+            NGL_ALL,
+            LlamaTuning {
+                flash_attn: Some("auto".into()),
+                ..LlamaTuning::default()
+            },
+        ));
         assert!(has(&auto, &["-fa", "auto"]) && has(&auto, &["-ctk", "q8_0"]));
-        let junk = llama_cpp_args(&config(NGL_ALL, LlamaTuning { flash_attn: Some("maybe".into()), ..LlamaTuning::default() }));
+        let junk = llama_cpp_args(&config(
+            NGL_ALL,
+            LlamaTuning {
+                flash_attn: Some("maybe".into()),
+                ..LlamaTuning::default()
+            },
+        ));
         assert!(has(&junk, &["-fa", "on"]));
     }
 
     #[test]
     fn tuning_saved_before_the_new_fields_still_deserializes() {
-        let t: LlamaTuning = serde_json::from_value(serde_json::json!({ "kvCacheType": "q4_0", "mlock": true })).unwrap();
+        let t: LlamaTuning =
+            serde_json::from_value(serde_json::json!({ "kvCacheType": "q4_0", "mlock": true }))
+                .unwrap();
         assert_eq!(t.kv_cache_type.as_deref(), Some("q4_0"));
-        assert!(t.speculative.is_none() && t.cache_ram_mib.is_none() && t.sleep_idle_seconds.is_none());
+        assert!(
+            t.speculative.is_none() && t.cache_ram_mib.is_none() && t.sleep_idle_seconds.is_none()
+        );
     }
 }

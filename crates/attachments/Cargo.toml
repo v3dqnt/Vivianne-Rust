@@ -1,0 +1,25 @@
+[package]
+name = "vivianne-attachments"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+vivianne-core = { path = "../core" }
+base64 = "0.22"
+sha2 = "0.10"
+uuid = { version = "1", features = ["v4"] }
+# Decoding PNG, JPEG, WebP and GIF, and encoding JPEG.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+# R6.1: lossy WebP encoding, needed for transparent images on the byte-target quality ladder.
+# `image` encodes WebP lossless only, which ignores quality and would leave the ladder with no effect.
+webp = { version = "0.3", default-features = false }
+
+[dev-dependencies]
+serde_json.workspace = true
+uuid = { version = "1", features = ["v4"] }
+
+[lints]
+workspace = true

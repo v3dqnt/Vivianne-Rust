@@ -8,7 +8,9 @@
 
 #[rustfmt::skip]
 pub mod ai;
+pub mod custom_providers;
 pub mod events;
 pub mod host;
 pub mod inference;
 pub mod paths;
+pub mod providers;

@@ -3,6 +3,7 @@
 //! Every real provider is Vivianne's old provider layer (`vivianne-ai`), reached through
 //! [`ai_provider::AiProvider`]. [`env`] picks one from environment variables.
 
+pub mod acp;
 pub mod ai_provider;
 pub mod env;
 
@@ -39,6 +40,44 @@ pub struct ChatRequest {
     pub messages: Vec<Message>,
     pub tools: Vec<ToolSpec>,
     pub thinking: Thinking,
+    /// Images to send with the user messages named by `ImagePart::message`: made at request time from stored
+    /// attachments, never kept in the conversation.
+    pub images: Vec<ImagePart>,
+}
+
+/// One picture for one message of a request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImagePart {
+    /// Index into `ChatRequest::messages`.
+    pub message: usize,
+    pub media_type: String,
+    pub base64: String,
+    /// What the model is told beside the picture: its stable id and its real size.
+    pub label: String,
+}
+
+/// What one model call used: tokens, and what they cost when that is known.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Spent {
+    pub provider: String,
+    pub model: String,
+    pub input: u64,
+    pub output: u64,
+    pub cache_read: u64,
+    pub cache_write: u64,
+    /// `None` when the model has no known price: unknown, never zero.
+    pub cost: Option<f64>,
+}
+
+impl Spent {
+    /// Adds `other`'s tokens and cost to this. A cost stays known only while both are.
+    pub fn add(&mut self, other: &Spent) {
+        self.input += other.input;
+        self.output += other.output;
+        self.cache_read += other.cache_read;
+        self.cache_write += other.cache_write;
+        self.cost = self.cost.zip(other.cost).map(|(a, b)| a + b);
+    }
 }
 
 /// What a provider streams back. Tool calls arrive complete, never as fragments.
@@ -46,6 +85,9 @@ pub struct ChatRequest {
 pub enum ChatEvent {
     Text(String),
     ToolCall(ToolCall),
+    /// What the call used, sent once as it ends. The provider only reports it; whoever knows which
+    /// thread it was for records it.
+    Usage(Spent),
     Done,
 }
 

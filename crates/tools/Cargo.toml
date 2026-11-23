@@ -19,6 +19,7 @@ futures.workspace = true
 reqwest.workspace = true
 regex = "1.12.4"
 url = "2.5.8"
+keyring = { version = "3", features = ["windows-native", "apple-native", "sync-secret-service"] }
 base64 = "0.22.1"
 sha2 = "0.10.9"
 image = "0.25"
@@ -29,6 +30,7 @@ toml = "0.8"
 log = "0.4"
 lazy_static = "1.5"
 uuid = { version = "1", features = ["v4"] }
+rand = "0.9"
 zip = "4.2"
 lopdf = "0.34"
 quick-xml = "0.37"

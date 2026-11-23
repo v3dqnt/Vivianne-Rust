@@ -12,8 +12,8 @@
 use serde::Serialize;
 
 use super::difficulty::{Difficulty, Verdict};
-use crate::host::ModelRef;
 use super::usage_store::DayUsage;
+use crate::host::ModelRef;
 
 /// Why a model is being asked, for the copy and for tests.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,7 +54,14 @@ fn model_from_value(v: &serde_json::Value) -> Option<ModelRef> {
 
 /// Parse `routing` from settings; absent or malformed is "off".
 pub fn parse_config(v: Option<&serde_json::Value>) -> Config {
-    let Some(v) = v else { return Config { enabled: false, quick: None, auto: false, tiers: [None, None, None] } };
+    let Some(v) = v else {
+        return Config {
+            enabled: false,
+            quick: None,
+            auto: false,
+            tiers: [None, None, None],
+        };
+    };
     let tier = |k: &str| v.pointer(&format!("/tiers/{k}")).and_then(model_from_value);
     Config {
         enabled: v.get("enabled").and_then(|e| e.as_bool()).unwrap_or(false),
@@ -64,11 +71,40 @@ pub fn parse_config(v: Option<&serde_json::Value>) -> Config {
     }
 }
 
+fn model_to_value(m: &ModelRef) -> serde_json::Value {
+    serde_json::json!({
+        "id": m.id, "name": m.name, "api": m.api, "provider": m.provider, "baseUrl": m.base_url,
+        "maxTokens": m.max_tokens, "contextWindow": m.context_window,
+    })
+}
+
+/// Write the routing setting, leaving the rest of settings as it is.
+pub async fn save_config(cfg: &Config) -> Result<(), String> {
+    let tier = |m: &Option<ModelRef>| m.as_ref().map(model_to_value);
+    let value = serde_json::json!({
+        "enabled": cfg.enabled,
+        "auto": cfg.auto,
+        "quick": tier(&cfg.quick),
+        "tiers": { "easy": tier(&cfg.tiers[0]), "medium": tier(&cfg.tiers[1]), "hard": tier(&cfg.tiers[2]) },
+    });
+    crate::host::update_settings(move |settings| {
+        if let Some(object) = settings.as_object_mut() {
+            object.insert("routing".to_owned(), value);
+        }
+    })
+    .await
+}
+
 /// The model for a task of this difficulty, with no I/O. A level without its
 /// own model uses the nearest configured one that is not smaller than it
 /// (a hard task is never handed a smaller model than the tiers offer for it),
 /// then the quick model for easy work, then what the caller had.
-pub fn choose_tier(cfg: &Config, level: Difficulty, default: &ModelRef, keyed: impl Fn(&ModelRef) -> bool) -> ModelRef {
+pub fn choose_tier(
+    cfg: &Config,
+    level: Difficulty,
+    default: &ModelRef,
+    keyed: impl Fn(&ModelRef) -> bool,
+) -> ModelRef {
     if !cfg.enabled || !cfg.auto {
         return default.clone();
     }
@@ -83,7 +119,11 @@ pub fn choose_tier(cfg: &Config, level: Difficulty, default: &ModelRef, keyed: i
     } else {
         order.extend(cfg.tiers[at..].iter().flatten());
     }
-    order.into_iter().find(|m| keyed(m)).cloned().unwrap_or_else(|| default.clone())
+    order
+        .into_iter()
+        .find(|m| keyed(m))
+        .cloned()
+        .unwrap_or_else(|| default.clone())
 }
 
 /// The model for a task, by how hard it reads. With tiers off or unset this
@@ -109,7 +149,9 @@ pub async fn route_task(text: &str, default: &ModelRef) -> (ModelRef, Option<Ver
             keyed.insert(m.provider.clone(), provider_has_key(&m.provider).await);
         }
     }
-    let model = choose_tier(&cfg, verdict.level, default, |m| keyed.get(&m.provider).copied().unwrap_or(false));
+    let model = choose_tier(&cfg, verdict.level, default, |m| {
+        keyed.get(&m.provider).copied().unwrap_or(false)
+    });
     (model, Some(verdict))
 }
 
@@ -135,13 +177,18 @@ pub async fn route(_role: Role, default: &ModelRef) -> ModelRef {
     // "Auto" is not a model a request can be sent to. Outside a turn (memory
     // upkeep, summaries) it means the cheapest configured one.
     if is_router(default) {
-        let cheapest = cfg.quick.clone().or_else(|| cfg.tiers.iter().flatten().next().cloned());
+        let cheapest = cfg
+            .quick
+            .clone()
+            .or_else(|| cfg.tiers.iter().flatten().next().cloned());
         return cheapest.unwrap_or_else(|| default.clone());
     }
     if !cfg.enabled {
         return default.clone();
     }
-    let Some(quick) = cfg.quick.as_ref() else { return default.clone() };
+    let Some(quick) = cfg.quick.as_ref() else {
+        return default.clone();
+    };
     let keyed = provider_has_key(&quick.provider).await;
     choose(&cfg, default, keyed)
 }
@@ -165,7 +212,11 @@ pub async fn resolve_router(text: &str) -> Result<(ModelRef, Option<Verdict>), S
     cfg.enabled = true;
     cfg.auto = true;
     // The strongest configured model is the fallback, never a weaker one.
-    let strongest = cfg.tiers[2].clone().or_else(|| cfg.tiers[1].clone()).or_else(|| cfg.tiers[0].clone()).or_else(|| cfg.quick.clone());
+    let strongest = cfg.tiers[2]
+        .clone()
+        .or_else(|| cfg.tiers[1].clone())
+        .or_else(|| cfg.tiers[0].clone())
+        .or_else(|| cfg.quick.clone());
     let Some(default) = strongest else {
         return Err("The cost-aware router has no models yet. Set Easy, Medium and Hard models in Settings, Providers, Cost-aware routing, then send again.".to_string());
     };
@@ -179,14 +230,19 @@ pub async fn resolve_router(text: &str) -> Result<(ModelRef, Option<Verdict>), S
             keyed.insert(m.provider.clone(), provider_has_key(&m.provider).await);
         }
     }
-    let model = choose_tier(&cfg, verdict.level, &default, |m| keyed.get(&m.provider).copied().unwrap_or(false));
+    let model = choose_tier(&cfg, verdict.level, &default, |m| {
+        keyed.get(&m.provider).copied().unwrap_or(false)
+    });
     Ok((model, Some(verdict)))
 }
 
 /// Whether a subagent's tool list is read-only: it can look and report but
 /// not change anything or run commands. Such work suits a quick model.
 /// `tool_is_read_only` is the tool registry's answer for one tool name.
-pub fn is_read_only(allowed_tools: Option<&[String]>, tool_is_read_only: impl Fn(&str) -> bool) -> bool {
+pub fn is_read_only(
+    allowed_tools: Option<&[String]>,
+    tool_is_read_only: impl Fn(&str) -> bool,
+) -> bool {
     match allowed_tools {
         // `None` is full tool access.
         None => false,
@@ -213,26 +269,47 @@ pub struct Savings {
 /// What routing saved: the quick model's recorded usage, priced at the chat
 /// model's rate. Unpriced on either side means no dollar claim.
 pub fn savings(quick: &DayUsage, would_usd: Option<f64>) -> Savings {
-    let actual = if quick.has_unknown_cost { None } else { Some(quick.cost) };
+    let actual = if quick.has_unknown_cost {
+        None
+    } else {
+        Some(quick.cost)
+    };
     let saved = match (actual, would_usd) {
         (Some(a), Some(w)) => Some((w - a).max(0.0)),
         _ => None,
     };
-    Savings { input: quick.input, output: quick.output, requests: quick.requests, actual_usd: actual, would_usd, saved_usd: saved }
+    Savings {
+        input: quick.input,
+        output: quick.output,
+        requests: quick.requests,
+        actual_usd: actual,
+        would_usd,
+        saved_usd: saved,
+    }
 }
 
 /// Routing's effect over the last `days` days (or everything kept), for
 /// Settings → Providers → Cost-aware routing. `smart` is the chat model, to
 /// price the same tokens at its rate.
-pub async fn cmd_routing_savings(smart: &ModelRef, days: Option<u32>) -> Result<serde_json::Value, String> {
+pub async fn cmd_routing_savings(
+    smart: &ModelRef,
+    days: Option<u32>,
+) -> Result<serde_json::Value, String> {
     let settings = crate::host::read_settings_json().await;
     let cfg = parse_config(settings.get("routing"));
     let Some(quick) = cfg.quick else {
         return Ok(serde_json::json!({ "configured": false }));
     };
-    let since = days.map(|d| (chrono::Local::now() - chrono::Duration::days(i64::from(d))).format("%Y-%m-%d").to_string());
+    let since = days.map(|d| {
+        (chrono::Local::now() - chrono::Duration::days(i64::from(d)))
+            .format("%Y-%m-%d")
+            .to_string()
+    });
     let by_model = super::usage_store::read_usage_by_model(since.as_deref()).await;
-    let used = by_model.get(&format!("{}/{}", quick.provider, quick.id)).cloned().unwrap_or_default();
+    let used = by_model
+        .get(&format!("{}/{}", quick.provider, quick.id))
+        .cloned()
+        .unwrap_or_default();
 
     let clamp = |n: u64| n.min(u64::from(u32::MAX)) as u32;
     let usage = crate::ai::types::Usage {
@@ -243,7 +320,11 @@ pub async fn cmd_routing_savings(smart: &ModelRef, days: Option<u32>) -> Result<
         total_tokens: clamp(used.input + used.output),
         cost: None,
     };
-    let would = if used.requests == 0 { None } else { crate::ai::pricing::compute_cost(&smart.provider, &smart.id, &usage) };
+    let would = if used.requests == 0 {
+        None
+    } else {
+        crate::ai::pricing::compute_cost(&smart.provider, &smart.id, &usage)
+    };
     let s = savings(&used, would);
     Ok(serde_json::json!({
         "configured": true,
@@ -259,17 +340,35 @@ mod tests {
     use super::*;
 
     fn model(id: &str, provider: &str) -> ModelRef {
-        ModelRef { id: id.into(), name: id.into(), api: "openai-chat".into(), provider: provider.into(), ..ModelRef::default() }
+        ModelRef {
+            id: id.into(),
+            name: id.into(),
+            api: "openai-chat".into(),
+            provider: provider.into(),
+            ..ModelRef::default()
+        }
     }
     fn cfg(enabled: bool, quick: Option<ModelRef>) -> Config {
-        Config { enabled, quick, auto: false, tiers: [None, None, None] }
+        Config {
+            enabled,
+            quick,
+            auto: false,
+            tiers: [None, None, None],
+        }
     }
 
     #[test]
     fn the_router_is_recognised_by_provider_and_id() {
-        let r = ModelRef { id: ROUTER_ID.into(), provider: ROUTER_PROVIDER.into(), ..ModelRef::default() };
+        let r = ModelRef {
+            id: ROUTER_ID.into(),
+            provider: ROUTER_PROVIDER.into(),
+            ..ModelRef::default()
+        };
         assert!(is_router(&r));
-        assert!(!is_router(&model("viv-auto", "nebius")), "a real provider's model with that id is not the router");
+        assert!(
+            !is_router(&model("viv-auto", "nebius")),
+            "a real provider's model with that id is not the router"
+        );
     }
 
     #[test]
@@ -279,45 +378,110 @@ mod tests {
             enabled: true,
             quick: Some(model("nano-quick", "nebius")),
             auto: true,
-            tiers: [Some(model("nano", "nebius")), Some(model("super", "nebius")), Some(model("ultra-tier", "nebius"))],
+            tiers: [
+                Some(model("nano", "nebius")),
+                Some(model("super", "nebius")),
+                Some(model("ultra-tier", "nebius")),
+            ],
         };
         let all = |_: &ModelRef| true;
         assert_eq!(choose_tier(&c, Difficulty::Easy, &default, all).id, "nano");
-        assert_eq!(choose_tier(&c, Difficulty::Medium, &default, all).id, "super");
-        assert_eq!(choose_tier(&c, Difficulty::Hard, &default, all).id, "ultra-tier");
+        assert_eq!(
+            choose_tier(&c, Difficulty::Medium, &default, all).id,
+            "super"
+        );
+        assert_eq!(
+            choose_tier(&c, Difficulty::Hard, &default, all).id,
+            "ultra-tier"
+        );
     }
 
     #[test]
     fn a_missing_tier_never_drops_to_a_smaller_model() {
         let default = model("ultra", "nebius");
         // No medium tier: a medium task takes the hard one, not the easy one.
-        let c = Config { enabled: true, quick: None, auto: true, tiers: [Some(model("nano", "nebius")), None, Some(model("big", "nebius"))] };
-        assert_eq!(choose_tier(&c, Difficulty::Medium, &default, |_| true).id, "big");
+        let c = Config {
+            enabled: true,
+            quick: None,
+            auto: true,
+            tiers: [
+                Some(model("nano", "nebius")),
+                None,
+                Some(model("big", "nebius")),
+            ],
+        };
+        assert_eq!(
+            choose_tier(&c, Difficulty::Medium, &default, |_| true).id,
+            "big"
+        );
         // Nothing for hard at all: the caller's model.
-        let c = Config { enabled: true, quick: None, auto: true, tiers: [Some(model("nano", "nebius")), None, None] };
-        assert_eq!(choose_tier(&c, Difficulty::Hard, &default, |_| true).id, "ultra");
+        let c = Config {
+            enabled: true,
+            quick: None,
+            auto: true,
+            tiers: [Some(model("nano", "nebius")), None, None],
+        };
+        assert_eq!(
+            choose_tier(&c, Difficulty::Hard, &default, |_| true).id,
+            "ultra"
+        );
         // Easy work with no easy tier uses the quick model.
-        let c = Config { enabled: true, quick: Some(model("q", "nebius")), auto: true, tiers: [None, None, None] };
-        assert_eq!(choose_tier(&c, Difficulty::Easy, &default, |_| true).id, "q");
+        let c = Config {
+            enabled: true,
+            quick: Some(model("q", "nebius")),
+            auto: true,
+            tiers: [None, None, None],
+        };
+        assert_eq!(
+            choose_tier(&c, Difficulty::Easy, &default, |_| true).id,
+            "q"
+        );
     }
 
     #[test]
     fn tiers_do_nothing_when_off_or_without_a_key() {
         let default = model("ultra", "nebius");
-        let mut c = Config { enabled: true, quick: None, auto: false, tiers: [Some(model("nano", "nebius")), None, None] };
-        assert_eq!(choose_tier(&c, Difficulty::Easy, &default, |_| true).id, "ultra");
+        let mut c = Config {
+            enabled: true,
+            quick: None,
+            auto: false,
+            tiers: [Some(model("nano", "nebius")), None, None],
+        };
+        assert_eq!(
+            choose_tier(&c, Difficulty::Easy, &default, |_| true).id,
+            "ultra"
+        );
         c.auto = true;
-        assert_eq!(choose_tier(&c, Difficulty::Easy, &default, |_| false).id, "ultra", "no key for the tier's provider");
+        assert_eq!(
+            choose_tier(&c, Difficulty::Easy, &default, |_| false).id,
+            "ultra",
+            "no key for the tier's provider"
+        );
     }
 
     #[test]
     fn routing_only_applies_when_on_set_and_keyed() {
         let smart = model("ultra", "nebius");
         let quick = model("nano", "nebius");
-        assert_eq!(choose(&cfg(true, Some(quick.clone())), &smart, true).id, "nano");
-        assert_eq!(choose(&cfg(false, Some(quick.clone())), &smart, true).id, "ultra", "off means the caller's model");
-        assert_eq!(choose(&cfg(true, None), &smart, true).id, "ultra", "no quick model chosen");
-        assert_eq!(choose(&cfg(true, Some(quick)), &smart, false).id, "ultra", "no key for the quick model's provider");
+        assert_eq!(
+            choose(&cfg(true, Some(quick.clone())), &smart, true).id,
+            "nano"
+        );
+        assert_eq!(
+            choose(&cfg(false, Some(quick.clone())), &smart, true).id,
+            "ultra",
+            "off means the caller's model"
+        );
+        assert_eq!(
+            choose(&cfg(true, None), &smart, true).id,
+            "ultra",
+            "no quick model chosen"
+        );
+        assert_eq!(
+            choose(&cfg(true, Some(quick)), &smart, false).id,
+            "ultra",
+            "no key for the quick model's provider"
+        );
     }
 
     #[test]
@@ -329,16 +493,58 @@ mod tests {
         let c = parse_config(Some(&v));
         assert!(c.enabled);
         let q = c.quick.unwrap();
-        assert_eq!((q.id.as_str(), q.provider.as_str(), q.max_tokens, q.context_window), ("nvidia/nemotron-3-nano", "nebius", 4096, 131072));
+        assert_eq!(
+            (
+                q.id.as_str(),
+                q.provider.as_str(),
+                q.max_tokens,
+                q.context_window
+            ),
+            ("nvidia/nemotron-3-nano", "nebius", 4096, 131072)
+        );
         assert!(!parse_config(None).enabled);
-        assert!(parse_config(Some(&serde_json::json!({ "enabled": true, "quick": { "id": "x" } }))).quick.is_none());
+        assert!(parse_config(Some(
+            &serde_json::json!({ "enabled": true, "quick": { "id": "x" } })
+        ))
+        .quick
+        .is_none());
+    }
+
+    #[test]
+    fn a_saved_routing_setting_reads_back_the_same() {
+        let cfg = Config {
+            enabled: true,
+            auto: true,
+            quick: Some(model("q", "nebius")),
+            tiers: [
+                Some(model("e", "openai")),
+                None,
+                Some(model("h", "anthropic")),
+            ],
+        };
+        let value = serde_json::json!({
+            "enabled": cfg.enabled, "auto": cfg.auto, "quick": cfg.quick.as_ref().map(model_to_value),
+            "tiers": {"easy": cfg.tiers[0].as_ref().map(model_to_value), "medium": null, "hard": cfg.tiers[2].as_ref().map(model_to_value)},
+        });
+        let back = parse_config(Some(&value));
+        assert!(back.enabled && back.auto);
+        assert_eq!(back.quick.map(|m| m.id), Some("q".to_owned()));
+        assert_eq!(
+            back.tiers
+                .each_ref()
+                .map(|t| t.as_ref().map(|m| m.id.clone())),
+            [Some("e".to_owned()), None, Some("h".to_owned())]
+        );
     }
 
     #[test]
     fn only_read_only_tool_lists_count_as_exploring() {
         let l = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         let looks = |t: &str| ["read", "grep", "glob", "web_search"].contains(&t);
-        assert!(is_read_only(Some(&l(&["read", "grep", "glob", "web_search"])), looks));
+        assert!(is_read_only(
+            Some(&l(&["read", "grep", "glob", "web_search"])),
+            looks
+        ));
         assert!(!is_read_only(Some(&l(&["read", "edit"])), looks));
         assert!(!is_read_only(Some(&l(&["read", "bash"])), looks));
         assert!(!is_read_only(None, looks), "full access is not read-only");
@@ -347,7 +553,15 @@ mod tests {
 
     #[test]
     fn savings_price_the_same_tokens_at_the_chat_models_rate() {
-        let used = DayUsage { input: 1_000_000, output: 200_000, cache_read: 0, cache_write: 0, cost: 0.30, requests: 40, has_unknown_cost: false };
+        let used = DayUsage {
+            input: 1_000_000,
+            output: 200_000,
+            cache_read: 0,
+            cache_write: 0,
+            cost: 0.30,
+            requests: 40,
+            has_unknown_cost: false,
+        };
         let s = savings(&used, Some(2.50));
         assert_eq!(s.actual_usd, Some(0.30));
         assert!((s.saved_usd.unwrap() - 2.20).abs() < 1e-9);
@@ -356,11 +570,27 @@ mod tests {
 
     #[test]
     fn an_unpriced_model_makes_no_dollar_claim() {
-        let unpriced = DayUsage { input: 500, output: 50, cost: 0.0, requests: 3, has_unknown_cost: true, ..DayUsage::default() };
+        let unpriced = DayUsage {
+            input: 500,
+            output: 50,
+            cost: 0.0,
+            requests: 3,
+            has_unknown_cost: true,
+            ..DayUsage::default()
+        };
         let s = savings(&unpriced, Some(1.0));
         assert_eq!(s.saved_usd, None);
         assert_eq!(s.actual_usd, None);
-        let priced = DayUsage { cost: 0.1, requests: 1, has_unknown_cost: false, ..DayUsage::default() };
-        assert_eq!(savings(&priced, None).saved_usd, None, "the chat model has no price");
+        let priced = DayUsage {
+            cost: 0.1,
+            requests: 1,
+            has_unknown_cost: false,
+            ..DayUsage::default()
+        };
+        assert_eq!(
+            savings(&priced, None).saved_usd,
+            None,
+            "the chat model has no price"
+        );
     }
 }

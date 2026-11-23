@@ -1,7 +1,6 @@
 // Copied from Vivianne's original tools (0901 lsp/servers.rs).
-// Kept as close to the original as possible; do not restyle. Paths such as
-// `crate::agent::tools::...` resolve through the re-exports in `lib.rs`.
-#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, dead_code, unused, unsafe_code, missing_debug_implementations)]
+// Kept as close to the original as possible; do not restyle.
+#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, unsafe_code, missing_debug_implementations)]
 
 //! Which language server runs for a file, where it is rooted, and what it is told at start.
 //!
@@ -192,9 +191,9 @@ pub(crate) fn read_config(stem: &Path) -> Option<String> {
 
 /// The same, reading the files: the user's from their Vivianne folder, the project's from `<workspace>/.viv/lsp.json` (or `.yaml`).
 pub fn candidates(language_id: &str, workspace: &str) -> Candidates {
-    let user = read_config(&crate::agent::system::paths::viv_home_path(&["lsp"]));
+    let user = read_config(&crate::host::viv_home_path(&["lsp"]));
     let project = read_config(&Path::new(workspace).join(".viv").join("lsp"));
-    let trusted = project.is_some() && crate::mods::project_trusted(workspace);
+    let trusted = project.is_some() && crate::host::project_trusted(workspace);
     candidates_with(language_id, user.as_deref(), project.as_deref(), trusted)
 }
 

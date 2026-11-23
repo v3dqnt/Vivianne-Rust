@@ -22,18 +22,29 @@ fn list(values: &Shared) -> SettingItem {
     let values = values.clone();
     SettingItem::render(move |_options, _window, _cx| {
         let entries = values.borrow().components.clone();
-        let rows = entries.into_iter().enumerate().map(|(index, entry)| row(&values, index, &entry));
-        div().flex().flex_col().gap_4().children(rows).into_any_element()
+        let rows = entries
+            .into_iter()
+            .enumerate()
+            .map(|(index, entry)| row(&values, index, &entry));
+        div()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .children(rows)
+            .into_any_element()
     })
 }
 
 fn row(values: &Shared, index: usize, entry: &ComponentEntry) -> impl IntoElement + use<> {
     let toggle = values.clone();
     let label = if entry.installed { "Remove" } else { "Install" };
-    let button = Button::new(("component", index)).label(label).small().on_click(move |_, _, cx| {
-        toggle_installed(&mut toggle.borrow_mut().components[index]);
-        cx.refresh_windows();
-    });
+    let button = Button::new(("component", index))
+        .label(label)
+        .small()
+        .on_click(move |_, _, cx| {
+            toggle_installed(&mut toggle.borrow_mut().components[index]);
+            cx.refresh_windows();
+        });
     h_flex()
         .justify_between()
         .items_center()
@@ -43,11 +54,23 @@ fn row(values: &Shared, index: usize, entry: &ComponentEntry) -> impl IntoElemen
                 .flex()
                 .flex_col()
                 .gap_1()
-                .child(h_flex().gap_2().items_center().child(strong(entry.name.clone())).child(pill(entry.size.clone())))
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(strong(entry.name.clone()))
+                        .child(pill(entry.size.clone())),
+                )
                 .child(muted(entry.desc.clone()))
                 .children(entry.note.clone().map(muted)),
         )
-        .child(h_flex().gap_2().items_center().children(entry.installed.then(|| pill("Installed"))).child(button))
+        .child(
+            h_flex()
+                .gap_2()
+                .items_center()
+                .children(entry.installed.then(|| pill("Installed")))
+                .child(button),
+        )
 }
 
 /// Installing and removing flip the flag; a real install would run, report progress, then flip it.

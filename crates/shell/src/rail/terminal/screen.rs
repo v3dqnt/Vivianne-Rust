@@ -40,14 +40,21 @@ pub struct Cell {
 }
 
 impl Cell {
-    pub const BLANK: Self = Self { ch: ' ', fg: DEFAULT_FG, bg: None, bold: false, underline: false };
+    pub const BLANK: Self = Self {
+        ch: ' ',
+        fg: DEFAULT_FG,
+        bg: None,
+        bold: false,
+        underline: false,
+    };
 
     fn is_plain_blank(&self) -> bool {
         self.ch == ' ' && self.bg.is_none() && !self.underline
     }
 
     fn same_style(&self, other: &Self) -> bool {
-        (self.fg, self.bg, self.bold, self.underline) == (other.fg, other.bg, other.bold, other.underline)
+        (self.fg, self.bg, self.bold, self.underline)
+            == (other.fg, other.bg, other.bold, other.underline)
     }
 }
 
@@ -65,7 +72,10 @@ pub struct Span {
 /// are dropped.
 #[must_use]
 pub fn fold_line(cells: &[Cell]) -> (String, Vec<Span>) {
-    let end = cells.iter().rposition(|c| !c.is_plain_blank()).map_or(0, |i| i + 1);
+    let end = cells
+        .iter()
+        .rposition(|c| !c.is_plain_blank())
+        .map_or(0, |i| i + 1);
     let mut text = String::new();
     let mut spans: Vec<Span> = Vec::new();
     let mut previous: Option<&Cell> = None;
@@ -109,13 +119,23 @@ mod tests {
     use super::*;
 
     fn cell(ch: char, fg: Rgb) -> Cell {
-        Cell { ch, fg, ..Cell::BLANK }
+        Cell {
+            ch,
+            fg,
+            ..Cell::BLANK
+        }
     }
 
     #[test]
     fn a_line_folds_into_text_and_runs_of_one_style() {
         let red = (255, 0, 0);
-        let cells = [cell('a', red), cell('b', red), cell('c', DEFAULT_FG), Cell::BLANK, Cell::BLANK];
+        let cells = [
+            cell('a', red),
+            cell('b', red),
+            cell('c', DEFAULT_FG),
+            Cell::BLANK,
+            Cell::BLANK,
+        ];
         let (text, spans) = fold_line(&cells);
         assert_eq!(text, "abc");
         assert_eq!(spans.len(), 2);
@@ -130,7 +150,10 @@ mod tests {
 
     #[test]
     fn a_coloured_blank_is_kept_so_a_cursor_shows() {
-        let cursor = Cell { bg: Some(DEFAULT_FG), ..Cell::BLANK };
+        let cursor = Cell {
+            bg: Some(DEFAULT_FG),
+            ..Cell::BLANK
+        };
         let (text, spans) = fold_line(&[cell('$', DEFAULT_FG), cursor, Cell::BLANK]);
         assert_eq!(text, "$ ");
         assert_eq!(spans.len(), 2);

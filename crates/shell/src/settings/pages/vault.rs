@@ -8,7 +8,7 @@ use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
 use gpui_kit::prelude::*;
 use gpui_kit::{Styled, div};
 
-use crate::settings::values::{Shared, VaultEntry, VAULT_CARD, VAULT_LOGIN, VAULT_SECRET};
+use crate::settings::values::{Shared, VAULT_CARD, VAULT_LOGIN, VAULT_SECRET, VaultEntry};
 use crate::settings::widgets::{muted, note, pill, strong};
 
 pub fn page(values: &Shared) -> SettingPage {
@@ -30,7 +30,12 @@ fn list(values: &Shared) -> SettingItem {
             return muted("Nothing saved yet.").into_any_element();
         }
         let rows = entries.into_iter().map(|entry| row(&values, &entry));
-        div().flex().flex_col().gap_3().children(rows).into_any_element()
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .children(rows)
+            .into_any_element()
     })
 }
 
@@ -45,18 +50,27 @@ fn row(values: &Shared, entry: &VaultEntry) -> impl IntoElement + use<> {
                 .flex()
                 .flex_col()
                 .gap_1()
-                .child(h_flex().gap_2().items_center().child(strong(entry.label.clone())).child(pill(kind_name(entry.kind))))
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(strong(entry.label.clone()))
+                        .child(pill(kind_name(entry.kind))),
+                )
                 .child(muted(detail)),
         )
         .child(
-            Button::new(gpui_kit::SharedString::from(format!("vault-remove-{}", entry.id)))
-                .label("Remove")
-                .ghost()
-                .small()
-                .on_click(move |_, _, cx| {
-                    remove.borrow_mut().vault.retain(|e| e.id != id);
-                    cx.refresh_windows();
-                }),
+            Button::new(gpui_kit::SharedString::from(format!(
+                "vault-remove-{}",
+                entry.id
+            )))
+            .label("Remove")
+            .ghost()
+            .small()
+            .on_click(move |_, _, cx| {
+                remove.borrow_mut().vault.retain(|e| e.id != id);
+                cx.refresh_windows();
+            }),
         )
 }
 
@@ -75,7 +89,11 @@ fn detail_line(entry: &VaultEntry) -> String {
         VAULT_LOGIN => format!("{} · {}", entry.site, entry.username),
         _ => entry.hint.clone(),
     };
-    if entry.used.is_empty() { who } else { format!("{who} · used {}", entry.used) }
+    if entry.used.is_empty() {
+        who
+    } else {
+        format!("{who} · used {}", entry.used)
+    }
 }
 
 #[cfg(test)]
@@ -97,6 +115,9 @@ mod tests {
     #[test]
     fn a_login_shows_site_and_user_and_a_card_its_hint() {
         assert_eq!(detail_line(&entry(VAULT_LOGIN, "")), "github.com · viv");
-        assert_eq!(detail_line(&entry(VAULT_CARD, "today")), "ends 4242 · used today");
+        assert_eq!(
+            detail_line(&entry(VAULT_CARD, "today")),
+            "ends 4242 · used today"
+        );
     }
 }

@@ -21,7 +21,10 @@ pub struct Chain {
 impl Chain {
     #[must_use]
     pub fn new(len: usize) -> Self {
-        Self { len, rescuer: Mutex::new(None) }
+        Self {
+            len,
+            rescuer: Mutex::new(None),
+        }
     }
 
     /// Indexes of the targets in the order to try them now: a recent rescuer first, then the rest
@@ -29,7 +32,10 @@ impl Chain {
     #[must_use]
     pub fn order(&self) -> Vec<usize> {
         let mut order: Vec<usize> = (0..self.len).collect();
-        let rescuer = *self.rescuer.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let rescuer = *self
+            .rescuer
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some((index, since)) = rescuer
             && since.elapsed() < STICKY_FOR
             && index < self.len
@@ -43,7 +49,10 @@ impl Chain {
     /// Remembers which target answered. Only a fallback sticks: the first target answering is the
     /// normal case and clears any earlier rescuer.
     pub fn answered(&self, index: usize) {
-        let mut rescuer = self.rescuer.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut rescuer = self
+            .rescuer
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *rescuer = (index != 0).then(|| (index, Instant::now()));
     }
 }

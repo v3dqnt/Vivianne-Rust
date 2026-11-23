@@ -9,4 +9,4 @@ mod retry;
 pub use backoff::Backoff;
 pub use chain::{Chain, STICKY_FOR};
 pub use failure::{Failure, FailureKind};
-pub use retry::{Retrying, RetryPolicy, Stopped, retry};
+pub use retry::{RetryPolicy, Retrying, Stopped, retry};

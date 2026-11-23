@@ -54,7 +54,9 @@ impl Snapshot {
         Self {
             branch: run(dir, &["rev-parse", "--abbrev-ref", "HEAD"]),
             last_commit: run(dir, &["log", "-1", "--pretty=%h %s"]),
-            changes: run_raw(dir, &["status", "--porcelain"]).map(|out| parse_status(&out)).unwrap_or_default(),
+            changes: run_raw(dir, &["status", "--porcelain"])
+                .map(|out| parse_status(&out))
+                .unwrap_or_default(),
             top: Some(top),
         }
     }
@@ -62,8 +64,13 @@ impl Snapshot {
     /// Changes keyed by absolute path, for marking rows in the file tree.
     #[must_use]
     pub fn by_path(&self) -> HashMap<PathBuf, ChangeKind> {
-        let Some(top) = &self.top else { return HashMap::new() };
-        self.changes.iter().map(|c| (top.join(&c.path), c.kind)).collect()
+        let Some(top) = &self.top else {
+            return HashMap::new();
+        };
+        self.changes
+            .iter()
+            .map(|c| (top.join(&c.path), c.kind))
+            .collect()
     }
 }
 
@@ -89,12 +96,20 @@ fn parse_line(line: &str) -> Option<Change> {
 }
 
 fn run(dir: &Path, args: &[&str]) -> Option<String> {
-    run_raw(dir, args).map(|out| out.trim().to_owned()).filter(|out| !out.is_empty())
+    run_raw(dir, args)
+        .map(|out| out.trim().to_owned())
+        .filter(|out| !out.is_empty())
 }
 
 fn run_raw(dir: &Path, args: &[&str]) -> Option<String> {
-    let out = Command::new("git").args(args).current_dir(dir).output().ok()?;
-    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+    let out = Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .ok()?;
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 #[cfg(test)]
@@ -103,7 +118,8 @@ mod tests {
 
     #[test]
     fn status_lines_become_changes() {
-        let changes = parse_status(" M src/a.rs\nA  src/b.rs\n?? notes.md\n D old.rs\nR  x.rs -> y.rs\n");
+        let changes =
+            parse_status(" M src/a.rs\nA  src/b.rs\n?? notes.md\n D old.rs\nR  x.rs -> y.rs\n");
         let kinds: Vec<_> = changes.iter().map(|c| (c.path.as_str(), c.kind)).collect();
         assert_eq!(
             kinds,

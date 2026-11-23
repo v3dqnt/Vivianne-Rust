@@ -198,13 +198,14 @@ struct KeyedTextarea {
     _subscription: Subscription,
 }
 
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn keyed_state(
     key: &'static str,
     values: &Shared,
     set: fn(&mut Values, String),
     value: String,
     placeholder: &'static str,
+    masked: bool,
     window: &mut Window,
     cx: &mut App,
 ) -> Entity<KeyedInput> {
@@ -215,6 +216,7 @@ fn keyed_state(
                 InputState::new(window, cx)
                     .default_value(value.clone())
                     .placeholder(placeholder)
+                    .masked(masked)
             });
             let values = values.clone();
             let subscription = cx.subscribe(&input, move |_, input, event: &InputEvent, cx| {
@@ -234,7 +236,7 @@ fn keyed_state(
 
 /// The textarea twin of [`keyed_state`]: a multi-line input that grows
 /// between `rows.0` and `rows.1` lines, bound to a string in `Values`.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn keyed_textarea_state(
     key: &'static str,
     values: &Shared,
@@ -283,13 +285,48 @@ pub fn keyed_input(
     cx: &mut App,
 ) -> Input {
     let value = get(&values.borrow());
-    let state = keyed_state(key, values, set, value.clone(), placeholder, window, cx);
+    let state = keyed_state(
+        key,
+        values,
+        set,
+        value.clone(),
+        placeholder,
+        false,
+        window,
+        cx,
+    );
     sync_input(&state, &value, window, cx);
     Input::new(&state.read(cx).input).w_full()
 }
 
+/// [`keyed_input`] for a secret: the text is hidden, with a button to show it.
+pub fn keyed_secret(
+    key: &'static str,
+    values: &Shared,
+    get: fn(&Values) -> String,
+    set: fn(&mut Values, String),
+    placeholder: &'static str,
+    window: &mut Window,
+    cx: &mut App,
+) -> Input {
+    let value = get(&values.borrow());
+    let state = keyed_state(
+        key,
+        values,
+        set,
+        value.clone(),
+        placeholder,
+        true,
+        window,
+        cx,
+    );
+    sync_input(&state, &value, window, cx);
+    Input::new(&state.read(cx).input).w_full().mask_toggle()
+}
+
 /// An inline multi-line textarea bound to a string in `Values`, growing
 /// between `rows.0` and `rows.1` lines.
+#[allow(clippy::too_many_arguments)]
 pub fn keyed_textarea(
     key: &'static str,
     values: &Shared,

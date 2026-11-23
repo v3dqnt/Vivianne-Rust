@@ -9,9 +9,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
-use serde::Serialize;
 use crate::events::Events;
 use crate::host::download;
+use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,64 +49,116 @@ pub fn fit(size_gb: f64, hw: &HardwareInfo) -> &'static str {
 }
 
 pub async fn cmd_hardware_info() -> Result<HardwareInfo, String> {
-    tokio::task::spawn_blocking(probe).await.map_err(|e| e.to_string())
+    tokio::task::spawn_blocking(probe)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// The machine's hardware, probed off the async threads.
 pub async fn probe_hardware() -> HardwareInfo {
-    tokio::task::spawn_blocking(probe).await.unwrap_or_else(|_| probe())
+    tokio::task::spawn_blocking(probe)
+        .await
+        .unwrap_or_else(|_| probe())
 }
 
 fn probe() -> HardwareInfo {
-    let cpu_threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+    let cpu_threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
     let gb = |b: u64| (b as f64 / 1_073_741_824.0 * 10.0).round() / 10.0;
 
     #[cfg(windows)]
     {
-        use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE};
+        use windows::Win32::Graphics::Dxgi::{
+            CreateDXGIFactory1, IDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE,
+        };
         use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
-        let mut mem = MEMORYSTATUSEX { dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32, ..Default::default() };
-        let ram = unsafe { GlobalMemoryStatusEx(&mut mem) }.map(|_| mem.ullTotalPhys).unwrap_or(0);
+        let mut mem = MEMORYSTATUSEX {
+            dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32,
+            ..Default::default()
+        };
+        let ram = unsafe { GlobalMemoryStatusEx(&mut mem) }
+            .map(|_| mem.ullTotalPhys)
+            .unwrap_or(0);
         let mut gpus = Vec::new();
         if let Ok(factory) = unsafe { CreateDXGIFactory1::<IDXGIFactory1>() } {
             let mut i = 0;
             while let Ok(adapter) = unsafe { factory.EnumAdapters1(i) } {
                 i += 1;
-                let Ok(desc) = (unsafe { adapter.GetDesc1() }) else { continue };
+                let Ok(desc) = (unsafe { adapter.GetDesc1() }) else {
+                    continue;
+                };
                 if desc.Flags & (DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32) != 0 {
                     continue;
                 }
-                let name = String::from_utf16_lossy(&desc.Description).trim_end_matches('\0').to_string();
-                gpus.push(Gpu { name, vram_gb: gb(desc.DedicatedVideoMemory as u64) });
+                let name = String::from_utf16_lossy(&desc.Description)
+                    .trim_end_matches('\0')
+                    .to_string();
+                gpus.push(Gpu {
+                    name,
+                    vram_gb: gb(desc.DedicatedVideoMemory as u64),
+                });
             }
         }
         // Integrated GPUs report a sliver of dedicated memory: they don't
         // count as somewhere a model fits.
         gpus.retain(|g| g.vram_gb >= 1.0);
         #[allow(clippy::needless_return)]
-        return HardwareInfo { ram_gb: gb(ram), cpu_threads, gpus, unified: false, os: "windows" };
+        return HardwareInfo {
+            ram_gb: gb(ram),
+            cpu_threads,
+            gpus,
+            unified: false,
+            os: "windows",
+        };
     }
 
     #[cfg(target_os = "macos")]
     {
         let sysctl = |k: &str| {
-            std::process::Command::new("sysctl").args(["-n", k]).output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            std::process::Command::new("sysctl")
+                .args(["-n", k])
+                .output()
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         };
-        let ram = sysctl("hw.memsize").and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+        let ram = sysctl("hw.memsize")
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
         let unified = cfg!(target_arch = "aarch64");
-        let gpus = if unified { vec![Gpu { name: "Apple GPU".into(), vram_gb: gb(ram) }] } else { Vec::new() };
-        return HardwareInfo { ram_gb: gb(ram), cpu_threads, gpus, unified, os: "macos" };
+        let gpus = if unified {
+            vec![Gpu {
+                name: "Apple GPU".into(),
+                vram_gb: gb(ram),
+            }]
+        } else {
+            Vec::new()
+        };
+        return HardwareInfo {
+            ram_gb: gb(ram),
+            cpu_threads,
+            gpus,
+            unified,
+            os: "macos",
+        };
     }
 
     #[cfg(all(unix, not(target_os = "macos")))]
     {
         let ram = std::fs::read_to_string("/proc/meminfo")
             .ok()
-            .and_then(|s| s.lines().find(|l| l.starts_with("MemTotal:")).and_then(|l| l.split_whitespace().nth(1)?.parse::<u64>().ok()))
+            .and_then(|s| {
+                s.lines()
+                    .find(|l| l.starts_with("MemTotal:"))
+                    .and_then(|l| l.split_whitespace().nth(1)?.parse::<u64>().ok())
+            })
             .unwrap_or(0)
             * 1024;
         let gpus = std::process::Command::new("nvidia-smi")
-            .args(["--query-gpu=name,memory.total", "--format=csv,noheader,nounits"])
+            .args([
+                "--query-gpu=name,memory.total",
+                "--format=csv,noheader,nounits",
+            ])
             .output()
             .ok()
             .map(|o| {
@@ -114,12 +166,21 @@ fn probe() -> HardwareInfo {
                     .lines()
                     .filter_map(|l| {
                         let (name, mib) = l.rsplit_once(',')?;
-                        Some(Gpu { name: name.trim().to_string(), vram_gb: gb(mib.trim().parse::<u64>().ok()? * 1_048_576) })
+                        Some(Gpu {
+                            name: name.trim().to_string(),
+                            vram_gb: gb(mib.trim().parse::<u64>().ok()? * 1_048_576),
+                        })
                     })
                     .collect()
             })
             .unwrap_or_default();
-        return HardwareInfo { ram_gb: gb(ram), cpu_threads, gpus, unified: false, os: "linux" };
+        return HardwareInfo {
+            ram_gb: gb(ram),
+            cpu_threads,
+            gpus,
+            unified: false,
+            os: "linux",
+        };
     }
 }
 
@@ -191,11 +252,12 @@ pub fn read_gguf_info(path: &std::path::Path) -> Result<GgufInfo, String> {
     if &magic != b"GGUF" {
         return Err("That is not a GGUF file.".into());
     }
-    let take = |r: &mut BufReader<std::fs::File>, n: usize, buf: &mut [u8; 8]| -> Result<u64, String> {
-        buf.fill(0);
-        r.read_exact(&mut buf[..n]).map_err(|e| e.to_string())?;
-        Ok(u64::from_le_bytes(*buf))
-    };
+    let take =
+        |r: &mut BufReader<std::fs::File>, n: usize, buf: &mut [u8; 8]| -> Result<u64, String> {
+            buf.fill(0);
+            r.read_exact(&mut buf[..n]).map_err(|e| e.to_string())?;
+            Ok(u64::from_le_bytes(*buf))
+        };
     let version = take(&mut r, 4, &mut u)?;
     if !(2..=3).contains(&version) {
         return Err(format!("Unsupported GGUF version {version}."));
@@ -205,7 +267,10 @@ pub fn read_gguf_info(path: &std::path::Path) -> Result<GgufInfo, String> {
     if kvs > 100_000 {
         return Err("The header is not plausible.".into());
     }
-    let read_str = |r: &mut BufReader<std::fs::File>, buf: &mut [u8; 8], keep: bool| -> Result<Option<String>, String> {
+    let read_str = |r: &mut BufReader<std::fs::File>,
+                    buf: &mut [u8; 8],
+                    keep: bool|
+     -> Result<Option<String>, String> {
         let len = {
             buf.fill(0);
             r.read_exact(&mut buf[..8]).map_err(|e| e.to_string())?;
@@ -219,7 +284,8 @@ pub fn read_gguf_info(path: &std::path::Path) -> Result<GgufInfo, String> {
             r.read_exact(&mut v).map_err(|e| e.to_string())?;
             Ok(Some(String::from_utf8_lossy(&v).into_owned()))
         } else {
-            r.seek(SeekFrom::Current(len as i64)).map_err(|e| e.to_string())?;
+            r.seek(SeekFrom::Current(len as i64))
+                .map_err(|e| e.to_string())?;
             Ok(None)
         }
     };
@@ -233,12 +299,16 @@ pub fn read_gguf_info(path: &std::path::Path) -> Result<GgufInfo, String> {
             _ => return None,
         })
     };
-    let mut info = GgufInfo { file_bytes: bytes, ..GgufInfo::default() };
+    let mut info = GgufInfo {
+        file_bytes: bytes,
+        ..GgufInfo::default()
+    };
     let mut arch_key = String::new();
     for _ in 0..kvs {
         let key = read_str(&mut r, &mut u, true)?.unwrap_or_default();
         let vt = take(&mut r, 4, &mut u)? as u32;
-        let wanted = key.starts_with("general.") || (!arch_key.is_empty() && key.starts_with(&arch_key));
+        let wanted =
+            key.starts_with("general.") || (!arch_key.is_empty() && key.starts_with(&arch_key));
         match vt {
             8 => {
                 let s = read_str(&mut r, &mut u, wanted)?;
@@ -258,7 +328,8 @@ pub fn read_gguf_info(path: &std::path::Path) -> Result<GgufInfo, String> {
                 let n = take(&mut r, 8, &mut u)?;
                 match size_of(et) {
                     Some(sz) => {
-                        r.seek(SeekFrom::Current(sz.saturating_mul(n as i64))).map_err(|e| e.to_string())?;
+                        r.seek(SeekFrom::Current(sz.saturating_mul(n as i64)))
+                            .map_err(|e| e.to_string())?;
                     }
                     None if et == 8 => {
                         for _ in 0..n {
@@ -269,7 +340,8 @@ pub fn read_gguf_info(path: &std::path::Path) -> Result<GgufInfo, String> {
                 }
             }
             t => {
-                let sz = size_of(t).ok_or_else(|| "A value in the header has an unknown type.".to_string())?;
+                let sz = size_of(t)
+                    .ok_or_else(|| "A value in the header has an unknown type.".to_string())?;
                 let v = take(&mut r, sz as usize, &mut u)?;
                 if key == "general.file_type" {
                     info.file_type = Some(v as u32);
@@ -281,7 +353,11 @@ pub fn read_gguf_info(path: &std::path::Path) -> Result<GgufInfo, String> {
             }
         }
         // Everything wanted is found: the rest is the tokenizer.
-        if info.file_type.is_some() && info.architecture.is_some() && info.context_length.is_some() && info.name.is_some() {
+        if info.file_type.is_some()
+            && info.architecture.is_some()
+            && info.context_length.is_some()
+            && info.name.is_some()
+        {
             break;
         }
     }
@@ -293,7 +369,9 @@ pub fn read_gguf_info(path: &std::path::Path) -> Result<GgufInfo, String> {
 }
 
 pub async fn cmd_gguf_info(path: String) -> Result<GgufInfo, String> {
-    tokio::task::spawn_blocking(move || read_gguf_info(std::path::Path::new(&path))).await.map_err(|e| e.to_string())?
+    tokio::task::spawn_blocking(move || read_gguf_info(std::path::Path::new(&path)))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// `~/.viv/models`: where downloaded models live.
@@ -305,25 +383,43 @@ fn models_dir() -> Result<PathBuf, String> {
 
 /// One client for every request here, so connections and TLS sessions are reused.
 fn client() -> &'static reqwest::Client {
-    static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| reqwest::Client::builder().user_agent("Vivianne").build().expect("http client"));
+    static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+        reqwest::Client::builder()
+            .user_agent("Vivianne")
+            .build()
+            .expect("http client")
+    });
     &CLIENT
 }
 
 /// A file name a download may write: no folders, no tricks.
 fn safe_name(name: &str) -> Result<&str, String> {
-    let ok = !name.is_empty() && !name.contains(['/', '\\']) && !name.starts_with('.') && name.len() < 200;
-    if ok { Ok(name) } else { Err(format!("Not a valid file name: {name}")) }
+    let ok = !name.is_empty()
+        && !name.contains(['/', '\\'])
+        && !name.starts_with('.')
+        && name.len() < 200;
+    if ok {
+        Ok(name)
+    } else {
+        Err(format!("Not a valid file name: {name}"))
+    }
 }
 
 /// Download a model file (a GGUF from Hugging Face) into `~/.viv/models`.
 /// Progress: `local-models:progress`. Returns the saved path.
-pub async fn cmd_local_model_download(app: &Events, url: String, file: String) -> Result<String, String> {
+pub async fn cmd_local_model_download(
+    app: &Events,
+    url: String,
+    file: String,
+) -> Result<String, String> {
     let file = safe_name(&file)?.to_string();
     if !url.starts_with("https://") {
         return Err("Only https downloads are allowed.".into());
     }
     let dir = models_dir()?;
-    download::fetch_to(app, &url, &dir, &file, "local-models:progress").await.map(|p| p.to_string_lossy().to_string())
+    download::fetch_to(app, &url, &dir, &file, "local-models:progress")
+        .await
+        .map(|p| p.to_string_lossy().to_string())
 }
 
 pub async fn cmd_local_model_cancel(file: String) -> Result<(), String> {
@@ -335,7 +431,10 @@ pub async fn cmd_local_model_cancel(file: String) -> Result<(), String> {
 pub async fn cmd_local_models_list() -> Result<Vec<serde_json::Value>, String> {
     let dir = models_dir()?;
     let mut out = Vec::new();
-    for e in std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten() {
+    for e in std::fs::read_dir(&dir)
+        .map_err(|e| e.to_string())?
+        .flatten()
+    {
         let p = e.path();
         if p.extension().and_then(|x| x.to_str()) != Some("gguf") {
             continue;
@@ -355,7 +454,11 @@ pub async fn cmd_local_model_delete(file: String) -> Result<(), String> {
 
 // ── llama.cpp ───────────────────────────────────────────────────────────────
 
-const SERVER: &str = if cfg!(windows) { "llama-server.exe" } else { "llama-server" };
+const SERVER: &str = if cfg!(windows) {
+    "llama-server.exe"
+} else {
+    "llama-server"
+};
 
 fn llama_dir() -> Result<PathBuf, String> {
     Ok(crate::paths::viv_home_path(&["llama.cpp"]))
@@ -388,7 +491,9 @@ pub async fn cmd_llama_server_path() -> Result<Option<String>, String> {
     if let Some(p) = installed_server() {
         return Ok(Some(p.to_string_lossy().to_string()));
     }
-    Ok(which::which(SERVER).ok().map(|p| p.to_string_lossy().to_string()))
+    Ok(which::which(SERVER)
+        .ok()
+        .map(|p| p.to_string_lossy().to_string()))
 }
 
 /// Which prebuilt llama.cpp to take from a release's assets.
@@ -397,11 +502,16 @@ pub fn pick_asset(names: &[String]) -> Option<&String> {
         // Vulkan runs on NVIDIA, AMD and Intel alike.
         &["bin-win-vulkan-x64.zip", "bin-win-cpu-x64.zip"]
     } else if cfg!(target_os = "macos") {
-        if cfg!(target_arch = "aarch64") { &["bin-macos-arm64.zip"] } else { &["bin-macos-x64.zip"] }
+        if cfg!(target_arch = "aarch64") {
+            &["bin-macos-arm64.zip"]
+        } else {
+            &["bin-macos-x64.zip"]
+        }
     } else {
         &["bin-ubuntu-vulkan-x64.zip", "bin-ubuntu-x64.zip"]
     };
-    want.iter().find_map(|w| names.iter().find(|n| n.ends_with(w)))
+    want.iter()
+        .find_map(|w| names.iter().find(|n| n.ends_with(w)))
 }
 
 /// Download the latest llama.cpp build for this computer into
@@ -416,8 +526,13 @@ pub async fn cmd_llama_install(app: &Events) -> Result<String, String> {
         .await
         .map_err(|e| format!("Unexpected answer from GitHub: {e}"))?;
     let assets = release["assets"].as_array().cloned().unwrap_or_default();
-    let names: Vec<String> = assets.iter().filter_map(|a| a["name"].as_str().map(String::from)).collect();
-    let name = pick_asset(&names).ok_or("No llama.cpp build for this computer in the latest release.")?.clone();
+    let names: Vec<String> = assets
+        .iter()
+        .filter_map(|a| a["name"].as_str().map(String::from))
+        .collect();
+    let name = pick_asset(&names)
+        .ok_or("No llama.cpp build for this computer in the latest release.")?
+        .clone();
     let url = assets
         .iter()
         .find(|a| a["name"].as_str() == Some(&name))
@@ -434,12 +549,19 @@ pub async fn cmd_llama_install(app: &Events) -> Result<String, String> {
         if p == zip_path {
             continue;
         }
-        let _ = if p.is_dir() { std::fs::remove_dir_all(&p) } else { std::fs::remove_file(&p) };
+        let _ = if p.is_dir() {
+            std::fs::remove_dir_all(&p)
+        } else {
+            std::fs::remove_file(&p)
+        };
     }
     let target = dir.clone();
     tokio::task::spawn_blocking(move || -> Result<(), String> {
         let f = std::fs::File::open(&zip_path).map_err(|e| e.to_string())?;
-        zip::ZipArchive::new(f).map_err(|e| format!("The download isn't a valid archive: {e}"))?.extract(&target).map_err(|e| format!("Couldn't unpack llama.cpp: {e}"))?;
+        zip::ZipArchive::new(f)
+            .map_err(|e| format!("The download isn't a valid archive: {e}"))?
+            .extract(&target)
+            .map_err(|e| format!("Couldn't unpack llama.cpp: {e}"))?;
         let _ = std::fs::remove_file(&zip_path);
         Ok(())
     })
@@ -508,14 +630,30 @@ mod tests {
         assert_eq!(info.format.as_deref(), Some("NVFP4"));
         assert!(info.format_note.is_some());
         std::fs::write(&path, gguf(15)).unwrap();
-        assert_eq!(read_gguf_info(&path).unwrap().format.as_deref(), Some("Q4_K_M"));
+        assert_eq!(
+            read_gguf_info(&path).unwrap().format.as_deref(),
+            Some("Q4_K_M")
+        );
         std::fs::write(&path, b"not a model").unwrap();
         assert!(read_gguf_info(&path).is_err());
         let _ = std::fs::remove_dir_all(dir);
     }
 
     fn hw(ram: f64, vram: f64, unified: bool) -> HardwareInfo {
-        HardwareInfo { ram_gb: ram, cpu_threads: 8, gpus: if vram > 0.0 { vec![Gpu { name: "GPU".into(), vram_gb: vram }] } else { vec![] }, unified, os: "test" }
+        HardwareInfo {
+            ram_gb: ram,
+            cpu_threads: 8,
+            gpus: if vram > 0.0 {
+                vec![Gpu {
+                    name: "GPU".into(),
+                    vram_gb: vram,
+                }]
+            } else {
+                vec![]
+            },
+            unified,
+            os: "test",
+        }
     }
 
     #[test]
@@ -531,10 +669,16 @@ mod tests {
 
     #[test]
     fn picks_this_platforms_build() {
-        let names: Vec<String> = ["llama-b1-bin-win-cuda-x64.zip", "llama-b1-bin-win-vulkan-x64.zip", "llama-b1-bin-macos-arm64.zip", "llama-b1-bin-macos-x64.zip", "llama-b1-bin-ubuntu-x64.zip"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let names: Vec<String> = [
+            "llama-b1-bin-win-cuda-x64.zip",
+            "llama-b1-bin-win-vulkan-x64.zip",
+            "llama-b1-bin-macos-arm64.zip",
+            "llama-b1-bin-macos-x64.zip",
+            "llama-b1-bin-ubuntu-x64.zip",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
         let got = pick_asset(&names).unwrap();
         if cfg!(windows) {
             assert!(got.ends_with("win-vulkan-x64.zip"));

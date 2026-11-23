@@ -8,6 +8,13 @@ use serde::Serialize;
 
 /// `~/.viv`.
 pub fn viv_home() -> Result<PathBuf, String> {
+    // `VIV_HOME` replaces `~/.viv`. It must be an absolute folder that is not a root or the home folder itself, so
+    // a typo cannot make the app write into the wrong place.
+    if let Some(custom) = std::env::var_os("VIV_HOME").map(PathBuf::from) {
+        if custom.is_absolute() && custom.parent().is_some() && !is_home_folder(&custom) {
+            return Ok(custom);
+        }
+    }
     let home = std::env::var_os("USERPROFILE")
         .or_else(|| std::env::var_os("HOME"))
         .map(PathBuf::from)
@@ -20,6 +27,13 @@ pub fn viv_agent_dir() -> Result<PathBuf, String> {
     let dir = viv_home()?.join("agent");
     std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create config directory: {e}"))?;
     Ok(dir)
+}
+
+fn is_home_folder(path: &std::path::Path) -> bool {
+    ["USERPROFILE", "HOME"]
+        .iter()
+        .filter_map(|v| std::env::var_os(v))
+        .any(|h| std::path::Path::new(&h) == path)
 }
 
 /// A path under `~/.viv`, e.g. `viv_home_path(&["chatgpt"])`.

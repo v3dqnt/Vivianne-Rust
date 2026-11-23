@@ -16,7 +16,11 @@ pub fn page(values: &Shared) -> SettingPage {
         .icon(IconName::Bell)
         .description("Keep Vivianne current.")
         .group(SettingGroup::new().item(status_item(values)))
-        .group(SettingGroup::new().title("What's new").item(releases_item(values)))
+        .group(
+            SettingGroup::new()
+                .title("What's new")
+                .item(releases_item(values)),
+        )
 }
 
 fn status_item(values: &Shared) -> SettingItem {
@@ -27,7 +31,14 @@ fn status_item(values: &Shared) -> SettingItem {
         h_flex()
             .justify_between()
             .items_center()
-            .child(div().flex().flex_col().gap_1().child(strong(format!("Vivianne {VERSION}"))).child(muted(status_text(&status))))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(strong(format!("Vivianne {VERSION}")))
+                    .child(muted(status_text(&status))),
+            )
             .child(btn("update-check", "Check for updates", move |_, _, cx| {
                 let next = next_status(&checker.borrow().update_status);
                 checker.borrow_mut().update_status = next;
@@ -57,7 +68,12 @@ fn releases_item(values: &Shared) -> SettingItem {
     let values = values.clone();
     SettingItem::render(move |_options, _window, _cx| {
         let releases = values.borrow().releases.clone();
-        div().flex().flex_col().gap_4().children(releases.iter().map(release)).into_any_element()
+        div()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .children(releases.iter().map(release))
+            .into_any_element()
     })
 }
 
@@ -66,7 +82,13 @@ fn release(release: &Release) -> impl IntoElement + use<> {
         .flex()
         .flex_col()
         .gap_1()
-        .child(h_flex().gap_2().items_baseline().child(strong(release.version.clone())).child(muted(release.date.clone())))
+        .child(
+            h_flex()
+                .gap_2()
+                .items_baseline()
+                .child(strong(release.version.clone()))
+                .child(muted(release.date.clone())),
+        )
         .children(release.notes.iter().map(|note| muted(format!("•  {note}"))))
 }
 
@@ -77,7 +99,13 @@ mod tests {
     #[test]
     fn each_status_has_its_own_words() {
         assert_eq!(status_text(&UpdateStatus::Idle), "Not checked yet.");
-        assert_eq!(status_text(&UpdateStatus::Available("1.2.0".into())), "Version 1.2.0 is available.");
-        assert_eq!(status_text(&next_status(&UpdateStatus::Idle)), "You're up to date.");
+        assert_eq!(
+            status_text(&UpdateStatus::Available("1.2.0".into())),
+            "Version 1.2.0 is available."
+        );
+        assert_eq!(
+            status_text(&next_status(&UpdateStatus::Idle)),
+            "You're up to date."
+        );
     }
 }

@@ -10,13 +10,21 @@ use gpui_kit::component::{Icon, IconName};
 use gpui_kit::prelude::*;
 use gpui_kit::{Context, Entity, EventEmitter, Window, div, px};
 
+mod machines;
+
 use crate::theme::{self, color};
 
 /// What Home asks the app to do.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum HomeEvent {
     NewThread,
+    /// Look at another project's threads: switch to it but stay on this page.
+    BrowseProject(PathBuf),
     OpenThread(usize),
+    /// A thread kept on disk that is not open: its id.
+    OpenSaved(String),
+    /// Work in another project: its folder.
+    SwitchProject(PathBuf),
 }
 
 /// One open thread as Home lists it.
@@ -24,12 +32,15 @@ pub enum HomeEvent {
 pub struct ThreadRow {
     pub title: String,
     pub running: bool,
+    /// The id of a thread kept on disk that is not open. `None` for an open thread.
+    pub saved: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum HomeTab {
     Projects,
     Agents,
+    Machines,
 }
 
 const COLUMN_MAX: f32 = 1040.0;
@@ -42,8 +53,16 @@ pub struct HomeView {
     selected_project: usize,
     project_name: String,
     project_path: PathBuf,
+    /// Every project, with its folder.
+    projects: Vec<(String, PathBuf)>,
     search: Entity<InputState>,
     threads: Vec<ThreadRow>,
+    /// What the saved machines last showed, so the page only repaints when it changed.
+    machine_views: Vec<vivianne_remote::client::View>,
+    /// Machines folded shut, by id.
+    folded: std::collections::HashSet<String>,
+    /// The inputs of each machine's block.
+    machine_ui: machines::Inputs,
 }
 
 impl EventEmitter<HomeEvent> for HomeView {}
@@ -59,10 +78,43 @@ impl HomeView {
             tab: HomeTab::Projects,
             selected_project: 1,
             project_name,
+            projects: vivianne_runtime::projects::list()
+                .into_iter()
+                .filter_map(|p| p.path.map(|path| (p.name, PathBuf::from(path))))
+                .collect(),
             project_path,
             search,
             threads: Vec::new(),
+            machine_views: Vec::new(),
+            folded: std::collections::HashSet::new(),
+            machine_ui: machines::Inputs::new(),
         }
+        .watching_machines(cx)
+    }
+
+    /// The machines connect and drop by themselves, so Home looks at them every second and repaints only on change.
+    fn watching_machines(self, cx: &mut Context<Self>) -> Self {
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_secs(1))
+                    .await;
+                let views = vivianne_remote::client::Hub::global().views();
+                let alive = this
+                    .update(cx, |home, cx| {
+                        if home.machine_views != views {
+                            home.machine_views = views;
+                            cx.notify();
+                        }
+                    })
+                    .is_ok();
+                if !alive {
+                    break;
+                }
+            }
+        })
+        .detach();
+        self
     }
 
     /// Keep the list in step with the open threads; only repaints on change.
@@ -74,24 +126,34 @@ impl HomeView {
     }
 
     fn tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let selected = usize::from(self.tab == HomeTab::Agents);
+        let selected = match self.tab {
+            HomeTab::Projects => 0,
+            HomeTab::Agents => 1,
+            HomeTab::Machines => 2,
+        };
         TabBar::new("home-tabs")
             .segmented()
             .selected_index(selected)
             .on_click(cx.listener(|home, index: &usize, _window, cx| {
-                home.tab = if *index == 0 {
-                    HomeTab::Projects
-                } else {
-                    HomeTab::Agents
+                home.tab = match *index {
+                    0 => HomeTab::Projects,
+                    1 => HomeTab::Agents,
+                    _ => HomeTab::Machines,
                 };
+                // Machines stream their runs and terminals only while their page is open.
+                vivianne_remote::client::Hub::global()
+                    .set_all_in_view(home.tab == HomeTab::Machines);
                 cx.notify();
             }))
             .child(Tab::new().label("Projects"))
             .child(Tab::new().label("24/7 agents"))
+            .child(Tab::new().label("Machines"))
     }
 
     fn project_list(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let names = [GENERAL.to_owned(), self.project_name.clone()];
+        let names: Vec<String> = std::iter::once(GENERAL.to_owned())
+            .chain(self.projects.iter().map(|(name, _)| name.clone()))
+            .collect();
         div()
             .w(px(PROJECT_LIST_WIDTH))
             .flex_none()
@@ -113,17 +175,37 @@ impl HomeView {
                     ),
             )
             .children(names.into_iter().enumerate().map(|(index, name)| {
-                let selected = index == self.selected_project;
+                // The project that is open is the selected one; General is picked in place.
+                let selected = if index == 0 {
+                    self.selected_project == 0
+                } else {
+                    self.selected_project != 0
+                        && self
+                            .projects
+                            .get(index - 1)
+                            .is_some_and(|(_, path)| *path == self.project_path)
+                };
                 div()
                     .id(("project", index))
                     .px(px(10.0))
                     .py(px(7.0))
                     .rounded(px(theme::RADIUS_CONTROL))
                     .cursor_pointer()
-                    .when(selected, |row| row.bg(color(theme::SURFACE)))
-                    .hover(|style| style.bg(color(theme::SURFACE)))
+                    .text_color(color(if selected { theme::TEXT } else { theme::MUTED }))
+                    .when(selected, |row| row.bg(color(theme::RAISED)))
+                    .hover(|style| {
+                        style
+                            .bg(color(theme::SURFACE))
+                            .text_color(color(theme::TEXT))
+                    })
                     .on_click(cx.listener(move |home, _event, _window, cx| {
-                        home.selected_project = index;
+                        match index.checked_sub(1).and_then(|i| home.projects.get(i)) {
+                            Some((_, path)) if *path != home.project_path => {
+                                cx.emit(HomeEvent::BrowseProject(path.clone()))
+                            }
+                            Some(_) => home.selected_project = 1,
+                            None => home.selected_project = 0,
+                        }
                         cx.notify();
                     }))
                     .child(name)
@@ -165,7 +247,12 @@ impl HomeView {
                         div()
                             .flex()
                             .flex_col()
-                            .child(div().text_size(px(20.0)).child(heading))
+                            .child(
+                                div()
+                                    .text_size(px(theme::TEXT_TITLE - 2.0))
+                                    .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                                    .child(heading),
+                            )
                             .child(
                                 div()
                                     .text_size(px(12.0))
@@ -199,23 +286,29 @@ impl HomeView {
         div()
             .flex()
             .flex_col()
-            .gap(px(8.0))
+            .gap(px(2.0))
             .children(rows.into_iter().map(|(index, row)| {
-                let status = if row.running { "Working" } else { "Idle" };
+                let status = match (&row.saved, row.running) {
+                    (Some(_), _) => "Saved",
+                    (None, true) => "Working",
+                    (None, false) => "Idle",
+                };
+                let saved = row.saved.clone();
                 div()
                     .id(("thread-row", index))
                     .flex()
                     .items_center()
                     .justify_between()
+                    .h(px(40.0))
                     .px(px(12.0))
-                    .py(px(10.0))
-                    .rounded(px(theme::RADIUS_SURFACE))
-                    .border_1()
-                    .border_color(color(theme::BORDER))
-                    .bg(color(theme::SURFACE))
+                    .rounded(px(theme::RADIUS_CONTROL))
                     .cursor_pointer()
+                    .hover(|style| style.bg(color(theme::SURFACE)))
                     .on_click(cx.listener(move |_home, _event, _window, cx| {
-                        cx.emit(HomeEvent::OpenThread(index));
+                        cx.emit(match &saved {
+                            Some(id) => HomeEvent::OpenSaved(id.clone()),
+                            None => HomeEvent::OpenThread(index),
+                        });
                     }))
                     .child(div().child(row.title))
                     .child(
@@ -268,7 +361,7 @@ impl HomeView {
 }
 
 impl Render for HomeView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let body = match self.tab {
             HomeTab::Projects => div()
                 .flex()
@@ -277,6 +370,7 @@ impl Render for HomeView {
                 .child(self.project_detail(cx))
                 .into_any_element(),
             HomeTab::Agents => Self::agents().into_any_element(),
+            HomeTab::Machines => self.machines(window, cx).into_any_element(),
         };
         div()
             .id("home")

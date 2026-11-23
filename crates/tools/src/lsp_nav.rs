@@ -1,7 +1,6 @@
 // Copied from Vivianne's original tools (0901 agent/tools/lsp_nav.rs).
-// Kept as close to the original as possible; do not restyle. Paths such as
-// `crate::agent::tools::...` resolve through the re-exports in `lib.rs`.
-#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, dead_code, unused, unsafe_code, missing_debug_implementations)]
+// Kept as close to the original as possible; do not restyle.
+#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, unsafe_code, missing_debug_implementations)]
 
 //! `lsp`: read-only code navigation through the file's language server (definition, type definition, references, implementation, hover, symbols,
 //! diagnostics, status, capabilities); `lsp_edit` for the changes it can make.
@@ -185,11 +184,11 @@ fn render_diagnostics(path: &str, report: crate::lsp::manager::Report) -> String
                 _ => "HINT",
             };
             let mut out = format!("{} problem(s) in {path}:\n", items.len());
-            for d in items.iter().take(crate::lsp::ledger::MAX_LISTED) {
+            for d in items.iter().take(crate::lsp::MAX_LISTED) {
                 out.push_str(&format!("{} [{}:{}] {}\n", label(d.severity), d.range.start.line + 1, d.range.start.character + 1, d.message));
             }
-            if items.len() > crate::lsp::ledger::MAX_LISTED {
-                out.push_str(&format!("[{} more not shown]\n", items.len() - crate::lsp::ledger::MAX_LISTED));
+            if items.len() > crate::lsp::MAX_LISTED {
+                out.push_str(&format!("[{} more not shown]\n", items.len() - crate::lsp::MAX_LISTED));
             }
             out.trim_end().to_string()
         }
@@ -265,17 +264,6 @@ impl Tool for LspTool {
     }
 }
 
-/// `lsp_edit`: changes made through the language server — rename, move a file, apply a code action, format, restart — and a raw request.
-pub struct LspEditTool {
-    cwd: String,
-}
-
-impl LspEditTool {
-    pub fn new(cwd: String) -> Self {
-        Self { cwd }
-    }
-}
-
 /// The 1-based column of the `n`th (from 1) occurrence of `symbol` on `line`, as a whole word where it can be: the model names the symbol and
 /// the line, and does not have to count characters. `name#2` is the second one.
 pub(crate) fn symbol_column(line: &str, symbol: &str) -> Option<u32> {
@@ -316,95 +304,6 @@ fn position_in(args: &Value, full_path: &str) -> Result<(u32, u32), String> {
     let text = std::fs::read_to_string(full_path).map_err(|e| format!("can't read {full_path}: {e}"))?;
     let text_line = text.lines().nth(line as usize - 1).ok_or_else(|| format!("line {line} is past the end of the file"))?;
     symbol_column(text_line, symbol).map(|c| (line, c)).ok_or_else(|| format!("'{symbol}' is not on line {line}: {}", text_line.trim()))
-}
-
-fn render_actions(actions: &[Value]) -> String {
-    if actions.is_empty() {
-        return "The server offers no code actions there.".into();
-    }
-    let mut out = format!("{} code action(s); apply one with apply_action=<number>:\n", actions.len());
-    for (i, a) in actions.iter().enumerate().take(50) {
-        let title = a.get("title").and_then(|t| t.as_str()).unwrap_or("(untitled)");
-        let kind = a.get("kind").and_then(|k| k.as_str()).unwrap_or("");
-        let changes = if a.get("edit").is_some() { "edits files" } else if a.get("command").is_some() { "runs a command" } else { "" };
-        out.push_str(&format!("{i}. {title}{}{}\n", if kind.is_empty() { String::new() } else { format!(" [{kind}]") }, if changes.is_empty() { String::new() } else { format!(" ({changes})") }));
-    }
-    out.trim_end().to_string()
-}
-
-#[async_trait]
-impl Tool for LspEditTool {
-    fn name(&self) -> &str {
-        "lsp_edit"
-    }
-    async fn execute(&self, args: &Value, _cwd: &str) -> ToolResult {
-        let fail = |m: String| ToolResult { content: format!("Error: {m}"), is_error: true, details: None };
-        let ok = |m: String| ToolResult { content: m, is_error: false, details: None };
-        let action = args["action"].as_str().unwrap_or("");
-        let path = args["path"].as_str().unwrap_or("");
-        if action == "check" {
-            return crate::lsp::check::run_project_checks(&self.cwd).await.map(ok).unwrap_or_else(fail);
-        }
-        if action == "reload" {
-            let n = crate::lsp::manager::reload(&self.cwd).await;
-            return ok(format!("Stopped {n} language server(s) for this workspace; the next use starts them afresh."));
-        }
-        if path.is_empty() {
-            return fail("'path' is required".into());
-        }
-        let full = super::builtin::resolve_path(&self.cwd, path).display().to_string();
-        let shown = |lines: Vec<String>| ok(lines.join("\n"));
-        match action {
-            "rename" => {
-                let (line, col) = match position_in(args, &full) {
-                    Ok(p) => p,
-                    Err(e) => return fail(e),
-                };
-                let Some(new_name) = args["new_name"].as_str() else { return fail("'new_name' is required".into()) };
-                let apply = args["apply"].as_bool().unwrap_or(true);
-                crate::lsp::manager::rename(&full, &self.cwd, line, col, new_name, apply).await.map(shown).unwrap_or_else(fail)
-            }
-            "rename_file" => {
-                let Some(to) = args["new_path"].as_str().filter(|t| !t.is_empty()) else { return fail("'new_path' is required".into()) };
-                let to_full = super::builtin::resolve_path(&self.cwd, to).display().to_string();
-                crate::lsp::manager::rename_file(&full, &to_full, &self.cwd).await.map(shown).unwrap_or_else(fail)
-            }
-            "code_actions" => {
-                let (line, col) = match position_in(args, &full) {
-                    Ok(p) => p,
-                    Err(e) => return fail(e),
-                };
-                let end_line = args["end_line"].as_u64().map(|v| v as u32);
-                let end_col = args["end_column"].as_u64().map(|v| v as u32);
-                if let Some(n) = args["apply_action"].as_u64() {
-                    return crate::lsp::manager::apply_code_action(&full, &self.cwd, line, col, end_line, end_col, n as usize).await.map(shown).unwrap_or_else(fail);
-                }
-                crate::lsp::manager::code_actions(&full, &self.cwd, line, col, end_line, end_col).await.map(|a| ok(render_actions(&a))).unwrap_or_else(fail)
-            }
-            "format" => match crate::lsp::manager::format_file(&full, &self.cwd).await {
-                Ok(true) => ok(format!("Formatted {path}.")),
-                Ok(false) => ok(format!("{path} is already formatted.")),
-                Err(e) => fail(e),
-            },
-            "request" => {
-                let Some(method) = args["method"].as_str().filter(|m| !m.is_empty()) else { return fail("'method' is required".into()) };
-                let params = args.get("params").cloned().unwrap_or(Value::Null);
-                match crate::lsp::manager::raw_request(&full, &self.cwd, method, params).await {
-                    Ok(r) => {
-                        let text = serde_json::to_string_pretty(&r).unwrap_or_default();
-                        if text.len() > MAX_CHARS {
-                            let cut = (0..=MAX_CHARS).rev().find(|i| text.is_char_boundary(*i)).unwrap_or(0);
-                            ok(format!("{}\n[reply cut at {MAX_CHARS} characters]", &text[..cut]))
-                        } else {
-                            ok(text)
-                        }
-                    }
-                    Err(e) => fail(e),
-                }
-            }
-            other => fail(format!("unknown action '{other}' (rename, rename_file, code_actions, format, check, reload, request)")),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -465,12 +364,6 @@ mod tests {
         use crate::lsp::manager::Report;
         assert!(render_diagnostics("a.rs", Report::NotReported).contains("not the same as no problems"));
         assert!(render_diagnostics("a.rs", Report::Published(vec![])).starts_with("No problems"));
-    }
-
-    #[test]
-    fn code_actions_are_numbered_and_say_what_they_do() {
-        let out = render_actions(&[json!({ "title": "Add import", "kind": "quickfix", "edit": {} }), json!({ "title": "Organize", "command": {} })]);
-        assert!(out.contains("0. Add import [quickfix] (edits files)") && out.contains("1. Organize (runs a command)"), "{out}");
     }
 
     #[test]
