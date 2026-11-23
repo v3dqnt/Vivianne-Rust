@@ -68,7 +68,7 @@ pub struct Setting {
 }
 
 fn setting_file() -> PathBuf {
-    crate::agent::system::paths::viv_home_path(&["agent", "browser.json"])
+    crate::host::viv_home_path(&["agent", "browser.json"])
 }
 
 fn setting_cache() -> &'static std::sync::Mutex<Setting> {
@@ -153,7 +153,7 @@ pub fn system_browser() -> Option<PathBuf> {
 
 /// Where the browser keeps its own profile: cookies and logins made in Vivianne's browser, apart from the user's.
 fn profile_dir() -> PathBuf {
-    crate::agent::system::paths::viv_home_path(&["browser", "profile"])
+    crate::host::viv_home_path(&["browser", "profile"])
 }
 
 /// What the server is started with. Settings that change network, file or host access are set here, in its

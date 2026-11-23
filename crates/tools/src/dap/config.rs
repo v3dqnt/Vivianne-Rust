@@ -261,9 +261,9 @@ pub fn load_with(user: Option<&str>, project: Option<&str>, project_trusted: boo
 
 /// The adapters for work in `cwd`: the user's `dap.json` from their Vivianne folder and the project's `.viv/dap.json`.
 pub fn load(cwd: &str) -> Loaded {
-    let user = crate::lsp::servers::read_config(&crate::agent::system::paths::viv_home_path(&["dap"]));
+    let user = crate::lsp::servers::read_config(&crate::host::viv_home_path(&["dap"]));
     let project = crate::lsp::servers::read_config(&Path::new(cwd).join(".viv").join("dap"));
-    let trusted = project.is_some() && crate::mods::project_trusted(cwd);
+    let trusted = project.is_some() && crate::host::project_trusted(cwd);
     load_with(user.as_deref(), project.as_deref(), trusted)
 }
 

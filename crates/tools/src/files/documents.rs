@@ -1,6 +1,5 @@
 // Copied from Vivianne's original tools (agent/tools/files/documents.rs).
-// Kept as close to the original as possible; do not restyle. Paths such as
-// `crate::agent::tools::...` resolve through the re-exports in `lib.rs`.
+// Kept as close to the original as possible; do not restyle.
 #![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, dead_code, unused, unsafe_code, missing_debug_implementations)]
 
 //! Documents: `create_document` makes PDF, Word, Excel and PowerPoint files;
@@ -36,8 +35,8 @@ use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use crate::agent::tools::files::doc_design::{self as dd, Block, Chart, DocMeta, Image, Slide, Theme};
-use crate::agent::tools::builtin::{err, resolve_path, Tool, ToolResult};
+use crate::files::doc_design::{self as dd, Block, Chart, DocMeta, Image, Slide, Theme};
+use crate::builtin::{err, resolve_path, Tool, ToolResult};
 
 pub struct CreateDocumentTool {
     cwd: String,

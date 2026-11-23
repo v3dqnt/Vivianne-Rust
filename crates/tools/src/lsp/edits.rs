@@ -1,6 +1,5 @@
 // Copied from Vivianne's original tools (0901 lsp/edits.rs).
-// Kept as close to the original as possible; do not restyle. Paths such as
-// `crate::agent::tools::...` resolve through the re-exports in `lib.rs`.
+// Kept as close to the original as possible; do not restyle.
 #![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, dead_code, unused, unsafe_code, missing_debug_implementations)]
 
 //! Applying what a language server sends back as edits: `WorkspaceEdit` (rename, code actions, server-initiated `workspace/applyEdit`) and
@@ -180,7 +179,7 @@ pub async fn apply_workspace_edit(root: &str, edit: &Value) -> Result<Vec<String
     for step in steps {
         match step {
             Step::Write(path, text) => {
-                crate::agent::tools::files::guard::write_atomic(&path, text.as_bytes()).await.map_err(|e| format!("can't write {}: {e}", path.display()))?;
+                crate::files::guard::write_atomic(&path, text.as_bytes()).await.map_err(|e| format!("can't write {}: {e}", path.display()))?;
                 done.push(format!("edited {}", path.display()));
             }
             Step::Create(path) => {

@@ -13,7 +13,7 @@ fn entry(key: &str) -> Option<keyring::Entry> {
 }
 
 fn file() -> Option<std::path::PathBuf> {
-    crate::agent::system::paths::viv_home().ok().map(|h| h.join("connections.secrets.json"))
+    crate::host::viv_home().ok().map(|h| h.join("connections.secrets.json"))
 }
 
 fn read_file() -> serde_json::Map<String, Value> {

@@ -35,7 +35,7 @@ pub fn limit() -> usize {
 }
 
 fn dir() -> PathBuf {
-    crate::agent::system::paths::viv_home_path(&["agent", "tool-results"])
+    crate::host::viv_home_path(&["agent", "tool-results"])
 }
 
 /// The largest index at most `at` that is the start of a character, so a slice never cuts one in half.

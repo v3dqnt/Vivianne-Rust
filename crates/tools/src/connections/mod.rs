@@ -179,7 +179,7 @@ pub async fn icon(domain: String) -> Result<String, String> {
     if !domain.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-') {
         return Err("bad domain".into());
     }
-    let dir = crate::agent::system::paths::viv_home().map_err(|e| e.to_string())?.join("icons");
+    let dir = crate::host::viv_home().map_err(|e| e.to_string())?.join("icons");
     let path = dir.join(format!("{domain}.png"));
     let bytes = match tokio::fs::read(&path).await {
         Ok(b) => b,
@@ -199,7 +199,7 @@ pub async fn icon_file(domain: &str) -> Result<std::path::PathBuf, String> {
     if domain.is_empty() || !domain.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-') {
         return Err("bad domain".into());
     }
-    let dir = crate::agent::system::paths::viv_home().map_err(|e| e.to_string())?.join("icons");
+    let dir = crate::host::viv_home().map_err(|e| e.to_string())?.join("icons");
     let path = dir.join(format!("{domain}.png"));
     if tokio::fs::metadata(&path).await.is_ok_and(|m| m.len() > 200) {
         return Ok(path);

@@ -34,7 +34,7 @@ fn step_opts(args: &Value) -> StepOpts {
 }
 
 fn full_path(cwd: &str, p: &str) -> String {
-    crate::agent::tools::builtin::resolve_path(cwd, p).display().to_string()
+    crate::builtin::resolve_path(cwd, p).display().to_string()
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
@@ -245,7 +245,7 @@ fn render_status(session: &Session) -> String {
 }
 
 fn clip(text: String) -> String {
-    crate::agent::tools::exec::clip_tool_text(&text, crate::agent::tools::exec::MAX_UNBOUNDED_TOOL_CHARS)
+    crate::host::clip_tool_text(&text, crate::host::MAX_UNBOUNDED_TOOL_CHARS)
 }
 
 // ── The tools ─────────────────────────────────────────────────────────────────

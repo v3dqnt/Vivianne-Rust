@@ -1,6 +1,5 @@
 // Copied from Vivianne's original tools (0901 lsp/uri.rs).
-// Kept as close to the original as possible; do not restyle. Paths such as
-// `crate::agent::tools::...` resolve through the re-exports in `lib.rs`.
+// Kept as close to the original as possible; do not restyle.
 #![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, dead_code, unused, unsafe_code, missing_debug_implementations)]
 
 //! File identity for the language-server client: paths to `file:` URIs and back, and one comparable key for both.

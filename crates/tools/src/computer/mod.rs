@@ -64,7 +64,7 @@ pub struct Setting {
 }
 
 fn setting_file() -> PathBuf {
-    crate::agent::system::paths::viv_home_path(&["agent", "computer.json"])
+    crate::host::viv_home_path(&["agent", "computer.json"])
 }
 
 fn read_setting() -> Setting {

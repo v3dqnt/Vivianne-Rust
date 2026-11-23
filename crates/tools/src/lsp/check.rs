@@ -1,6 +1,5 @@
 // Copied from Vivianne's original tools (0901 lsp/check.rs).
-// Kept as close to the original as possible; do not restyle. Paths such as
-// `crate::agent::tools::...` resolve through the re-exports in `lib.rs`.
+// Kept as close to the original as possible; do not restyle.
 #![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, dead_code, unused, unsafe_code, missing_debug_implementations)]
 
 //! Checks that are not language servers: the project's own checker (`cargo check`, `tsc`, ...) for the whole workspace, and the CLI linters
@@ -74,8 +73,8 @@ pub fn interpret(description: &str, success: bool, output: &str) -> String {
 
 async fn run_one(root: &Path, c: &Checker) -> String {
     let mut cmd = crate::proc::quiet(c.command);
-    crate::agent::tools::code::sandbox::scrub_env(&mut cmd);
-    crate::agent::runtime::streaming::own_group(&mut cmd);
+    crate::code::sandbox::scrub_env(&mut cmd);
+    crate::proc::own_group(&mut cmd);
     let child = cmd.args(c.args).current_dir(root).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).kill_on_drop(true).spawn();
     let child = match child {
         Ok(c) => c,
@@ -176,8 +175,8 @@ fn biome_applies(path: &str, root: &Path) -> bool {
 
 async fn run_lint(command: &str, args: &[&str], root: &Path) -> Option<String> {
     let mut cmd = crate::proc::quiet(command);
-    crate::agent::tools::code::sandbox::scrub_env(&mut cmd);
-    crate::agent::runtime::streaming::own_group(&mut cmd);
+    crate::code::sandbox::scrub_env(&mut cmd);
+    crate::proc::own_group(&mut cmd);
     let child = cmd.args(args).current_dir(root).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).kill_on_drop(true).spawn().ok()?;
     let out = tokio::time::timeout(LINT_TIMEOUT, child.wait_with_output()).await.ok()?.ok()?;
     // These exit non-zero when they find something, so only silence counts as a failed run.

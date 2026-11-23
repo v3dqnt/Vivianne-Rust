@@ -22,7 +22,7 @@ fn binary_name() -> &'static str {
 }
 
 fn bin_dir() -> PathBuf {
-    crate::agent::system::paths::viv_home_path(&["bin"])
+    crate::host::viv_home_path(&["bin"])
 }
 
 /// The program, from `~/.viv/bin` or else the PATH.

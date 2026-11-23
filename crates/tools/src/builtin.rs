@@ -1,6 +1,5 @@
 // Copied from Vivianne's original tools (agent/tools/builtin.rs).
-// Kept as close to the original as possible; do not restyle. Paths such as
-// `crate::agent::tools::...` resolve through the re-exports in `lib.rs`.
+// Kept as close to the original as possible; do not restyle.
 #![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, dead_code, unused, unsafe_code, missing_debug_implementations)]
 
 use async_trait::async_trait;
@@ -370,7 +369,7 @@ impl Tool for CodeSearchTool {
 
     async fn execute(&self, args: &serde_json::Value, _cwd: &str) -> ToolResult {
         let query = args["query"].as_str().unwrap_or("").trim().to_string();
-        if crate::agent::tools::code::semantic_index::tokens(&query).is_empty() && query.len() < 3 {
+        if crate::code::semantic_index::tokens(&query).is_empty() && query.len() < 3 {
             return ToolResult { content: "'query' must describe what to look for".to_string(), is_error: true, details: None };
         }
         let path = args["path"].as_str().unwrap_or(".").to_string();
@@ -379,7 +378,7 @@ impl Tool for CodeSearchTool {
             return ToolResult { content: format!("Not a folder: {}", root.display()), is_error: true, details: None };
         }
 
-        let (hits, status) = crate::agent::tools::code::semantic_index::search(&root, &query, 10).await;
+        let (hits, status) = crate::code::semantic_index::search(&root, &query, 10).await;
         let mode = match status.embedder {
             Some(e) => format!("semantic ({}) + keyword", e.label()),
             None => "keyword only".to_string(),
@@ -524,7 +523,7 @@ impl Tool for DiagnosticsTool {
 
         // No server, or it didn't answer in time: the language's own tools.
         let root = std::path::Path::new(&self.cwd);
-        if let Some(result) = crate::agent::tools::code::checkers::check_file(&full_path, root).await {
+        if let Some(result) = crate::code::checkers::check_file(&full_path, root).await {
             return if result.problems.is_empty() {
                 ok(format!("No errors in {path} (checked with {}).", result.checker))
             } else {
@@ -721,7 +720,7 @@ impl Tool for ReadTool {
         // that wrote a document must be able to read it back to check it.
         if matches!(ext.as_str(), "docx" | "xlsx" | "pptx") {
             let p = full.clone();
-            return match tokio::task::spawn_blocking(move || crate::agent::tools::files::documents::inspect(&p)).await {
+            return match tokio::task::spawn_blocking(move || crate::files::documents::inspect(&p)).await {
                 Ok(Ok(parts)) => {
                     let filled: Vec<_> = parts.iter().filter(|x| !x.text.trim().is_empty()).collect();
                     let body = filled.iter().map(|x| format!("[{}] {}", x.label, x.text)).collect::<Vec<_>>().join("\n");
@@ -882,18 +881,8 @@ async fn read_image(display_path: String, full: PathBuf, do_ocr: bool) -> ToolRe
     }
 
     if do_ocr {
-        let ocr_result = crate::agent::tools::desktop::ocr::ocr_image(&full).await;
-        if !ocr_result.text.is_empty() {
-            content.push_str(&format!("\n  OCR text ({}):\n{}", ocr_result.method.method_str(), ocr_result.text));
-        } else {
-            let hint = match ocr_result.method {
-                crate::agent::tools::desktop::ocr::OcrMethod::Unavailable => {
-                    "\n  OCR not available: set HUGGINGFACE_TOKEN env var for API inference, or check internet connection."
-                }
-                _ => "\n  OCR returned no text (image may not contain readable text).",
-            };
-            content.push_str(hint);
-        }
+        // Reading text out of an image is not ported yet; the model can still see the image itself.
+        content.push_str("\n  OCR not available: set HUGGINGFACE_TOKEN env var for API inference, or check internet connection.");
     }
 
     let mut details = json!({

@@ -280,7 +280,7 @@ pub type Approver = Arc<dyn Fn(String) -> futures::future::BoxFuture<'static, bo
 
 /// A program the adapter had Vivianne run: its process tree ends when this is dropped.
 struct Terminal {
-    _tree: crate::agent::runtime::streaming::TreeKillOnDrop,
+    _tree: crate::proc::TreeKillOnDrop,
     _child: tokio::process::Child,
 }
 
@@ -959,9 +959,9 @@ impl Session {
             return Err("the user did not allow it".into());
         }
         let mut cmd = crate::proc::quiet(program);
-        crate::agent::tools::code::sandbox::scrub_env(&mut cmd);
+        crate::code::sandbox::scrub_env(&mut cmd);
         super::client::apply_env(&mut cmd, &env);
-        crate::agent::runtime::streaming::own_group(&mut cmd);
+        crate::proc::own_group(&mut cmd);
         let mut child = cmd.args(rest).current_dir(&cwd).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).kill_on_drop(true).spawn().map_err(|e| format!("couldn't start {program}: {e}"))?;
         let pid = child.id();
         for (stream, label) in [(child.stdout.take().map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Unpin + Send>), ""), (child.stderr.take().map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Unpin + Send>), "[stderr] ")] {
@@ -978,7 +978,7 @@ impl Session {
                 });
             }
         }
-        self.terminals.lock().unwrap_or_else(|e| e.into_inner()).push(Terminal { _tree: crate::agent::runtime::streaming::TreeKillOnDrop { pid }, _child: child });
+        self.terminals.lock().unwrap_or_else(|e| e.into_inner()).push(Terminal { _tree: crate::proc::TreeKillOnDrop { pid }, _child: child });
         Ok(json!({ "processId": pid }))
     }
 

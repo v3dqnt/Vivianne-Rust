@@ -95,7 +95,7 @@ pub struct DapClient {
     /// Whether the adapter's `runInTerminal` requests are passed on instead of refused.
     terminal: Arc<AtomicBool>,
     /// Ends the adapter and whatever it started when the client is dropped.
-    _tree: Option<crate::agent::runtime::streaming::TreeKillOnDrop>,
+    _tree: Option<crate::proc::TreeKillOnDrop>,
 }
 
 /// One message, written whole. An adapter that stops reading its input (its pipe full) costs the caller a failure after this long, and does not
@@ -121,9 +121,9 @@ impl DapClient {
     /// the whole tree it starts is ended when the client goes.
     pub async fn spawn(command: &str, args: &[String], cwd: &str, env: &Env) -> Result<(Arc<Self>, mpsc::UnboundedReceiver<AdapterEvent>), String> {
         let mut cmd = crate::proc::quiet(command);
-        crate::agent::tools::code::sandbox::scrub_env(&mut cmd);
+        crate::code::sandbox::scrub_env(&mut cmd);
         apply_env(&mut cmd, env);
-        crate::agent::runtime::streaming::own_group(&mut cmd);
+        crate::proc::own_group(&mut cmd);
         let mut child = cmd
             .args(args)
             .current_dir(cwd)
@@ -162,9 +162,9 @@ impl DapClient {
         };
         let args: Vec<String> = args.iter().map(|a| a.replace("{port}", &port.to_string())).collect();
         let mut cmd = crate::proc::quiet(command);
-        crate::agent::tools::code::sandbox::scrub_env(&mut cmd);
+        crate::code::sandbox::scrub_env(&mut cmd);
         apply_env(&mut cmd, env);
-        crate::agent::runtime::streaming::own_group(&mut cmd);
+        crate::proc::own_group(&mut cmd);
         let mut child = cmd
             .args(&args)
             .current_dir(cwd)
@@ -233,7 +233,7 @@ impl DapClient {
             port: AtomicU16::new(0),
             reverse,
             terminal,
-            _tree: child.as_ref().map(|c| crate::agent::runtime::streaming::TreeKillOnDrop { pid: c.id() }),
+            _tree: child.as_ref().map(|c| crate::proc::TreeKillOnDrop { pid: c.id() }),
             child: Mutex::new(child),
         });
         (client, rx)
@@ -337,7 +337,7 @@ impl DapClient {
         self.closed.store(true, Ordering::SeqCst);
         if let Some(child) = self.child.lock().await.as_mut() {
             if let Some(pid) = child.id() {
-                crate::agent::runtime::streaming::kill_tree(pid).await;
+                crate::proc::kill_tree(pid).await;
             }
             let _ = child.kill().await;
         }

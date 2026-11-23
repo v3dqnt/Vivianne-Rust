@@ -1,6 +1,5 @@
 // Copied from Vivianne's original tools (0901 lsp/ledger.rs).
-// Kept as close to the original as possible; do not restyle. Paths such as
-// `crate::agent::tools::...` resolve through the re-exports in `lib.rs`.
+// Kept as close to the original as possible; do not restyle.
 #![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, dead_code, unused, unsafe_code, missing_debug_implementations)]
 
 //! What the agent has already been told about a file's errors, so a second edit to the same file does not repeat the same list.

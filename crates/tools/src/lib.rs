@@ -26,7 +26,6 @@ pub mod dap;
 mod lsp;
 #[rustfmt::skip]
 mod lsp_nav;
-mod ocr;
 pub mod schemas;
 
 mod files_simple;
@@ -183,39 +182,10 @@ impl Toolbox {
     }
 }
 
-// The copied code refers to the original app's module paths. These re-exports
-// and the small stand-ins below make those paths resolve without editing it.
-pub mod agent {
-    pub mod orchestration;
-    pub mod thread_msgs;
-
-    pub mod tools {
-        pub use crate::{builtin, code, files};
-
-        pub mod desktop {
-            pub(crate) use crate::ocr;
-        }
-
-        pub mod exec;
-    }
-
-    pub mod system {
-        pub mod paths;
-    }
-
-    pub mod runtime {
-        pub mod commands;
-        #[rustfmt::skip]
-        pub mod streaming;
-    }
-}
-
-pub mod ai;
-pub mod mods;
-#[rustfmt::skip]
-pub mod proc;
 pub mod dev_server;
+pub mod host;
 pub mod mcp;
 pub mod open_apps;
+#[rustfmt::skip]
+pub mod proc;
 pub mod results;
-mod tauri;

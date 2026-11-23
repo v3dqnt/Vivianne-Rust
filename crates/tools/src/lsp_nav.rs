@@ -1,6 +1,5 @@
 // Copied from Vivianne's original tools (0901 agent/tools/lsp_nav.rs).
-// Kept as close to the original as possible; do not restyle. Paths such as
-// `crate::agent::tools::...` resolve through the re-exports in `lib.rs`.
+// Kept as close to the original as possible; do not restyle.
 #![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, dead_code, unused, unsafe_code, missing_debug_implementations)]
 
 //! `lsp`: read-only code navigation through the file's language server (definition, type definition, references, implementation, hover, symbols,

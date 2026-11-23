@@ -1,6 +1,5 @@
 // Copied from Vivianne's original tools (0901 lsp/manager.rs).
-// Kept as close to the original as possible; do not restyle. Paths such as
-// `crate::agent::tools::...` resolve through the re-exports in `lib.rs`.
+// Kept as close to the original as possible; do not restyle.
 #![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, clippy::todo, clippy::dbg_macro, dead_code, unused, unsafe_code, missing_debug_implementations)]
 
 //! Spawns and reuses one LSP client per language, project root and server configuration, lazily, the first time a file of that language is touched.
@@ -91,7 +90,7 @@ fn config_digest(def: &ServerDef) -> u64 {
 fn resolve_server(language_id: &str, workspace: &str) -> (Option<ServerDef>, servers::Candidates) {
     let c = servers::candidates(language_id, workspace);
     // A project's own programs (node_modules/.bin, .venv) count only once the user has trusted the project.
-    let trusted = crate::mods::project_trusted(workspace);
+    let trusted = crate::host::project_trusted(workspace);
     let found = c.defs.iter().find_map(|d| {
         servers::resolve_command_with(&d.command, Path::new(workspace), trusted, &|p| p.is_file(), &|c| which::which(c).ok().map(|p| p.to_string_lossy().into_owned())).map(|command| ServerDef { command, ..d.clone() })
     });
@@ -200,7 +199,7 @@ fn evict_over_cap(just_started: &str) {
 fn ensure_reaper() {
     static STARTED: std::sync::Once = std::sync::Once::new();
     STARTED.call_once(|| {
-        crate::tauri::async_runtime::spawn(async {
+        tokio::spawn(async {
             loop {
                 tokio::time::sleep(Duration::from_secs(60)).await;
                 let stale: Vec<Arc<Slot>> = {
@@ -324,7 +323,7 @@ fn edit_counter(path: &str) -> Arc<AtomicU64> {
 pub async fn post_edit_block(path: &str, root_dir: &str) -> Option<String> {
     let counter = edit_counter(path);
     let edit = counter.fetch_add(1, Ordering::SeqCst) + 1;
-    if format_on_write_from(&crate::agent::tools::exec::read_settings_json().await) {
+    if format_on_write_from(&crate::host::read_settings_json().await) {
         if let Err(e) = format_file(path, root_dir).await {
             log::info!("lsp: not formatted: {e}");
         }
@@ -340,8 +339,8 @@ pub async fn post_edit_block(path: &str, root_dir: &str) -> Option<String> {
         Report::NoServer if !lint.is_empty() => block_for(path, &lint),
         Report::NoServer => None,
         Report::NotReported => {
-            let thread = crate::agent::orchestration::turn_thread();
-            let can_follow_up = thread.is_some() && crate::agent::orchestration::app().is_some();
+            let thread = crate::host::turn_thread();
+            let can_follow_up = thread.is_some() && crate::host::app().is_some();
             if let (Some((client, mark)), true) = (outcome.waiting, can_follow_up) {
                 spawn_deferred(path.to_string(), client, mark, counter, edit, thread.unwrap_or_default());
                 Some(format!("<diagnostics file=\"{path}\">\n(the language server hadn't reported yet; if it finds errors they are sent to you as a note, or call lsp diagnostics for this file)\n</diagnostics>"))
@@ -371,9 +370,9 @@ fn spawn_deferred(path: String, client: Arc<LspClient>, mark: SyncMark, counter:
             return;
         }
         let Some(text) = block_for(&path, &items) else { return };
-        let Some(app) = crate::agent::orchestration::app() else { return };
+        let Some(app) = crate::host::app() else { return };
         let note = format!("Late language-server result for a file you edited:\n{text}");
-        if let Err(e) = crate::agent::thread_msgs::deliver_if_running(&app, &thread, &note).await {
+        if let Err(e) = crate::host::deliver_if_running(&app, &thread, &note).await {
             log::info!("lsp: dropped a late report for {path}: {e}");
         }
     });
@@ -564,7 +563,7 @@ pub async fn rename_file(from: &str, to: &str, root_dir: &str) -> Result<Vec<Str
     .await;
     if let Err(e) = moved {
         for (p, text) in &snapshots {
-            let _ = crate::agent::tools::files::guard::write_atomic(p, text.as_bytes()).await;
+            let _ = crate::files::guard::write_atomic(p, text.as_bytes()).await;
         }
         return Err(format!("{e}; the reference edits were undone"));
     }
@@ -591,7 +590,7 @@ pub(crate) fn file_pairs(from: &str, to: &str) -> Result<Vec<(String, String)>, 
             let p = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
             if p.is_dir() {
-                if !crate::agent::tools::builtin::ALWAYS_SKIP_DIRS.contains(&name.as_str()) {
+                if !crate::builtin::ALWAYS_SKIP_DIRS.contains(&name.as_str()) {
                     stack.push(p);
                 }
             } else if let Ok(rel) = p.strip_prefix(src) {
@@ -624,9 +623,9 @@ pub async fn format_file(path: &str, root_dir: &str) -> Result<bool, String> {
     if formatted == text {
         return Ok(false);
     }
-    crate::agent::tools::files::guard::write_atomic(Path::new(path), formatted.as_bytes()).await.map_err(|e| e.to_string())?;
+    crate::files::guard::write_atomic(Path::new(path), formatted.as_bytes()).await.map_err(|e| e.to_string())?;
     // Our own write: the agent's next edit of this file must not be refused as "changed on disk since you read it".
-    crate::agent::tools::files::guard::observe(Path::new(path));
+    crate::files::guard::observe(Path::new(path));
     c.refresh(path).await;
     Ok(true)
 }
@@ -654,7 +653,7 @@ pub async fn status(workspace: &str) -> String {
         lines.push("no language server is running".into());
     }
     if let Ok(text) = std::fs::read_to_string(Path::new(workspace).join(".viv").join("lsp.json")) {
-        let trusted = crate::mods::project_trusted(workspace);
+        let trusted = crate::host::project_trusted(workspace);
         let defined: Vec<String> = serde_json::from_str::<Value>(&text).ok().and_then(|v| v.get("servers").and_then(|s| s.as_object()).cloned()).map(|m| m.keys().flat_map(|lang| servers::from_config(&text, lang, servers::Source::Project).unwrap_or_default().into_iter().map(move |d| format!("{lang}: {}", d.line()))).collect()).unwrap_or_default();
         if !defined.is_empty() {
             lines.push(if trusted { format!("project definitions in use: {}", defined.join("; ")) } else { format!("project definitions IGNORED until the project is trusted: {}", defined.join("; ")) });
