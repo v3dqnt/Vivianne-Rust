@@ -344,6 +344,7 @@ fn only_file_writing_tools_name_paths_to_capture() {
         edited_paths("edit", &json!({"file_path": "b.rs"})),
         ["b.rs"]
     );
+    assert_eq!(edited_paths("convert_to_pdf", &json!({"path": "a.docx", "output": "out/a.pdf"})), ["a.docx", "out/a.pdf"]);
     assert!(edited_paths("read", &json!({"path": "a.rs"})).is_empty());
     assert!(edited_paths("shell", &json!({"command": "rm a.rs"})).is_empty());
     assert!(edited_paths("write", &json!({"path": ""})).is_empty());

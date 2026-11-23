@@ -22,7 +22,7 @@ Every command, flag, setting, environment variable, file and exit code `viv` exp
 0 success; 1 failure (a failed check, a failed run); 2 usage error.
 
 ## Environment
-`VIV_AGENTS_HOME` (replaces `~/.agents`, the shared agents folder whose `AGENTS.md` is read as the user's instructions), `VIV_HOME` (replaces `~/.viv`; must be an absolute folder that is not a root or the home folder), `VIV_SESSION`, `VIV_SSH` (the ssh program), `VIV_MODEL`, `VIV_PROVIDER`, `VIV_MAX_AGENT_STEPS`, `VIV_MAX_TOOL_RESULT_BYTES`, `VIV_REMOTE_BINARY` (a file to install on a machine), `VIV_RELEASE_BASE` (an https folder with `viv-<os>-<arch>` and its `.sha256`).
+`VIV_SOFFICE` (the LibreOffice executable used to convert Office files to PDF; otherwise `PATH` and the usual install places are searched), `VIV_AGENTS_HOME` (replaces `~/.agents`, the shared agents folder whose `AGENTS.md` is read as the user's instructions), `VIV_HOME` (replaces `~/.viv`; must be an absolute folder that is not a root or the home folder), `VIV_SESSION`, `VIV_SSH` (the ssh program), `VIV_MODEL`, `VIV_PROVIDER`, `VIV_MAX_AGENT_STEPS`, `VIV_MAX_TOOL_RESULT_BYTES`, `VIV_REMOTE_BINARY` (a file to install on a machine), `VIV_RELEASE_BASE` (an https folder with `viv-<os>-<arch>` and its `.sha256`).
 
 ## Files
 `~/.viv/AGENTS.md` and `~/.agents/AGENTS.md` (the user's own instructions; `AGENTS.local.md` and `CLAUDE.md` / `CLAUDE.local.md` beside any `AGENTS.md` in the project or here are read too), `~/.viv/agent/settings.json`, `~/.viv/agent/threads/<id>.json`, `~/.viv/agent/tool-results/<id>.txt`, `~/.viv/client/machines.json`, `~/.viv/client/machine-metadata.json`, `~/.viv/client/ssh/`, `~/.viv/server/sessions/<name>/` (`session.json`, `session-snapshots/`, `session-backups/`), `~/.viv/agents/<name>/` and `<repo>/.viv/agents/<name>/` (`profile.json`, `prompt.md`), `<repo>/.viv.json` (repo-safe settings only), `~/.viv/agent-detection/<agent>.toml`.
@@ -40,6 +40,8 @@ A saved message may carry `context` (`{"kind": "agent-instructions" | "time-cont
 `dev` (line tables only, no debug info for dependencies), `debugging` (`dev` with full debug info: `cargo build --profile debugging`), `release` (thin LTO, one codegen unit, debug info stripped).
 
 ## Tools
+`convert_to_pdf` (converts a .doc/.docx/.xls/.xlsx/.ppt/.pptx in the project to a PDF with an installed LibreOffice; arguments `path`, `output?`, `overwrite?`; writes a file, so it asks in Ask mode and is refused in Plan mode; offered only when LibreOffice is found).
+
 `present` (declares up to 8 existing files as final deliverables; arguments `files: [{path, description?}]`; result lines `Presented <absolute path>`; look-only, so it needs no approval and works in Plan mode).
 
 ## Change-recording settings
