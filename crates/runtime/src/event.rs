@@ -22,10 +22,7 @@ pub enum AgentEvent {
     },
     /// Something a coding agent wants to do and asks first. The answer goes back through whoever holds the
     /// request, by `id`.
-    Approval {
-        id: String,
-        title: String,
-    },
+    Approval { id: String, title: String },
     /// A model call failed for a passing reason and will be made again after `delay`.
     Retrying {
         attempt: u32,
@@ -53,10 +50,7 @@ pub enum AgentEvent {
     },
     /// The older part of the conversation was condensed into a summary to make room, from `before` tokens to
     /// `after`.
-    Compacted {
-        before: u32,
-        after: u32,
-    },
+    Compacted { before: u32, after: u32 },
     /// The step ceiling was hit before the model finished.
     StepLimit,
     /// The run was stopped by the user.

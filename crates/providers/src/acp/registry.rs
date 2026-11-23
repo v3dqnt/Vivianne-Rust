@@ -66,16 +66,55 @@ impl Harness {
 /// The agents people ask for first, at the versions the registry listed when this was written: used when the
 /// registry can't be fetched. (id, name, description, package, extra arguments.)
 const FALLBACK: &[(&str, &str, &str, &str, &[&str])] = &[
-    ("claude-acp", "Claude Code", "Anthropic's Claude Code, through its ACP adapter.", "@agentclientprotocol/claude-agent-acp@0.99.1", &[]),
-    ("codex-acp", "Codex", "OpenAI's Codex CLI, through its ACP adapter.", "@agentclientprotocol/codex-acp@2.5.0", &[]),
-    ("gemini", "Gemini CLI", "Google's Gemini CLI.", "@google/gemini-cli@0.66.0", &["--acp"]),
-    ("github-copilot-cli", "Copilot", "GitHub Copilot CLI.", "@github/copilot@1.0.105", &["--acp"]),
-    ("qwen-code", "Qwen Code", "Qwen Code CLI.", "@qwen-code/qwen-code@0.26.4", &["--acp"]),
+    (
+        "claude-acp",
+        "Claude Code",
+        "Anthropic's Claude Code, through its ACP adapter.",
+        "@agentclientprotocol/claude-agent-acp@0.99.1",
+        &[],
+    ),
+    (
+        "codex-acp",
+        "Codex",
+        "OpenAI's Codex CLI, through its ACP adapter.",
+        "@agentclientprotocol/codex-acp@2.5.0",
+        &[],
+    ),
+    (
+        "gemini",
+        "Gemini CLI",
+        "Google's Gemini CLI.",
+        "@google/gemini-cli@0.66.0",
+        &["--acp"],
+    ),
+    (
+        "github-copilot-cli",
+        "Copilot",
+        "GitHub Copilot CLI.",
+        "@github/copilot@1.0.105",
+        &["--acp"],
+    ),
+    (
+        "qwen-code",
+        "Qwen Code",
+        "Qwen Code CLI.",
+        "@qwen-code/qwen-code@0.26.4",
+        &["--acp"],
+    ),
 ];
 
 /// The registry's agents most people use, first in the list.
 const FEATURED: &[&str] = &[
-    "claude-acp", "codex-acp", "gemini", "github-copilot-cli", "cursor", "opencode", "grok-build", "qwen-code", "goose", "cline",
+    "claude-acp",
+    "codex-acp",
+    "gemini",
+    "github-copilot-cli",
+    "cursor",
+    "opencode",
+    "grok-build",
+    "qwen-code",
+    "goose",
+    "cline",
 ];
 
 fn ready_path() -> PathBuf {
@@ -85,13 +124,18 @@ fn ready_path() -> PathBuf {
 static READY_WRITE: Mutex<()> = Mutex::new(());
 
 fn ready_ids() -> Vec<String> {
-    std::fs::read_to_string(ready_path()).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
+    std::fs::read_to_string(ready_path())
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
 }
 
 /// Remembers that this agent started and answered `initialize` here.
 pub(super) fn mark_ready(id: &str) {
     // Two agents starting at once would otherwise each write a list missing the other.
-    let _guard = READY_WRITE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _guard = READY_WRITE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut ids = ready_ids();
     if !ids.iter().any(|known| known == id) {
         ids.push(id.to_owned());
@@ -109,18 +153,41 @@ fn from_registry(agent: &Value) -> Option<Harness> {
     let id = agent.get("id")?.as_str()?.to_owned();
     let dist = agent.get("distribution")?;
     let (launcher, package, extra, env) = if let Some(n) = dist.get("npx") {
-        ("npx", n.get("package")?.as_str()?, n.get("args"), n.get("env"))
+        (
+            "npx",
+            n.get("package")?.as_str()?,
+            n.get("args"),
+            n.get("env"),
+        )
     } else if let Some(u) = dist.get("uvx") {
-        ("uvx", u.get("package")?.as_str()?, u.get("args"), u.get("env"))
+        (
+            "uvx",
+            u.get("package")?.as_str()?,
+            u.get("args"),
+            u.get("env"),
+        )
     } else {
         return None;
     };
-    let extra: Vec<String> = extra.and_then(Value::as_array).into_iter().flatten().filter_map(|a| a.as_str().map(str::to_owned)).collect();
-    let mut args = if launcher == "npx" { vec!["-y".to_owned(), package.to_owned()] } else { vec![package.to_owned()] };
+    let extra: Vec<String> = extra
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|a| a.as_str().map(str::to_owned))
+        .collect();
+    let mut args = if launcher == "npx" {
+        vec!["-y".to_owned(), package.to_owned()]
+    } else {
+        vec![package.to_owned()]
+    };
     args.extend(extra.iter().cloned());
     let env = env
         .and_then(Value::as_object)
-        .map(|o| o.iter().filter_map(|(k, v)| v.as_str().map(|v| (k.clone(), v.to_owned()))).collect())
+        .map(|o| {
+            o.iter()
+                .filter_map(|(k, v)| v.as_str().map(|v| (k.clone(), v.to_owned())))
+                .collect()
+        })
         .unwrap_or_default();
     let text = |key: &str| agent.get(key).and_then(Value::as_str).map(str::to_owned);
     Some(Harness {
@@ -151,7 +218,11 @@ fn fallback() -> Vec<Harness> {
             available: npx,
             ready: false,
             launcher: "npx".to_owned(),
-            args: ["-y", package].iter().chain(extra.iter()).map(|s| (*s).to_owned()).collect(),
+            args: ["-y", package]
+                .iter()
+                .chain(extra.iter())
+                .map(|s| (*s).to_owned())
+                .collect(),
             env: HashMap::new(),
             package: Some((*package).to_owned()),
             extra: extra.iter().map(|s| (*s).to_owned()).collect(),
@@ -177,7 +248,12 @@ async fn registry_text() -> Option<String> {
         return Some(text);
     }
     let fetched = async {
-        let response = vivianne_ai::ai::http::client().get(REGISTRY_URL).timeout(FETCH_TIMEOUT).send().await.ok()?;
+        let response = vivianne_ai::ai::http::client()
+            .get(REGISTRY_URL)
+            .timeout(FETCH_TIMEOUT)
+            .send()
+            .await
+            .ok()?;
         response.error_for_status().ok()?.text().await.ok()
     }
     .await;
@@ -198,7 +274,10 @@ async fn registry_text() -> Option<String> {
 
 /// Every agent that can run here, the common ones first.
 pub async fn harnesses() -> Vec<Harness> {
-    let mut list = registry_text().await.map(|text| parse(&text)).unwrap_or_default();
+    let mut list = registry_text()
+        .await
+        .map(|text| parse(&text))
+        .unwrap_or_default();
     if list.is_empty() {
         list = fallback();
     }
@@ -207,17 +286,30 @@ pub async fn harnesses() -> Vec<Harness> {
     for harness in &mut list {
         harness.ready = ready.contains(&harness.id);
         // An agent installed under ~/.viv/agents starts as `node <script>`.
-        if let Some(receipt) = harness.package.as_deref().and_then(|package| receipt_for(&harness.id, package))
+        if let Some(receipt) = harness
+            .package
+            .as_deref()
+            .and_then(|package| receipt_for(&harness.id, package))
             && node
         {
             "node".clone_into(&mut harness.launcher);
-            harness.args = std::iter::once(receipt.script).chain(harness.extra.iter().cloned()).collect();
+            harness.args = std::iter::once(receipt.script)
+                .chain(harness.extra.iter().cloned())
+                .collect();
             harness.available = true;
             harness.ready = true;
             harness.managed = true;
         }
     }
-    list.sort_by_key(|h| (FEATURED.iter().position(|f| *f == h.id).unwrap_or(usize::MAX), h.name.to_lowercase()));
+    list.sort_by_key(|h| {
+        (
+            FEATURED
+                .iter()
+                .position(|f| *f == h.id)
+                .unwrap_or(usize::MAX),
+            h.name.to_lowercase(),
+        )
+    });
     list
 }
 
@@ -231,7 +323,11 @@ fn parse(text: &str) -> Vec<Harness> {
 
 /// The agent with this id.
 pub async fn find(id: &str) -> Result<Harness, String> {
-    harnesses().await.into_iter().find(|h| h.id == id).ok_or_else(|| format!("No coding agent called '{id}'."))
+    harnesses()
+        .await
+        .into_iter()
+        .find(|h| h.id == id)
+        .ok_or_else(|| format!("No coding agent called '{id}'."))
 }
 
 /// Whether the agent with this id can run now: it is in the list and its launcher is on this computer.
@@ -269,8 +365,12 @@ fn npx_cached_script_in(cache: &Path, package: &str) -> Option<PathBuf> {
     };
     for entry in std::fs::read_dir(cache.join("_npx")).ok()?.flatten() {
         let dir = entry.path();
-        let Ok(text) = std::fs::read_to_string(dir.join("package.json")) else { continue };
-        let Ok(manifest) = serde_json::from_str::<Value>(&text) else { continue };
+        let Ok(text) = std::fs::read_to_string(dir.join("package.json")) else {
+            continue;
+        };
+        let Ok(manifest) = serde_json::from_str::<Value>(&text) else {
+            continue;
+        };
         let wanted = manifest
             .pointer("/_npx/packages")
             .and_then(Value::as_array)
@@ -279,9 +379,15 @@ fn npx_cached_script_in(cache: &Path, package: &str) -> Option<PathBuf> {
             continue;
         }
         let package_dir = dir.join("node_modules").join(name);
-        let Ok(text) = std::fs::read_to_string(package_dir.join("package.json")) else { continue };
-        let Ok(manifest) = serde_json::from_str::<Value>(&text) else { continue };
-        let Some(bin) = super::install::bin_script(&manifest, name) else { continue };
+        let Ok(text) = std::fs::read_to_string(package_dir.join("package.json")) else {
+            continue;
+        };
+        let Ok(manifest) = serde_json::from_str::<Value>(&text) else {
+            continue;
+        };
+        let Some(bin) = super::install::bin_script(&manifest, name) else {
+            continue;
+        };
         let script = package_dir.join(bin);
         if script.is_file() {
             return Some(script);
@@ -307,16 +413,36 @@ mod tests {
         .to_string();
         let list = parse(&text);
         assert_eq!(list.len(), 2);
-        assert_eq!((list[0].launcher.as_str(), list[0].args.clone()), ("npx", vec!["-y".into(), "@google/gemini-cli@0.66.0".into(), "--acp".into()]));
+        assert_eq!(
+            (list[0].launcher.as_str(), list[0].args.clone()),
+            (
+                "npx",
+                vec![
+                    "-y".into(),
+                    "@google/gemini-cli@0.66.0".into(),
+                    "--acp".into()
+                ]
+            )
+        );
         assert_eq!(list[0].package(), Some("@google/gemini-cli@0.66.0"));
-        assert_eq!((list[1].launcher.as_str(), list[1].args.clone(), list[1].env["A"].as_str()), ("uvx", vec!["tool==1.0".into()], "b"));
+        assert_eq!(
+            (
+                list[1].launcher.as_str(),
+                list[1].args.clone(),
+                list[1].env["A"].as_str()
+            ),
+            ("uvx", vec!["tool==1.0".into()], "b")
+        );
         assert_eq!(list[1].package(), None);
     }
 
     #[test]
     fn the_built_in_list_runs_through_npx_and_needs_setup() {
         let list = fallback();
-        assert!(list.iter().all(|h| h.launcher == "npx" && h.args[0] == "-y"));
+        assert!(
+            list.iter()
+                .all(|h| h.launcher == "npx" && h.args[0] == "-y")
+        );
         assert!(list.iter().all(Harness::needs_setup));
         assert!(list.iter().any(|h| h.id == "claude-acp"));
     }
@@ -327,12 +453,26 @@ mod tests {
         let entry = cache.join("_npx").join("abc");
         let package = entry.join("node_modules").join("@scope").join("agent");
         std::fs::create_dir_all(package.join("dist")).unwrap_or_default();
-        std::fs::write(entry.join("package.json"), r#"{"_npx":{"packages":["@scope/agent@1.2.3"]}}"#).unwrap_or_default();
-        std::fs::write(package.join("package.json"), r#"{"bin":{"agent":"dist/index.js"}}"#).unwrap_or_default();
+        std::fs::write(
+            entry.join("package.json"),
+            r#"{"_npx":{"packages":["@scope/agent@1.2.3"]}}"#,
+        )
+        .unwrap_or_default();
+        std::fs::write(
+            package.join("package.json"),
+            r#"{"bin":{"agent":"dist/index.js"}}"#,
+        )
+        .unwrap_or_default();
         std::fs::write(package.join("dist").join("index.js"), "").unwrap_or_default();
-        assert_eq!(npx_cached_script_in(&cache, "@scope/agent@1.2.3"), Some(package.join("dist/index.js")));
+        assert_eq!(
+            npx_cached_script_in(&cache, "@scope/agent@1.2.3"),
+            Some(package.join("dist/index.js"))
+        );
         assert_eq!(npx_cached_script_in(&cache, "@scope/agent@9.9.9"), None);
-        assert_eq!(npx_cached_script_in(&cache.join("missing"), "@scope/agent@1.2.3"), None);
+        assert_eq!(
+            npx_cached_script_in(&cache.join("missing"), "@scope/agent@1.2.3"),
+            None
+        );
         let _ = std::fs::remove_dir_all(cache);
     }
 

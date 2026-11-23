@@ -19,6 +19,7 @@ futures.workspace = true
 reqwest.workspace = true
 regex = "1.12.4"
 url = "2.5.8"
+keyring = { version = "3", features = ["windows-native", "apple-native", "sync-secret-service"] }
 base64 = "0.22.1"
 sha2 = "0.10.9"
 image = "0.25"

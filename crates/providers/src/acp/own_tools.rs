@@ -49,7 +49,10 @@ pub struct ToolOutput {
 
 impl ToolOutput {
     pub fn text(text: impl Into<String>, is_error: bool) -> Self {
-        Self { content: vec![json!({ "type": "text", "text": text.into() })], is_error }
+        Self {
+            content: vec![json!({ "type": "text", "text": text.into() })],
+            is_error,
+        }
     }
 
     fn result(self) -> Value {
@@ -69,7 +72,12 @@ pub struct OwnTools {
 
 impl std::fmt::Debug for OwnTools {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OwnTools").field("tools", &self.tools.iter().map(|t| &t.name).collect::<Vec<_>>()).finish_non_exhaustive()
+        f.debug_struct("OwnTools")
+            .field(
+                "tools",
+                &self.tools.iter().map(|t| &t.name).collect::<Vec<_>>(),
+            )
+            .finish_non_exhaustive()
     }
 }
 
@@ -87,7 +95,11 @@ pub struct Bridge {
 impl Bridge {
     #[must_use]
     pub fn new() -> Arc<Self> {
-        Arc::new(Self { offered: Mutex::new(Vec::new()), turn: Mutex::new(None), slots: tokio::sync::Semaphore::new(MAX_AT_ONCE) })
+        Arc::new(Self {
+            offered: Mutex::new(Vec::new()),
+            turn: Mutex::new(None),
+            slots: tokio::sync::Semaphore::new(MAX_AT_ONCE),
+        })
     }
 
     /// Sets what is offered. The agent lists the tools when its session opens, so this comes first.
@@ -115,7 +127,11 @@ impl Bridge {
     }
 
     fn is_offered(&self, name: &str) -> bool {
-        self.offered.lock().unwrap_or_else(PoisonError::into_inner).iter().any(|t| t.name == name)
+        self.offered
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .any(|t| t.name == name)
     }
 
     /// Answers one MCP request. `Ok` is the result; `Err` a JSON-RPC error.
@@ -127,14 +143,25 @@ impl Bridge {
                 "serverInfo": { "name": SERVER_NAME, "version": env!("CARGO_PKG_VERSION") },
             })),
             "ping" => Ok(json!({})),
+            // A client that sends its notifications as requests (`notifications/initialized` after the handshake)
+            // is answered, not told the method is missing: some refuse to start the server over that.
+            n if n.starts_with("notifications/") => Ok(json!({})),
             "tools/list" => Ok(json!({ "tools": self.descriptors() })),
             "tools/call" => {
                 let name = params.get("name").and_then(Value::as_str).unwrap_or("");
                 if !self.is_offered(name) {
                     return Err((-32602, format!("unknown tool: {name}")));
                 }
-                let args = params.get("arguments").filter(|a| a.is_object()).cloned().unwrap_or_else(|| json!({}));
-                let call = self.turn.lock().unwrap_or_else(PoisonError::into_inner).clone();
+                let args = params
+                    .get("arguments")
+                    .filter(|a| a.is_object())
+                    .cloned()
+                    .unwrap_or_else(|| json!({}));
+                let call = self
+                    .turn
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .clone();
                 let Some(call) = call else {
                     return Ok(ToolOutput::text(
                         "Vivianne has no turn running to answer this call in, so it was not run. Ask again while working on something for the user.",
@@ -142,7 +169,11 @@ impl Bridge {
                     )
                     .result());
                 };
-                let _slot = self.slots.acquire().await.map_err(|_| (-32603, "the server is closing".to_owned()))?;
+                let _slot = self
+                    .slots
+                    .acquire()
+                    .await
+                    .map_err(|_| (-32603, "the server is closing".to_owned()))?;
                 Ok(call(name.to_owned(), args).await.result())
             }
             _ => Err((-32601, format!("method not found: {method}"))),
@@ -155,28 +186,50 @@ impl Bridge {
 /// An MCP server the user has added, handed to the agent so it has the same connected tools Vivianne does.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum McpServerSpec {
-    Stdio { name: String, command: String, args: Vec<String>, env: Vec<(String, String)> },
-    Http { name: String, url: String, headers: Vec<(String, String)> },
+    Stdio {
+        name: String,
+        command: String,
+        args: Vec<String>,
+        env: Vec<(String, String)>,
+    },
+    Http {
+        name: String,
+        url: String,
+        headers: Vec<(String, String)>,
+    },
 }
 
 /// The servers in the shape `session/new` takes. Left out: a transport the agent did not say it takes. v2 makes
 /// every transport name itself; in v1 stdio is the default and has no `type`.
 #[must_use]
 pub fn servers_json(specs: &[McpServerSpec], v2: bool, stdio: bool, http: bool) -> Vec<Value> {
-    let pairs = |m: &[(String, String)]| m.iter().map(|(k, v)| json!({ "name": k, "value": v })).collect::<Vec<_>>();
+    let pairs = |m: &[(String, String)]| {
+        m.iter()
+            .map(|(k, v)| json!({ "name": k, "value": v }))
+            .collect::<Vec<_>>()
+    };
     specs
         .iter()
         .filter_map(|spec| match spec {
-            McpServerSpec::Stdio { name, command, args, env } if stdio => {
+            McpServerSpec::Stdio {
+                name,
+                command,
+                args,
+                env,
+            } if stdio => {
                 // The protocol asks for an absolute path.
-                let path = which::which(command).map_or_else(|_| command.clone(), |p| p.display().to_string());
-                let mut server = json!({ "name": name, "command": path, "args": args, "env": pairs(env) });
+                let path = which::which(command)
+                    .map_or_else(|_| command.clone(), |p| p.display().to_string());
+                let mut server =
+                    json!({ "name": name, "command": path, "args": args, "env": pairs(env) });
                 if v2 {
                     server["type"] = json!("stdio");
                 }
                 Some(server)
             }
-            McpServerSpec::Http { name, url, headers } if http => Some(json!({ "type": "http", "name": name, "url": url, "headers": pairs(headers) })),
+            McpServerSpec::Http { name, url, headers } if http => {
+                Some(json!({ "type": "http", "name": name, "url": url, "headers": pairs(headers) }))
+            }
             _ => None,
         })
         .collect()
@@ -191,7 +244,9 @@ pub fn instructions(plan_mode: bool, tools: &[OfferedTool]) -> Option<String> {
     if !plan_mode && tools.is_empty() {
         return None;
     }
-    let mut s = String::from("<vivianne>\nYou are running inside Vivianne, a desktop app, working for the user in their project.\n");
+    let mut s = String::from(
+        "<vivianne>\nYou are running inside Vivianne, a desktop app, working for the user in their project.\n",
+    );
     if !tools.is_empty() {
         s.push_str(&format!("Vivianne's own tools are offered to you as MCP tools from the \"{SERVER_NAME}\" server:\n"));
         for tool in tools {
@@ -211,7 +266,11 @@ pub fn instructions(plan_mode: bool, tools: &[OfferedTool]) -> Option<String> {
 /// What to send now, given what was sent last and the state now: the text when it changed, a note when plan mode
 /// went off and nothing else is left to say, else nothing. Returns what to send and what to remember as sent.
 #[must_use]
-pub fn next_instructions(last: &Option<String>, plan_mode: bool, tools: &[OfferedTool]) -> (Option<String>, Option<String>) {
+pub fn next_instructions(
+    last: &Option<String>,
+    plan_mode: bool,
+    tools: &[OfferedTool],
+) -> (Option<String>, Option<String>) {
     let want = instructions(plan_mode, tools);
     if want == *last {
         return (None, want);
@@ -234,7 +293,9 @@ pub struct Http {
 
 impl std::fmt::Debug for Http {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Http").field("url", &self.url).finish_non_exhaustive()
+        f.debug_struct("Http")
+            .field("url", &self.url)
+            .finish_non_exhaustive()
     }
 }
 
@@ -249,18 +310,30 @@ impl Drop for Http {
 pub async fn serve(bridge: Arc<Bridge>) -> std::io::Result<Http> {
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await?;
     let port = listener.local_addr()?.port();
-    let token = format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple());
+    let token = format!(
+        "{}{}",
+        uuid::Uuid::new_v4().simple(),
+        uuid::Uuid::new_v4().simple()
+    );
     let wanted = token.clone();
     let task = tokio::spawn(async move {
         while let Ok((sock, _)) = listener.accept().await {
             let (bridge, token) = (bridge.clone(), wanted.clone());
             tokio::spawn(async move {
                 // A call may wait on an approval, so the ceiling is generous.
-                let _ = tokio::time::timeout(Duration::from_secs(1200), connection(sock, bridge, token, port)).await;
+                let _ = tokio::time::timeout(
+                    Duration::from_secs(1200),
+                    connection(sock, bridge, token, port),
+                )
+                .await;
             });
         }
     });
-    Ok(Http { url: format!("http://127.0.0.1:{port}/mcp"), token, task })
+    Ok(Http {
+        url: format!("http://127.0.0.1:{port}/mcp"),
+        token,
+        task,
+    })
 }
 
 struct Request {
@@ -296,35 +369,57 @@ async fn read_request(sock: &mut tokio::net::TcpStream) -> Result<Request, u16> 
             return Err(431);
         }
         let mut chunk = [0u8; 4096];
-        let n = tokio::time::timeout(Duration::from_secs(30), sock.read(&mut chunk)).await.map_err(|_| 400u16)?.map_err(|_| 400u16)?;
+        let n = tokio::time::timeout(Duration::from_secs(30), sock.read(&mut chunk))
+            .await
+            .map_err(|_| 400u16)?
+            .map_err(|_| 400u16)?;
         if n == 0 {
             return Err(400);
         }
         buf.extend_from_slice(&chunk[..n]);
     };
-    let head = std::str::from_utf8(&buf[..head_end]).map_err(|_| 400u16)?.to_owned();
+    let head = std::str::from_utf8(&buf[..head_end])
+        .map_err(|_| 400u16)?
+        .to_owned();
     let mut lines = head.split("\r\n");
     let mut first = lines.next().unwrap_or("").split_whitespace();
-    let (method, path) = (first.next().unwrap_or("").to_owned(), first.next().unwrap_or("").to_owned());
-    let headers: HashMap<String, String> = lines.filter_map(|l| l.split_once(':')).map(|(k, v)| (k.trim().to_ascii_lowercase(), v.trim().to_owned())).collect();
+    let (method, path) = (
+        first.next().unwrap_or("").to_owned(),
+        first.next().unwrap_or("").to_owned(),
+    );
+    let headers: HashMap<String, String> = lines
+        .filter_map(|l| l.split_once(':'))
+        .map(|(k, v)| (k.trim().to_ascii_lowercase(), v.trim().to_owned()))
+        .collect();
     if headers.contains_key("transfer-encoding") {
         return Err(501);
     }
-    let length: usize = headers.get("content-length").and_then(|v| v.parse().ok()).unwrap_or(0);
+    let length: usize = headers
+        .get("content-length")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
     if length > MAX_BODY {
         return Err(413);
     }
     let mut body = buf[head_end + 4..].to_vec();
     while body.len() < length {
         let mut chunk = [0u8; 8192];
-        let n = tokio::time::timeout(Duration::from_secs(30), sock.read(&mut chunk)).await.map_err(|_| 400u16)?.map_err(|_| 400u16)?;
+        let n = tokio::time::timeout(Duration::from_secs(30), sock.read(&mut chunk))
+            .await
+            .map_err(|_| 400u16)?
+            .map_err(|_| 400u16)?;
         if n == 0 {
             return Err(400);
         }
         body.extend_from_slice(&chunk[..n]);
     }
     body.truncate(length);
-    Ok(Request { method, path, headers, body })
+    Ok(Request {
+        method,
+        path,
+        headers,
+        body,
+    })
 }
 
 /// Whether two secrets are equal, in the same time whatever they share.
@@ -335,13 +430,21 @@ fn same(a: &[u8], b: &[u8]) -> bool {
 /// The status and the JSON body (if any) for a request.
 async fn answer(req: &Request, bridge: &Bridge, token: &str, port: u16) -> (u16, Option<Value>) {
     let loopback = [format!("127.0.0.1:{port}"), format!("localhost:{port}")];
-    if !req.headers.get("host").is_some_and(|h| loopback.iter().any(|l| l == h)) {
+    if !req
+        .headers
+        .get("host")
+        .is_some_and(|h| loopback.iter().any(|l| l == h))
+    {
         return (403, None);
     }
     if req.path.split('?').next() != Some("/mcp") {
         return (404, None);
     }
-    let bearer = req.headers.get("authorization").and_then(|a| a.strip_prefix("Bearer ")).unwrap_or("");
+    let bearer = req
+        .headers
+        .get("authorization")
+        .and_then(|a| a.strip_prefix("Bearer "))
+        .unwrap_or("");
     if !same(bearer.as_bytes(), token.as_bytes()) {
         return (401, None);
     }
@@ -349,28 +452,54 @@ async fn answer(req: &Request, bridge: &Bridge, token: &str, port: u16) -> (u16,
         return (405, None);
     }
     let Ok(msg) = serde_json::from_slice::<Value>(&req.body) else {
-        return (400, Some(json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": "parse error" } })));
+        return (
+            400,
+            Some(
+                json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": "parse error" } }),
+            ),
+        );
     };
     if !msg.is_object() {
-        return (400, Some(json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32600, "message": "one message per request" } })));
+        return (
+            400,
+            Some(
+                json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32600, "message": "one message per request" } }),
+            ),
+        );
     }
     // No id: a notification, which is not answered.
-    let Some(id) = msg.get("id").cloned() else { return (202, None) };
+    let Some(id) = msg.get("id").cloned() else {
+        return (202, None);
+    };
     let method = msg.get("method").and_then(Value::as_str).unwrap_or("");
-    let reply = match bridge.request(method, msg.get("params").unwrap_or(&Value::Null)).await {
+    let reply = match bridge
+        .request(method, msg.get("params").unwrap_or(&Value::Null))
+        .await
+    {
         Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
-        Err((code, message)) => json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } }),
+        Err((code, message)) => {
+            json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
+        }
     };
     (200, Some(reply))
 }
 
-async fn connection(mut sock: tokio::net::TcpStream, bridge: Arc<Bridge>, token: String, port: u16) {
+async fn connection(
+    mut sock: tokio::net::TcpStream,
+    bridge: Arc<Bridge>,
+    token: String,
+    port: u16,
+) {
     let (status, body) = match read_request(&mut sock).await {
         Ok(req) => answer(&req, &bridge, &token, port).await,
         Err(code) => (code, None),
     };
     let body = body.map(|b| b.to_string()).unwrap_or_default();
-    let mut head = format!("HTTP/1.1 {status} {}\r\nContent-Length: {}\r\nConnection: close\r\n", status_text(status), body.len());
+    let mut head = format!(
+        "HTTP/1.1 {status} {}\r\nContent-Length: {}\r\nConnection: close\r\n",
+        status_text(status),
+        body.len()
+    );
     if !body.is_empty() {
         head.push_str("Content-Type: application/json\r\n");
     }
@@ -390,7 +519,12 @@ mod tests {
     use super::*;
 
     fn tool(name: &str) -> OfferedTool {
-        OfferedTool { name: name.into(), summary: format!("does {name}"), description: format!("Does {name}."), schema: json!({ "type": "object", "properties": {} }) }
+        OfferedTool {
+            name: name.into(),
+            summary: format!("does {name}"),
+            description: format!("Does {name}."),
+            schema: json!({ "type": "object", "properties": {} }),
+        }
     }
 
     fn bridge() -> Arc<Bridge> {
@@ -400,21 +534,47 @@ mod tests {
     }
 
     fn echo() -> CallFn {
-        Arc::new(|name, args| Box::pin(async move { ToolOutput::text(format!("{name}:{args}"), false) }))
+        Arc::new(|name, args| {
+            Box::pin(async move { ToolOutput::text(format!("{name}:{args}"), false) })
+        })
     }
 
     #[tokio::test]
     async fn it_introduces_itself_and_lists_only_what_is_offered() {
         let bridge = bridge();
-        let hello = bridge.request("initialize", &json!({ "protocolVersion": "2025-06-18" })).await.expect("answers");
-        assert_eq!(hello["protocolVersion"], "2025-06-18", "the version the client asked for is the one answered");
+        let hello = bridge
+            .request("initialize", &json!({ "protocolVersion": "2025-06-18" }))
+            .await
+            .expect("answers");
+        assert_eq!(
+            hello["protocolVersion"], "2025-06-18",
+            "the version the client asked for is the one answered"
+        );
         assert_eq!(hello["serverInfo"]["name"], "vivianne");
-        assert_eq!(bridge.request("ping", &Value::Null).await.expect("answers"), json!({}));
-        let listed = bridge.request("tools/list", &Value::Null).await.expect("answers");
-        let names: Vec<&str> = listed["tools"].as_array().expect("a list").iter().filter_map(|t| t["name"].as_str()).collect();
+        assert_eq!(
+            bridge.request("ping", &Value::Null).await.expect("answers"),
+            json!({})
+        );
+        let listed = bridge
+            .request("tools/list", &Value::Null)
+            .await
+            .expect("answers");
+        let names: Vec<&str> = listed["tools"]
+            .as_array()
+            .expect("a list")
+            .iter()
+            .filter_map(|t| t["name"].as_str())
+            .collect();
         assert_eq!(names, ["recall", "remember"]);
         assert_eq!(listed["tools"][0]["inputSchema"]["type"], "object");
-        assert_eq!(bridge.request("resources/list", &Value::Null).await.expect_err("not a method").0, -32601);
+        assert_eq!(
+            bridge
+                .request("resources/list", &Value::Null)
+                .await
+                .expect_err("not a method")
+                .0,
+            -32601
+        );
     }
 
     #[tokio::test]
@@ -422,19 +582,47 @@ mod tests {
         let bridge = bridge();
         let call = |name: &str| json!({ "name": name, "arguments": { "q": 1 } });
         // Nobody is watching: refused, as a tool error the agent can read.
-        let idle = bridge.request("tools/call", &call("recall")).await.expect("answers");
+        let idle = bridge
+            .request("tools/call", &call("recall"))
+            .await
+            .expect("answers");
         assert_eq!(idle["isError"], true);
-        assert!(idle["content"][0]["text"].as_str().is_some_and(|t| t.contains("no turn running")));
+        assert!(
+            idle["content"][0]["text"]
+                .as_str()
+                .is_some_and(|t| t.contains("no turn running"))
+        );
 
         bridge.begin(echo());
-        let ran = bridge.request("tools/call", &call("recall")).await.expect("answers");
-        assert_eq!((ran["isError"].clone(), ran["content"][0]["text"].clone()), (json!(false), json!("recall:{\"q\":1}")));
+        let ran = bridge
+            .request("tools/call", &call("recall"))
+            .await
+            .expect("answers");
+        assert_eq!(
+            (ran["isError"].clone(), ran["content"][0]["text"].clone()),
+            (json!(false), json!("recall:{\"q\":1}"))
+        );
         // A tool that is not on the list is not run, however it is asked for.
         for name in ["vault", "shell", "write", "nope"] {
-            assert_eq!(bridge.request("tools/call", &call(name)).await.expect_err("refused").0, -32602, "{name}");
+            assert_eq!(
+                bridge
+                    .request("tools/call", &call(name))
+                    .await
+                    .expect_err("refused")
+                    .0,
+                -32602,
+                "{name}"
+            );
         }
         bridge.end();
-        assert_eq!(bridge.request("tools/call", &call("recall")).await.expect("answers")["isError"], true, "the turn is over");
+        assert_eq!(
+            bridge
+                .request("tools/call", &call("recall"))
+                .await
+                .expect("answers")["isError"],
+            true,
+            "the turn is over"
+        );
     }
 
     #[test]
@@ -454,7 +642,11 @@ mod tests {
         let (send, last) = next_instructions(&last, false, &[]);
         assert!(send.is_some_and(|s| s.contains("Plan mode is off")));
         assert_eq!(last, None);
-        assert_eq!(next_instructions(&last, false, &[]).0, None, "and then it is quiet");
+        assert_eq!(
+            next_instructions(&last, false, &[]).0,
+            None,
+            "and then it is quiet"
+        );
         // With tools, the text carries the plan line itself and is sent whole when it changes.
         let (_, last) = next_instructions(&None, false, &tools);
         let (send, _) = next_instructions(&last, true, &tools);
@@ -463,16 +655,26 @@ mod tests {
 
     /// One raw HTTP exchange with the endpoint.
     async fn exchange(port: u16, request: &str) -> String {
-        let mut sock = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.expect("connects");
+        let mut sock = tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .expect("connects");
         sock.write_all(request.as_bytes()).await.expect("writes");
         let mut out = Vec::new();
-        tokio::time::timeout(Duration::from_secs(5), sock.read_to_end(&mut out)).await.expect("an answer").expect("reads");
+        tokio::time::timeout(Duration::from_secs(5), sock.read_to_end(&mut out))
+            .await
+            .expect("an answer")
+            .expect("reads");
         String::from_utf8_lossy(&out).into_owned()
     }
 
     fn post(token: Option<&str>, host: &str, body: &str) -> String {
-        let auth = token.map(|t| format!("Authorization: Bearer {t}\r\n")).unwrap_or_default();
-        format!("POST /mcp HTTP/1.1\r\nHost: {host}\r\n{auth}Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len())
+        let auth = token
+            .map(|t| format!("Authorization: Bearer {t}\r\n"))
+            .unwrap_or_default();
+        format!(
+            "POST /mcp HTTP/1.1\r\nHost: {host}\r\n{auth}Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        )
     }
 
     #[tokio::test]
@@ -480,56 +682,134 @@ mod tests {
         let bridge = bridge();
         bridge.begin(echo());
         let http = serve(bridge).await.expect("a port");
-        let port: u16 = http.url.rsplit(':').next().expect("a port").trim_end_matches("/mcp").parse().expect("a number");
+        let port: u16 = http
+            .url
+            .rsplit(':')
+            .next()
+            .expect("a port")
+            .trim_end_matches("/mcp")
+            .parse()
+            .expect("a number");
         let host = format!("127.0.0.1:{port}");
         let list = r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#;
 
-        assert!(exchange(port, &post(None, &host, list)).await.starts_with("HTTP/1.1 401"));
-        assert!(exchange(port, &post(Some("not-it"), &host, list)).await.starts_with("HTTP/1.1 401"));
+        assert!(
+            exchange(port, &post(None, &host, list))
+                .await
+                .starts_with("HTTP/1.1 401")
+        );
+        assert!(
+            exchange(port, &post(Some("not-it"), &host, list))
+                .await
+                .starts_with("HTTP/1.1 401")
+        );
         let rebinding = exchange(port, &post(Some(&http.token), "evil.example:80", list)).await;
-        assert!(rebinding.starts_with("HTTP/1.1 403"), "a page in the user's browser can't reach it by name: {rebinding}");
+        assert!(
+            rebinding.starts_with("HTTP/1.1 403"),
+            "a page in the user's browser can't reach it by name: {rebinding}"
+        );
 
         let ok = exchange(port, &post(Some(&http.token), &host, list)).await;
         assert!(ok.starts_with("HTTP/1.1 200"), "{ok}");
-        let body: Value = serde_json::from_str(ok.split("\r\n\r\n").nth(1).unwrap_or_default()).expect("json");
-        assert_eq!((body["jsonrpc"].clone(), body["id"].clone()), (json!("2.0"), json!(1)));
-        assert!(body["result"]["tools"].as_array().is_some_and(|t| t.iter().any(|t| t["name"] == "recall")));
+        let body: Value =
+            serde_json::from_str(ok.split("\r\n\r\n").nth(1).unwrap_or_default()).expect("json");
+        assert_eq!(
+            (body["jsonrpc"].clone(), body["id"].clone()),
+            (json!("2.0"), json!(1))
+        );
+        assert!(
+            body["result"]["tools"]
+                .as_array()
+                .is_some_and(|t| t.iter().any(|t| t["name"] == "recall"))
+        );
 
         let called = exchange(port, &post(Some(&http.token), &host, r#"{"jsonrpc":"2.0","id":"c","method":"tools/call","params":{"name":"recall","arguments":{"q":"x"}}}"#)).await;
         assert!(called.contains("recall:{\\\"q\\\":\\\"x\\\"}"), "{called}");
         let refused = exchange(port, &post(Some(&http.token), &host, r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"vault","arguments":{}}}"#)).await;
         assert!(refused.contains("-32602"), "{refused}");
 
-        let note = exchange(port, &post(Some(&http.token), &host, r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#)).await;
-        assert!(note.starts_with("HTTP/1.1 202"), "a notification is accepted, not answered: {note}");
-        assert!(exchange(port, &post(Some(&http.token), &host, "[]")).await.starts_with("HTTP/1.1 400"));
+        let note = exchange(
+            port,
+            &post(
+                Some(&http.token),
+                &host,
+                r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+            ),
+        )
+        .await;
+        assert!(
+            note.starts_with("HTTP/1.1 202"),
+            "a notification is accepted, not answered: {note}"
+        );
+        assert!(
+            exchange(port, &post(Some(&http.token), &host, "[]"))
+                .await
+                .starts_with("HTTP/1.1 400")
+        );
         let junk = exchange(port, &post(Some(&http.token), &host, "not json")).await;
-        assert!(junk.starts_with("HTTP/1.1 400") && junk.contains("-32700"), "{junk}");
-        let get = exchange(port, &format!("GET /mcp HTTP/1.1\r\nHost: {host}\r\nAuthorization: Bearer {}\r\n\r\n", http.token)).await;
+        assert!(
+            junk.starts_with("HTTP/1.1 400") && junk.contains("-32700"),
+            "{junk}"
+        );
+        let get = exchange(
+            port,
+            &format!(
+                "GET /mcp HTTP/1.1\r\nHost: {host}\r\nAuthorization: Bearer {}\r\n\r\n",
+                http.token
+            ),
+        )
+        .await;
         assert!(get.starts_with("HTTP/1.1 405"), "{get}");
         let elsewhere = exchange(port, &format!("POST /other HTTP/1.1\r\nHost: {host}\r\nAuthorization: Bearer {}\r\nContent-Length: 0\r\n\r\n", http.token)).await;
         assert!(elsewhere.starts_with("HTTP/1.1 404"), "{elsewhere}");
-        let chunked = exchange(port, &format!("POST /mcp HTTP/1.1\r\nHost: {host}\r\nTransfer-Encoding: chunked\r\n\r\n")).await;
+        let chunked = exchange(
+            port,
+            &format!("POST /mcp HTTP/1.1\r\nHost: {host}\r\nTransfer-Encoding: chunked\r\n\r\n"),
+        )
+        .await;
         assert!(chunked.starts_with("HTTP/1.1 501"), "{chunked}");
 
         // Closing it closes the port.
         drop(http);
         tokio::time::sleep(Duration::from_millis(100)).await;
-        assert!(tokio::net::TcpStream::connect(("127.0.0.1", port)).await.is_err(), "nothing listens once it is dropped");
+        assert!(
+            tokio::net::TcpStream::connect(("127.0.0.1", port))
+                .await
+                .is_err(),
+            "nothing listens once it is dropped"
+        );
     }
 
     #[test]
-    fn the_users_servers_go_to_the_agent_in_the_shape_its_version_takes_and_only_over_what_it_takes() {
+    fn the_users_servers_go_to_the_agent_in_the_shape_its_version_takes_and_only_over_what_it_takes()
+     {
         let specs = [
-            McpServerSpec::Stdio { name: "mem".into(), command: "no-such-program-here".into(), args: vec!["-y".into()], env: vec![("K".into(), "V".into())] },
-            McpServerSpec::Http { name: "web".into(), url: "https://x.test/mcp".into(), headers: vec![("A".into(), "B".into())] },
+            McpServerSpec::Stdio {
+                name: "mem".into(),
+                command: "no-such-program-here".into(),
+                args: vec!["-y".into()],
+                env: vec![("K".into(), "V".into())],
+            },
+            McpServerSpec::Http {
+                name: "web".into(),
+                url: "https://x.test/mcp".into(),
+                headers: vec![("A".into(), "B".into())],
+            },
         ];
         let v1 = servers_json(&specs, false, true, true);
         assert_eq!(v1.len(), 2);
-        assert!(v1[0].get("type").is_none() && v1[0]["env"][0]["name"] == "K", "{}", v1[0]);
+        assert!(
+            v1[0].get("type").is_none() && v1[0]["env"][0]["name"] == "K",
+            "{}",
+            v1[0]
+        );
         assert_eq!(v1[1]["type"], "http");
         let v2 = servers_json(&specs, true, true, false);
-        assert_eq!((v2.len(), v2[0]["type"].clone()), (1, json!("stdio")), "no http: only the program");
+        assert_eq!(
+            (v2.len(), v2[0]["type"].clone()),
+            (1, json!("stdio")),
+            "no http: only the program"
+        );
         assert!(servers_json(&specs, true, false, false).is_empty());
     }
 
@@ -547,15 +827,47 @@ mod tests {
         };
         ask(1, "mcp/connect", json!({ "serverId": "vivianne" }));
         let connected = agent.recv().await;
-        assert!(connected["result"]["connectionId"].as_str().is_some_and(|c| c.starts_with("vivianne-")), "{connected}");
+        assert!(
+            connected["result"]["connectionId"]
+                .as_str()
+                .is_some_and(|c| c.starts_with("vivianne-")),
+            "{connected}"
+        );
         ask(2, "mcp/connect", json!({ "serverId": "someone-else" }));
         assert_eq!(agent.recv().await["error"]["code"], -32602);
         ask(3, "mcp/message", json!({ "method": "tools/list" }));
         assert_eq!(agent.recv().await["result"]["tools"][0]["name"], "recall");
-        ask(4, "mcp/message", json!({ "method": "tools/call", "params": { "name": "recall", "arguments": { "q": 1 } } }));
-        assert_eq!(agent.recv().await["result"]["content"][0]["text"], "recall:{\"q\":1}");
-        ask(5, "mcp/message", json!({ "method": "tools/call", "params": { "name": "shell", "arguments": {} } }));
-        assert_eq!(agent.recv().await["error"]["code"], -32602, "a tool that is not offered is not run");
+        ask(
+            4,
+            "mcp/message",
+            json!({ "method": "tools/call", "params": { "name": "recall", "arguments": { "q": 1 } } }),
+        );
+        assert_eq!(
+            agent.recv().await["result"]["content"][0]["text"],
+            "recall:{\"q\":1}"
+        );
+        ask(
+            5,
+            "mcp/message",
+            json!({ "method": "tools/call", "params": { "name": "shell", "arguments": {} } }),
+        );
+        assert_eq!(
+            agent.recv().await["error"]["code"],
+            -32602,
+            "a tool that is not offered is not run"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_notification_sent_as_a_request_is_acknowledged() {
+        let bridge = bridge();
+        assert_eq!(
+            bridge
+                .request("notifications/initialized", &Value::Null)
+                .await
+                .expect("answers"),
+            json!({})
+        );
     }
 
     #[test]

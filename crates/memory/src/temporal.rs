@@ -19,14 +19,34 @@ pub struct Window {
 /// lift something unrelated over a clearly better match.
 pub const BOOST: f32 = 0.25;
 
-const MONTHS: [&str; 12] = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+const MONTHS: [&str; 12] = [
+    "january",
+    "february",
+    "march",
+    "april",
+    "may",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
+];
 
 fn ms(d: NaiveDate) -> u64 {
-    u64::try_from(d.and_hms_opt(0, 0, 0).map_or(0, |t| t.and_utc().timestamp_millis())).unwrap_or(0)
+    u64::try_from(
+        d.and_hms_opt(0, 0, 0)
+            .map_or(0, |t| t.and_utc().timestamp_millis()),
+    )
+    .unwrap_or(0)
 }
 
 fn span(a: NaiveDate, b: NaiveDate) -> Option<Window> {
-    (a < b).then(|| Window { start: ms(a), end: ms(b) })
+    (a < b).then(|| Window {
+        start: ms(a),
+        end: ms(b),
+    })
 }
 
 fn ymd(y: i32, m: u32, d: u32) -> Option<NaiveDate> {
@@ -39,7 +59,11 @@ fn month_start(y: i32, m: u32) -> Option<NaiveDate> {
 
 /// First day of the month after `(y, m)`.
 fn next_month(y: i32, m: u32) -> Option<NaiveDate> {
-    if m == 12 { ymd(y + 1, 1, 1) } else { ymd(y, m + 1, 1) }
+    if m == 12 {
+        ymd(y + 1, 1, 1)
+    } else {
+        ymd(y, m + 1, 1)
+    }
 }
 
 fn month_window(y: i32, m: u32) -> Option<Window> {
@@ -51,13 +75,23 @@ fn year_window(y: i32) -> Option<Window> {
 }
 
 fn number(word: &str) -> Option<i64> {
-    const WORDS: [&str; 13] = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
-    word.parse().ok().or_else(|| WORDS.iter().position(|w| *w == word).map(|i| i as i64)).filter(|n| (1..=1000).contains(n))
+    const WORDS: [&str; 13] = [
+        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+        "eleven", "twelve",
+    ];
+    word.parse()
+        .ok()
+        .or_else(|| WORDS.iter().position(|w| *w == word).map(|i| i as i64))
+        .filter(|n| (1..=1000).contains(n))
 }
 
 /// The window a query talks about, read relative to `today`, or `None` when it names no time.
 pub fn window_of(query: &str, today: NaiveDate) -> Option<Window> {
-    let q: String = query.to_lowercase().chars().map(|c| if c.is_alphanumeric() { c } else { ' ' }).collect();
+    let q: String = query
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { ' ' })
+        .collect();
     let w: Vec<&str> = q.split_whitespace().collect();
     let has = |s: &str| w.contains(&s);
     let (y, m) = (today.year(), today.month());
@@ -68,8 +102,18 @@ pub fn window_of(query: &str, today: NaiveDate) -> Option<Window> {
             continue;
         }
         let unit = w.get(i + 1).copied().unwrap_or("");
-        let n = if *word == "a" || *word == "an" { Some(1) } else { number(word) };
-        if let (Some(n), true) = (n, matches!(unit, "day" | "days" | "week" | "weeks" | "month" | "months" | "year" | "years")) {
+        let n = if *word == "a" || *word == "an" {
+            Some(1)
+        } else {
+            number(word)
+        };
+        if let (Some(n), true) = (
+            n,
+            matches!(
+                unit,
+                "day" | "days" | "week" | "weeks" | "month" | "months" | "year" | "years"
+            ),
+        ) {
             return ago(unit, n, today);
         }
     }
@@ -90,23 +134,41 @@ pub fn window_of(query: &str, today: NaiveDate) -> Option<Window> {
         return span(today - Duration::days(1), today);
     }
     for (i, word) in w.iter().enumerate() {
-        let Some(which) = i.checked_sub(1).map(|j| w[j]).filter(|x| matches!(*x, "last" | "this")) else { continue };
+        let Some(which) = i
+            .checked_sub(1)
+            .map(|j| w[j])
+            .filter(|x| matches!(*x, "last" | "this"))
+        else {
+            continue;
+        };
         let back = which == "last";
         match *word {
             "week" => {
                 let monday = today - Duration::days(today.weekday().num_days_from_monday() as i64);
-                let start = if back { monday - Duration::days(7) } else { monday };
+                let start = if back {
+                    monday - Duration::days(7)
+                } else {
+                    monday
+                };
                 return span(start, start + Duration::days(7));
             }
             "month" => {
-                let (yy, mm) = if back { if m == 1 { (y - 1, 12) } else { (y, m - 1) } } else { (y, m) };
+                let (yy, mm) = if back {
+                    if m == 1 { (y - 1, 12) } else { (y, m - 1) }
+                } else {
+                    (y, m)
+                };
                 return month_window(yy, mm);
             }
             "year" => return year_window(if back { y - 1 } else { y }),
             "spring" | "summer" | "autumn" | "fall" | "winter" => return season(word, back, today),
             name if MONTHS.contains(&name) => {
                 let mi = MONTHS.iter().position(|n| *n == name)? as u32 + 1;
-                let yy = if back { if mi >= m { y - 1 } else { y } } else { y };
+                let yy = if back {
+                    if mi >= m { y - 1 } else { y }
+                } else {
+                    y
+                };
                 return month_window(yy, mi);
             }
             _ => {}
@@ -114,10 +176,20 @@ pub fn window_of(query: &str, today: NaiveDate) -> Option<Window> {
     }
     // "march 2025", "in 2024", "march of 2025"
     for (i, word) in w.iter().enumerate() {
-        let Some(year) = word.parse::<i32>().ok().filter(|n| (1990..=2100).contains(n)) else { continue };
+        let Some(year) = word
+            .parse::<i32>()
+            .ok()
+            .filter(|n| (1990..=2100).contains(n))
+        else {
+            continue;
+        };
         if i > 0 {
             let prev = w[i - 1];
-            let prev2 = if i > 1 && prev == "of" { w[i - 2] } else { prev };
+            let prev2 = if i > 1 && prev == "of" {
+                w[i - 2]
+            } else {
+                prev
+            };
             if let Some(mi) = MONTHS.iter().position(|n| *n == prev2) {
                 return month_window(year, mi as u32 + 1);
             }
@@ -142,10 +214,16 @@ fn ago(unit: &str, n: i64, today: NaiveDate) -> Option<Window> {
     match unit {
         "day" | "days" => span(today - Duration::days(n), today - Duration::days(n - 1)),
         // A week or a month ago is a fuzzy point, not a day: a window of the same unit around it.
-        "week" | "weeks" => span(today - Duration::days(7 * n + 3), today - Duration::days(7 * n - 4)),
+        "week" | "weeks" => span(
+            today - Duration::days(7 * n + 3),
+            today - Duration::days(7 * n - 4),
+        ),
         "month" | "months" => {
             let total = today.year() as i64 * 12 + today.month0() as i64 - n;
-            month_window((total.div_euclid(12)) as i32, total.rem_euclid(12) as u32 + 1)
+            month_window(
+                (total.div_euclid(12)) as i32,
+                total.rem_euclid(12) as u32 + 1,
+            )
         }
         _ => year_window(today.year() - n as i32),
     }
@@ -170,16 +248,33 @@ fn season(name: &str, back: bool, today: NaiveDate) -> Option<Window> {
         _ => 12,
     };
     // The season that begins in `year`; winter runs from December into March of the next year.
-    let build = |year: i32| span(month_start(year, start_month)?, if start_month == 12 { month_start(year + 1, 3)? } else { month_start(year, start_month + 3)? });
+    let build = |year: i32| {
+        span(
+            month_start(year, start_month)?,
+            if start_month == 12 {
+                month_start(year + 1, 3)?
+            } else {
+                month_start(year, start_month + 3)?
+            },
+        )
+    };
     let now = ms(today);
     let (start_year, current) = {
         let this = build(today.year())?;
-        if this.start <= now { (today.year(), this) } else { (today.year() - 1, build(today.year() - 1)?) }
+        if this.start <= now {
+            (today.year(), this)
+        } else {
+            (today.year() - 1, build(today.year() - 1)?)
+        }
     };
     if !back {
         return Some(current);
     }
-    if current.end > now { build(start_year - 1) } else { Some(current) }
+    if current.end > now {
+        build(start_year - 1)
+    } else {
+        Some(current)
+    }
 }
 
 /// How well a fact's time fits a window: 1 inside, falling to 0 within one window's length outside.
@@ -188,7 +283,11 @@ pub fn fit(at_ms: u64, w: Window) -> f32 {
         return 1.0;
     }
     let len = (w.end - w.start).max(1) as f64;
-    let gap = if at_ms < w.start { w.start - at_ms } else { at_ms - w.end } as f64;
+    let gap = if at_ms < w.start {
+        w.start - at_ms
+    } else {
+        at_ms - w.end
+    } as f64;
     (1.0 - gap / len).max(0.0) as f32
 }
 
@@ -206,7 +305,11 @@ mod tests {
     }
     fn range(w: Option<Window>) -> Option<(NaiveDate, NaiveDate)> {
         w.map(|w| {
-            let f = |t: u64| chrono::DateTime::from_timestamp_millis(t as i64).unwrap().date_naive();
+            let f = |t: u64| {
+                chrono::DateTime::from_timestamp_millis(t as i64)
+                    .unwrap()
+                    .date_naive()
+            };
             (f(w.start), f(w.end))
         })
     }
@@ -217,61 +320,166 @@ mod tests {
 
     #[test]
     fn days_weeks_months_and_years_relative_to_today() {
-        assert_eq!(range(window_of("what did we do yesterday", today())), Some((d(2026, 11, 11), d(2026, 11, 12))));
-        assert_eq!(range(window_of("today's plan", today())), Some((d(2026, 11, 12), d(2026, 11, 13))));
-        assert_eq!(range(window_of("last week", today())), Some((d(2026, 11, 2), d(2026, 11, 9))), "weeks run Monday to Sunday");
-        assert_eq!(range(window_of("this week", today())), Some((d(2026, 11, 9), d(2026, 11, 16))));
-        assert_eq!(range(window_of("last month", today())), Some((d(2026, 10, 1), d(2026, 11, 1))));
-        assert_eq!(range(window_of("this year", today())), Some((d(2026, 1, 1), d(2027, 1, 1))));
-        assert_eq!(range(window_of("last year", d(2026, 1, 5))), Some((d(2025, 1, 1), d(2026, 1, 1))));
-        assert_eq!(range(window_of("last month", d(2026, 1, 5))), Some((d(2025, 12, 1), d(2026, 1, 1))), "across a year boundary");
+        assert_eq!(
+            range(window_of("what did we do yesterday", today())),
+            Some((d(2026, 11, 11), d(2026, 11, 12)))
+        );
+        assert_eq!(
+            range(window_of("today's plan", today())),
+            Some((d(2026, 11, 12), d(2026, 11, 13)))
+        );
+        assert_eq!(
+            range(window_of("last week", today())),
+            Some((d(2026, 11, 2), d(2026, 11, 9))),
+            "weeks run Monday to Sunday"
+        );
+        assert_eq!(
+            range(window_of("this week", today())),
+            Some((d(2026, 11, 9), d(2026, 11, 16)))
+        );
+        assert_eq!(
+            range(window_of("last month", today())),
+            Some((d(2026, 10, 1), d(2026, 11, 1)))
+        );
+        assert_eq!(
+            range(window_of("this year", today())),
+            Some((d(2026, 1, 1), d(2027, 1, 1)))
+        );
+        assert_eq!(
+            range(window_of("last year", d(2026, 1, 5))),
+            Some((d(2025, 1, 1), d(2026, 1, 1)))
+        );
+        assert_eq!(
+            range(window_of("last month", d(2026, 1, 5))),
+            Some((d(2025, 12, 1), d(2026, 1, 1))),
+            "across a year boundary"
+        );
     }
 
     #[test]
     fn counted_expressions() {
-        assert_eq!(range(window_of("three days ago", today())), Some((d(2026, 11, 9), d(2026, 11, 10))));
-        assert_eq!(range(window_of("a month ago", today())), Some((d(2026, 10, 1), d(2026, 11, 1))));
-        assert_eq!(range(window_of("2 months ago", today())), Some((d(2026, 9, 1), d(2026, 10, 1))));
-        assert_eq!(range(window_of("14 months ago", d(2026, 3, 1))), Some((d(2025, 1, 1), d(2025, 2, 1))));
-        assert_eq!(range(window_of("two years ago", today())), Some((d(2024, 1, 1), d(2025, 1, 1))));
-        assert_eq!(range(window_of("a week ago", today())), Some((d(2026, 11, 2), d(2026, 11, 9))), "a week ago is a week around that day");
-        assert_eq!(range(window_of("last 10 days", today())), Some((d(2026, 11, 2), d(2026, 11, 13))));
-        assert_eq!(range(window_of("past two weeks", today())), Some((d(2026, 10, 29), d(2026, 11, 13))));
+        assert_eq!(
+            range(window_of("three days ago", today())),
+            Some((d(2026, 11, 9), d(2026, 11, 10)))
+        );
+        assert_eq!(
+            range(window_of("a month ago", today())),
+            Some((d(2026, 10, 1), d(2026, 11, 1)))
+        );
+        assert_eq!(
+            range(window_of("2 months ago", today())),
+            Some((d(2026, 9, 1), d(2026, 10, 1)))
+        );
+        assert_eq!(
+            range(window_of("14 months ago", d(2026, 3, 1))),
+            Some((d(2025, 1, 1), d(2025, 2, 1)))
+        );
+        assert_eq!(
+            range(window_of("two years ago", today())),
+            Some((d(2024, 1, 1), d(2025, 1, 1)))
+        );
+        assert_eq!(
+            range(window_of("a week ago", today())),
+            Some((d(2026, 11, 2), d(2026, 11, 9))),
+            "a week ago is a week around that day"
+        );
+        assert_eq!(
+            range(window_of("last 10 days", today())),
+            Some((d(2026, 11, 2), d(2026, 11, 13)))
+        );
+        assert_eq!(
+            range(window_of("past two weeks", today())),
+            Some((d(2026, 10, 29), d(2026, 11, 13)))
+        );
     }
 
     #[test]
     fn named_months_and_years() {
-        assert_eq!(range(window_of("in 2024", today())), Some((d(2024, 1, 1), d(2025, 1, 1))));
-        assert_eq!(range(window_of("March 2025", today())), Some((d(2025, 3, 1), d(2025, 4, 1))));
-        assert_eq!(range(window_of("in march of 2025", today())), Some((d(2025, 3, 1), d(2025, 4, 1))));
-        assert_eq!(range(window_of("what happened in March", today())), Some((d(2026, 3, 1), d(2026, 4, 1))), "the latest March that has begun");
-        assert_eq!(range(window_of("in december", today())), Some((d(2025, 12, 1), d(2026, 1, 1))), "December has not come yet this year");
-        assert_eq!(range(window_of("last march", today())), Some((d(2026, 3, 1), d(2026, 4, 1))));
-        assert_eq!(range(window_of("last november", today())), Some((d(2025, 11, 1), d(2025, 12, 1))), "last means before this one");
+        assert_eq!(
+            range(window_of("in 2024", today())),
+            Some((d(2024, 1, 1), d(2025, 1, 1)))
+        );
+        assert_eq!(
+            range(window_of("March 2025", today())),
+            Some((d(2025, 3, 1), d(2025, 4, 1)))
+        );
+        assert_eq!(
+            range(window_of("in march of 2025", today())),
+            Some((d(2025, 3, 1), d(2025, 4, 1)))
+        );
+        assert_eq!(
+            range(window_of("what happened in March", today())),
+            Some((d(2026, 3, 1), d(2026, 4, 1))),
+            "the latest March that has begun"
+        );
+        assert_eq!(
+            range(window_of("in december", today())),
+            Some((d(2025, 12, 1), d(2026, 1, 1))),
+            "December has not come yet this year"
+        );
+        assert_eq!(
+            range(window_of("last march", today())),
+            Some((d(2026, 3, 1), d(2026, 4, 1)))
+        );
+        assert_eq!(
+            range(window_of("last november", today())),
+            Some((d(2025, 11, 1), d(2025, 12, 1))),
+            "last means before this one"
+        );
     }
 
     #[test]
     fn seasons() {
-        assert_eq!(range(window_of("last spring", today())), Some((d(2026, 3, 1), d(2026, 6, 1))));
-        assert_eq!(range(window_of("last summer", today())), Some((d(2026, 6, 1), d(2026, 9, 1))));
-        assert_eq!(range(window_of("last autumn", today())), Some((d(2025, 9, 1), d(2025, 12, 1))), "this autumn is still under way");
-        assert_eq!(range(window_of("this autumn", today())), Some((d(2026, 9, 1), d(2026, 12, 1))));
-        assert_eq!(range(window_of("last winter", today())), Some((d(2025, 12, 1), d(2026, 3, 1))));
+        assert_eq!(
+            range(window_of("last spring", today())),
+            Some((d(2026, 3, 1), d(2026, 6, 1)))
+        );
+        assert_eq!(
+            range(window_of("last summer", today())),
+            Some((d(2026, 6, 1), d(2026, 9, 1)))
+        );
+        assert_eq!(
+            range(window_of("last autumn", today())),
+            Some((d(2025, 9, 1), d(2025, 12, 1))),
+            "this autumn is still under way"
+        );
+        assert_eq!(
+            range(window_of("this autumn", today())),
+            Some((d(2026, 9, 1), d(2026, 12, 1)))
+        );
+        assert_eq!(
+            range(window_of("last winter", today())),
+            Some((d(2025, 12, 1), d(2026, 3, 1)))
+        );
     }
 
     #[test]
     fn what_names_no_time_is_not_a_time_question() {
-        for q in ["how do I deploy the app", "may I ask about the build", "what is the plan for 5000 users", "remember the 1234 port", "the last time we spoke", "this is fine"] {
+        for q in [
+            "how do I deploy the app",
+            "may I ask about the build",
+            "what is the plan for 5000 users",
+            "remember the 1234 port",
+            "the last time we spoke",
+            "this is fine",
+        ] {
             assert_eq!(window_of(q, today()), None, "{q}");
         }
     }
 
     #[test]
     fn fit_is_one_inside_and_fades_outside() {
-        let w = Window { start: 1_000, end: 2_000 };
+        let w = Window {
+            start: 1_000,
+            end: 2_000,
+        };
         assert_eq!(fit(1_000, w), 1.0);
         assert_eq!(fit(1_999, w), 1.0);
-        assert_eq!(fit(2_000, w), 1.0, "the end is the first moment outside, at no distance");
+        assert_eq!(
+            fit(2_000, w),
+            1.0,
+            "the end is the first moment outside, at no distance"
+        );
         assert!(fit(2_500, w) > 0.4 && fit(2_500, w) < 0.6);
         assert_eq!(fit(9_000, w), 0.0);
         assert!(fit(0, w) < 1.0);
@@ -279,7 +487,10 @@ mod tests {
 
     #[test]
     fn the_boost_is_bounded_and_centred() {
-        let w = Window { start: 1_000, end: 2_000 };
+        let w = Window {
+            start: 1_000,
+            end: 2_000,
+        };
         assert!((multiplier(1_500, w) - 1.125).abs() < 1e-6);
         assert!((multiplier(9_000, w) - 0.875).abs() < 1e-6);
         assert!((0.875..=1.125).contains(&multiplier(2_300, w)));

@@ -260,7 +260,19 @@ fn to_context(request: &ChatRequest) -> Context {
         messages: request
             .messages
             .iter()
-            .map(|m| to_ai_message(m, &tool_names))
+            .enumerate()
+            .map(|(i, m)| {
+                let mut message = to_ai_message(m, &tool_names);
+                for image in request.images.iter().filter(|image| image.message == i) {
+                    message.content_blocks.push(MessageContent::Text { text: image.label.clone() });
+                    message.content_blocks.push(MessageContent::Image {
+                        url: None,
+                        base64: Some(image.base64.clone()),
+                        media_type: Some(image.media_type.clone()),
+                    });
+                }
+                message
+            })
             .collect(),
         system_prompt: request.system.clone(),
         tools: (!request.tools.is_empty())
@@ -412,7 +424,9 @@ fn spent_by(message: &AssistantMessage) -> Option<Spent> {
     if usage.input == 0 && usage.output == 0 && usage.total_tokens == 0 {
         return None;
     }
-    let cost = usage.cost.as_ref().map(|c| c.total).or_else(|| vivianne_ai::ai::pricing::compute_cost(&message.provider, &message.model, usage));
+    let cost = usage.cost.as_ref().map(|c| c.total).or_else(|| {
+        vivianne_ai::ai::pricing::compute_cost(&message.provider, &message.model, usage)
+    });
     Some(Spent {
         provider: message.provider.clone(),
         model: message.model.clone(),
@@ -435,7 +449,11 @@ fn finishing_events(message: &AssistantMessage) -> Vec<ChatEvent> {
         })),
         _ => None,
     });
-    usage.into_iter().chain(calls).chain([ChatEvent::Done]).collect()
+    usage
+        .into_iter()
+        .chain(calls)
+        .chain([ChatEvent::Done])
+        .collect()
 }
 
 /// Why a finished message counts as a failure, if it does.
@@ -544,14 +562,34 @@ mod tests {
     #[tokio::test]
     async fn a_finished_call_reports_what_it_used_and_a_call_with_no_tokens_reports_nothing() {
         let mut counted = message("stop", vec![], None);
-        counted.usage = Usage { input: 100, output: 20, cache_read: 5, cache_write: 1, total_tokens: 120, cost: None };
+        counted.usage = Usage {
+            input: 100,
+            output: 20,
+            cache_read: 5,
+            cache_write: 1,
+            total_tokens: 120,
+            cost: None,
+        };
         let events = Events::new();
         let got = collect(&events, vec![token("a", "hi", true, Some(counted))]).await;
         let got: Vec<_> = got.into_iter().map(Result::unwrap).collect();
-        let [ChatEvent::Text(_), ChatEvent::Usage(spent), ChatEvent::Done] = got.as_slice() else { panic!("unexpected events: {got:?}") };
-        assert_eq!((spent.input, spent.output, spent.cache_read, spent.cache_write), (100, 20, 5, 1));
+        let [ChatEvent::Text(_), ChatEvent::Usage(spent), ChatEvent::Done] = got.as_slice() else {
+            panic!("unexpected events: {got:?}")
+        };
+        assert_eq!(
+            (
+                spent.input,
+                spent.output,
+                spent.cache_read,
+                spent.cache_write
+            ),
+            (100, 20, 5, 1)
+        );
         assert_eq!((spent.provider.as_str(), spent.model.as_str()), ("p", "m"));
-        assert_eq!(spent.cost, None, "a model with no known price is unknown, not free");
+        assert_eq!(
+            spent.cost, None,
+            "a model with no known price is unknown, not free"
+        );
     }
 
     #[tokio::test]
@@ -584,6 +622,7 @@ mod tests {
                 parameters: json!({"type": "object"}),
             }],
             thinking: Thinking::Medium,
+            images: Vec::new(),
         };
         let context = to_context(&request);
         assert_eq!(context.system_prompt.as_deref(), Some("sys"));

@@ -20,7 +20,11 @@ pub(super) fn disposition(kind: &str, plan_mode: bool, bypass: bool) -> Disposit
         "read" | "search" | "think" => Disposition::Allow,
         "fetch" if plan_mode => Disposition::Allow,
         "switch_mode" => {
-            if bypass { Disposition::Allow } else { Disposition::Ask }
+            if bypass {
+                Disposition::Allow
+            } else {
+                Disposition::Ask
+            }
         }
         _ if plan_mode => Disposition::Deny,
         _ if bypass => Disposition::Allow,
@@ -69,7 +73,10 @@ pub(super) fn call_id(params: &Value) -> Option<&str> {
 pub(super) fn permission_ask(params: &Value, known_kind: Option<String>) -> PermissionAsk {
     let subject = params.get("subject");
     let call = match subject.and_then(|s| s.get("type")).and_then(Value::as_str) {
-        Some("tool_call") => subject.and_then(|s| s.get("toolCall")).cloned().unwrap_or(Value::Null),
+        Some("tool_call") => subject
+            .and_then(|s| s.get("toolCall"))
+            .cloned()
+            .unwrap_or(Value::Null),
         Some("command") => {
             let s = subject.cloned().unwrap_or(Value::Null);
             json!({
@@ -84,14 +91,22 @@ pub(super) fn permission_ask(params: &Value, known_kind: Option<String>) -> Perm
     let text = |v: Option<&Value>| v.and_then(Value::as_str).map(str::to_owned);
     let kind = text(call.get("kind")).or(known_kind);
     let title = text(call.get("title")).or_else(|| text(params.get("title")));
-    let args = call.get("rawInput").filter(|v| v.is_object()).cloned().unwrap_or_else(|| json!({ "title": title }));
+    let args = call
+        .get("rawInput")
+        .filter(|v| v.is_object())
+        .cloned()
+        .unwrap_or_else(|| json!({ "title": title }));
     PermissionAsk {
         id: text(call.get("toolCallId")).unwrap_or_default(),
         name: tool_name(kind.as_deref().unwrap_or_default()).to_owned(),
         args,
         kind,
         title,
-        options: params.get("options").and_then(Value::as_array).cloned().unwrap_or_default(),
+        options: params
+            .get("options")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default(),
     }
 }
 
@@ -102,14 +117,23 @@ pub(super) fn cancelled_outcome() -> Value {
 /// The option of the first kind in `kinds` that the agent offered, in the order of `kinds` (not of the agent's
 /// own list).
 pub(super) fn pick_option(options: &[Value], kinds: &[&str]) -> Option<Value> {
-    kinds.iter().find_map(|kind| options.iter().find(|o| o.get("kind").and_then(Value::as_str) == Some(kind)).and_then(|o| o.get("optionId").cloned()))
+    kinds.iter().find_map(|kind| {
+        options
+            .iter()
+            .find(|o| o.get("kind").and_then(Value::as_str) == Some(kind))
+            .and_then(|o| o.get("optionId").cloned())
+    })
 }
 
 /// The answer to a permission request. Approval is for this call only: `allow_always` would grant the agent a
 /// standing permission the user never gave, so it is never picked, and an agent that offers nothing else is
 /// told the request was cancelled.
 pub(super) fn permission_outcome(options: &[Value], approved: bool) -> Value {
-    let option = if approved { pick_option(options, &["allow_once"]) } else { pick_option(options, &["reject_once", "reject_always"]) };
+    let option = if approved {
+        pick_option(options, &["allow_once"])
+    } else {
+        pick_option(options, &["reject_once", "reject_always"])
+    };
     match option {
         Some(option) => json!({ "outcome": { "outcome": "selected", "optionId": option } }),
         None => cancelled_outcome(),
@@ -132,13 +156,30 @@ mod tests {
     #[test]
     fn approval_never_picks_a_standing_grant_and_follows_our_order() {
         let options = offered();
-        assert_eq!(pick_option(&options, &["allow_once"]), Some(json!("o")), "allow_once wins even when allow_always is listed first");
-        assert_eq!(pick_option(&options, &["reject_once", "reject_always"]), Some(json!("ro")));
+        assert_eq!(
+            pick_option(&options, &["allow_once"]),
+            Some(json!("o")),
+            "allow_once wins even when allow_always is listed first"
+        );
+        assert_eq!(
+            pick_option(&options, &["reject_once", "reject_always"]),
+            Some(json!("ro"))
+        );
         let only_always = vec![json!({"kind": "allow_always", "optionId": "a"})];
         assert_eq!(pick_option(&only_always, &["allow_once"]), None);
-        assert_eq!(permission_outcome(&only_always, true), cancelled_outcome(), "no one-shot option: cancel instead of granting forever");
-        assert_eq!(permission_outcome(&offered(), true)["outcome"]["optionId"], "o");
-        assert_eq!(permission_outcome(&offered(), false)["outcome"]["optionId"], "ro");
+        assert_eq!(
+            permission_outcome(&only_always, true),
+            cancelled_outcome(),
+            "no one-shot option: cancel instead of granting forever"
+        );
+        assert_eq!(
+            permission_outcome(&offered(), true)["outcome"]["optionId"],
+            "o"
+        );
+        assert_eq!(
+            permission_outcome(&offered(), false)["outcome"]["optionId"],
+            "ro"
+        );
     }
 
     #[test]
@@ -148,8 +189,16 @@ mod tests {
         assert_eq!(disposition("search", true, false), Allow);
         assert_eq!(disposition("edit", false, false), Ask);
         assert_eq!(disposition("execute", false, true), Allow, "bypass allows");
-        assert_eq!(disposition("edit", true, false), Deny, "plan mode refuses a change");
-        assert_eq!(disposition("fetch", true, false), Allow, "plan mode may still fetch");
+        assert_eq!(
+            disposition("edit", true, false),
+            Deny,
+            "plan mode refuses a change"
+        );
+        assert_eq!(
+            disposition("fetch", true, false),
+            Allow,
+            "plan mode may still fetch"
+        );
         assert_eq!(disposition("switch_mode", true, false), Ask);
         assert_eq!(disposition("other", false, false), Ask);
     }
@@ -160,7 +209,10 @@ mod tests {
         let v2 = json!({"subject": {"type": "tool_call", "toolCall": {"toolCallId": "t1", "kind": "edit", "title": "Edit a.rs", "rawInput": {"path": "a.rs"}}}, "options": []});
         for params in [v1, v2] {
             let ask = permission_ask(&params, None);
-            assert_eq!((ask.id.as_str(), ask.name.as_str(), ask.title.as_deref()), ("t1", "edit", Some("Edit a.rs")));
+            assert_eq!(
+                (ask.id.as_str(), ask.name.as_str(), ask.title.as_deref()),
+                ("t1", "edit", Some("Edit a.rs"))
+            );
             assert_eq!(ask.args["path"], "a.rs");
             assert_eq!(call_id(&params), Some("t1"));
         }
@@ -170,10 +222,18 @@ mod tests {
     fn a_command_subject_is_asked_as_a_shell_command_and_a_missing_kind_uses_what_was_announced() {
         let command = json!({"subject": {"type": "command", "toolCallId": "c1", "command": "cargo test", "cwd": "/p"}, "options": []});
         let ask = permission_ask(&command, None);
-        assert_eq!((ask.name.as_str(), ask.kind.as_deref()), ("bash", Some("execute")));
+        assert_eq!(
+            (ask.name.as_str(), ask.kind.as_deref()),
+            ("bash", Some("execute"))
+        );
         assert_eq!(ask.args["command"], "cargo test");
         let no_kind = json!({"toolCall": {"toolCallId": "t"}, "options": []});
-        assert_eq!(permission_ask(&no_kind, Some("edit".into())).kind.as_deref(), Some("edit"));
+        assert_eq!(
+            permission_ask(&no_kind, Some("edit".into()))
+                .kind
+                .as_deref(),
+            Some("edit")
+        );
         assert_eq!(permission_ask(&no_kind, None).name, "tool");
     }
 }

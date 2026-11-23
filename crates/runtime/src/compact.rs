@@ -38,7 +38,10 @@ Keep exact file paths, commands, error text, identifiers, numbers and signatures
 /// Tokens in a run of messages.
 #[must_use]
 pub fn tokens_of(messages: &[Message]) -> u32 {
-    messages.iter().map(message_tokens).fold(0, u32::saturating_add)
+    messages
+        .iter()
+        .map(message_tokens)
+        .fold(0, u32::saturating_add)
 }
 
 /// A summary is only worth inserting if it says something and is smaller than what it replaces.
@@ -55,7 +58,9 @@ pub fn render_transcript(messages: &[Message], preview: usize) -> String {
     for message in messages {
         let text = message.text.trim();
         match message.role {
-            Role::User | Role::System if !text.is_empty() => out.push_str(&format!("User: {text}\n")),
+            Role::User | Role::System if !text.is_empty() => {
+                out.push_str(&format!("User: {text}\n"))
+            }
             Role::Assistant => {
                 if !text.is_empty() {
                     out.push_str(&format!("Assistant: {text}\n"));
@@ -67,8 +72,14 @@ pub fn render_transcript(messages: &[Message], preview: usize) -> String {
             }
             Role::Tool => {
                 let failed = text.starts_with("error:");
-                let body: String = text.chars().take(if failed { preview * 2 } else { preview }).collect();
-                out.push_str(&format!("Tool result ({}): {body}\n", if failed { "FAILED" } else { "ok" }));
+                let body: String = text
+                    .chars()
+                    .take(if failed { preview * 2 } else { preview })
+                    .collect();
+                out.push_str(&format!(
+                    "Tool result ({}): {body}\n",
+                    if failed { "FAILED" } else { "ok" }
+                ));
             }
             _ => {}
         }
@@ -79,7 +90,10 @@ pub fn render_transcript(messages: &[Message], preview: usize) -> String {
 /// The summary framed as one message of established background.
 #[must_use]
 pub fn checkpoint(summary: &str) -> String {
-    format!("{OPEN}\nThis is a checkpoint condensing an earlier part of this conversation. Treat it as established background and carry on from the messages after it without acknowledging it.\n\n{}\n{CLOSE}", summary.trim())
+    format!(
+        "{OPEN}\nThis is a checkpoint condensing an earlier part of this conversation. Treat it as established background and carry on from the messages after it without acknowledging it.\n\n{}\n{CLOSE}",
+        summary.trim()
+    )
 }
 
 /// Replaces the first `cut` messages with `summary`. The checkpoint goes into the next message when that is the
@@ -110,7 +124,11 @@ mod tests {
 
     #[test]
     fn the_head_becomes_one_checkpoint_and_the_tail_is_untouched() {
-        let call = ToolCall { id: "c".into(), name: "read".into(), args: json!({"path": "a.rs"}) };
+        let call = ToolCall {
+            id: "c".into(),
+            name: "read".into(),
+            args: json!({"path": "a.rs"}),
+        };
         let mut history = vec![
             Message::new(Role::User, "old"),
             Message::assistant("", vec![call]),
@@ -119,16 +137,35 @@ mod tests {
             Message::assistant("answer", vec![]),
         ];
         replace_head(&mut history, 3, "SUMMARY");
-        assert_eq!(history.len(), 2, "the checkpoint joined the user message that followed");
-        assert!(history[0].text.starts_with(OPEN) && history[0].text.contains("SUMMARY") && history[0].text.ends_with("new question"));
-        let mut history = vec![Message::new(Role::User, "old"), Message::assistant("a", vec![]), Message::assistant("b", vec![])];
+        assert_eq!(
+            history.len(),
+            2,
+            "the checkpoint joined the user message that followed"
+        );
+        assert!(
+            history[0].text.starts_with(OPEN)
+                && history[0].text.contains("SUMMARY")
+                && history[0].text.ends_with("new question")
+        );
+        let mut history = vec![
+            Message::new(Role::User, "old"),
+            Message::assistant("a", vec![]),
+            Message::assistant("b", vec![]),
+        ];
         replace_head(&mut history, 2, "SUMMARY");
-        assert_eq!((history.len(), history[0].role), (2, Role::User), "an assistant message next gets a checkpoint of its own");
+        assert_eq!(
+            (history.len(), history[0].role),
+            (2, Role::User),
+            "an assistant message next gets a checkpoint of its own"
+        );
     }
 
     #[test]
     fn the_transcript_cuts_results_but_not_what_was_said() {
-        let history = vec![Message::new(Role::User, "please fix it"), Message::tool_result("c", "y".repeat(900))];
+        let history = vec![
+            Message::new(Role::User, "please fix it"),
+            Message::tool_result("c", "y".repeat(900)),
+        ];
         let text = render_transcript(&history, 100);
         assert!(text.contains("User: please fix it"));
         assert!(text.contains(&"y".repeat(100)) && !text.contains(&"y".repeat(101)));

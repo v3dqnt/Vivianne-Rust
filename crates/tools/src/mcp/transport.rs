@@ -2,12 +2,12 @@
 //! (newline-delimited JSON-RPC) or an HTTP endpoint (JSON-RPC over POST),
 //! behind one `McpConnection` API.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{Mutex, oneshot};
 
 use super::{McpServerConfig, McpToolDef, McpTransportConfig};
 
@@ -30,6 +30,8 @@ enum Inner {
         /// The server's OAuth sign-in (see `oauth`), when it has one saved: its access token rides on every request.
         auth: Option<String>,
     },
+    /// A connector built into the app (`connections::native`); no protocol underneath.
+    Native { connector: String },
 }
 
 pub struct McpConnection {
@@ -57,7 +59,9 @@ impl McpConnection {
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
                     .kill_on_drop(true);
-                let mut child = cmd.spawn().map_err(|e| format!("failed to spawn '{command}': {e}"))?;
+                let mut child = cmd
+                    .spawn()
+                    .map_err(|e| format!("failed to spawn '{command}': {e}"))?;
                 let stdin = child.stdin.take().ok_or("no stdin")?;
                 let stdout = child.stdout.take().ok_or("no stdout")?;
                 // What the server writes to stderr is kept in the log, so a server that fails leaves a trail.
@@ -74,20 +78,45 @@ impl McpConnection {
                         }
                     });
                 }
-                let pending: Arc<Mutex<HashMap<i64, oneshot::Sender<Value>>>> = Arc::new(Mutex::new(HashMap::new()));
+                let pending: Arc<Mutex<HashMap<i64, oneshot::Sender<Value>>>> =
+                    Arc::new(Mutex::new(HashMap::new()));
                 tokio::spawn(stdio_read_loop(stdout, pending.clone()));
                 let tree = crate::agent::runtime::streaming::TreeKillOnDrop { pid: child.id() };
-                Inner::Stdio { stdin: Mutex::new(stdin), child: Mutex::new(child), pending, _tree: tree }
+                Inner::Stdio {
+                    stdin: Mutex::new(stdin),
+                    child: Mutex::new(child),
+                    pending,
+                    _tree: tree,
+                }
             }
             McpTransportConfig::Http { url, headers } => {
                 let client = reqwest::Client::builder()
                     .timeout(timeout)
                     .build()
                     .map_err(|e| e.to_string())?;
-                Inner::Http { url: url.clone(), headers: headers.clone(), client, session_id: Mutex::new(None), auth: config.auth.clone() }
+                Inner::Http {
+                    url: url.clone(),
+                    headers: headers.clone(),
+                    client,
+                    session_id: Mutex::new(None),
+                    auth: config.auth.clone(),
+                }
+            }
+            McpTransportConfig::Native { connector } => {
+                return Ok(Self {
+                    inner: Inner::Native {
+                        connector: connector.clone(),
+                    },
+                    next_id: AtomicI64::new(1),
+                    timeout,
+                });
             }
         };
-        let conn = Self { inner, next_id: AtomicI64::new(1), timeout };
+        let conn = Self {
+            inner,
+            next_id: AtomicI64::new(1),
+            timeout,
+        };
 
         conn.request(
             "initialize",
@@ -115,7 +144,12 @@ impl McpConnection {
                 pending.lock().await.insert(id, tx);
                 let mut line = serde_json::to_string(&message).map_err(|e| e.to_string())?;
                 line.push('\n');
-                stdin.lock().await.write_all(line.as_bytes()).await.map_err(|e| e.to_string())?;
+                stdin
+                    .lock()
+                    .await
+                    .write_all(line.as_bytes())
+                    .await
+                    .map_err(|e| e.to_string())?;
                 match tokio::time::timeout(self.timeout, rx).await {
                     Ok(Ok(v)) => extract_result(v),
                     Ok(Err(_)) => Err(format!("{method}: response channel closed")),
@@ -125,7 +159,13 @@ impl McpConnection {
                     }
                 }
             }
-            Inner::Http { url, headers, client, session_id, auth } => {
+            Inner::Http {
+                url,
+                headers,
+                client,
+                session_id,
+                auth,
+            } => {
                 // The 2025-03-26 "Streamable HTTP" transport requires the
                 // client to accept both shapes a server may reply with: a
                 // plain JSON body, or a single `text/event-stream` SSE event
@@ -143,16 +183,28 @@ impl McpConnection {
                     req = req.header("Mcp-Session-Id", sid);
                 }
                 if let Some(name) = auth {
-                    if let Some(tokens) = super::oauth::load_tokens_for(name).await {
-                        req = req.header("Authorization", format!("Bearer {}", tokens.access_token));
+                    if let Some((k, v)) = crate::connections::auth_header(name, false).await? {
+                        req = req.header(k, v);
+                    } else if let Some(tokens) = super::oauth::load_tokens_for(name).await {
+                        req =
+                            req.header("Authorization", format!("Bearer {}", tokens.access_token));
                     }
                 }
-                let resp = req.send().await.map_err(|e| format!("{method}: request failed: {e}"))?;
+                let resp = req
+                    .send()
+                    .await
+                    .map_err(|e| format!("{method}: request failed: {e}"))?;
                 let status = resp.status();
                 if status.as_u16() == 401 && auth.is_some() {
-                    return Err(format!("{method}: the server's sign-in has expired or was revoked; sign in to it again in Settings → Connections"));
+                    return Err(format!(
+                        "{method}: the server's sign-in has expired or was revoked; sign in to it again in Settings → Connections"
+                    ));
                 }
-                if let Some(sid) = resp.headers().get("mcp-session-id").and_then(|v| v.to_str().ok()) {
+                if let Some(sid) = resp
+                    .headers()
+                    .get("mcp-session-id")
+                    .and_then(|v| v.to_str().ok())
+                {
                     *session_id.lock().await = Some(sid.to_string());
                 }
                 let content_type = resp
@@ -161,12 +213,19 @@ impl McpConnection {
                     .and_then(|v| v.to_str().ok())
                     .unwrap_or("")
                     .to_string();
-                let text = resp.text().await.map_err(|e| format!("{method}: failed to read response body: {e}"))?;
+                let text = resp
+                    .text()
+                    .await
+                    .map_err(|e| format!("{method}: failed to read response body: {e}"))?;
                 if !status.is_success() {
                     return Err(format!("{method}: HTTP {status}: {text}"));
                 }
-                let body = parse_mcp_body(&content_type, &text).map_err(|e| format!("{method}: {e}"))?;
+                let body =
+                    parse_mcp_body(&content_type, &text).map_err(|e| format!("{method}: {e}"))?;
                 extract_result(body)
+            }
+            Inner::Native { .. } => {
+                Err(format!("{method}: not available for a built-in connector"))
             }
         }
     }
@@ -177,9 +236,20 @@ impl McpConnection {
             Inner::Stdio { stdin, .. } => {
                 let mut line = serde_json::to_string(&message).map_err(|e| e.to_string())?;
                 line.push('\n');
-                stdin.lock().await.write_all(line.as_bytes()).await.map_err(|e| e.to_string())
+                stdin
+                    .lock()
+                    .await
+                    .write_all(line.as_bytes())
+                    .await
+                    .map_err(|e| e.to_string())
             }
-            Inner::Http { url, headers, client, session_id, auth } => {
+            Inner::Http {
+                url,
+                headers,
+                client,
+                session_id,
+                auth,
+            } => {
                 let mut req = client
                     .post(url)
                     .json(&message)
@@ -191,8 +261,11 @@ impl McpConnection {
                     req = req.header("Mcp-Session-Id", sid);
                 }
                 if let Some(name) = auth {
-                    if let Some(tokens) = super::oauth::load_tokens_for(name).await {
-                        req = req.header("Authorization", format!("Bearer {}", tokens.access_token));
+                    if let Some((k, v)) = crate::connections::auth_header(name, false).await? {
+                        req = req.header(k, v);
+                    } else if let Some(tokens) = super::oauth::load_tokens_for(name).await {
+                        req =
+                            req.header("Authorization", format!("Bearer {}", tokens.access_token));
                     }
                 }
                 let resp = req.send().await.map_err(|e| e.to_string())?;
@@ -205,22 +278,47 @@ impl McpConnection {
                 }
                 Ok(())
             }
+            Inner::Native { .. } => Ok(()),
         }
     }
 
     pub async fn list_tools(&self) -> Result<Vec<McpToolDef>, String> {
+        if let Inner::Native { connector } = &self.inner {
+            return Ok(crate::connections::native::tools(connector));
+        }
         let result = self.request("tools/list", json!({})).await?;
         let tools = result.get("tools").cloned().unwrap_or(json!([]));
         serde_json::from_value(tools).map_err(|e| format!("bad tools/list response: {e}"))
     }
 
     pub async fn call_tool(&self, tool_name: &str, arguments: Value) -> Result<String, String> {
-        let result = self.request("tools/call", json!({ "name": tool_name, "arguments": arguments })).await?;
+        if let Inner::Native { connector } = &self.inner {
+            let fields = crate::connections::native_fields(connector).await;
+            return crate::connections::native::call(connector, &fields, tool_name, &arguments)
+                .await;
+        }
+        let result = self
+            .request(
+                "tools/call",
+                json!({ "name": tool_name, "arguments": arguments }),
+            )
+            .await?;
         // MCP tool results are `{ content: [{type: "text", text: "..."}], isError?: bool }`.
-        let is_error = result.get("isError").and_then(|v| v.as_bool()).unwrap_or(false);
-        let text = result.get("content").and_then(|c| c.as_array()).map(|items| content_text(items)).unwrap_or_default();
+        let is_error = result
+            .get("isError")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let text = result
+            .get("content")
+            .and_then(|c| c.as_array())
+            .map(|items| content_text(items))
+            .unwrap_or_default();
         if is_error {
-            Err(if text.is_empty() { "tool call failed".to_string() } else { text })
+            Err(if text.is_empty() {
+                "tool call failed".to_string()
+            } else {
+                text
+            })
         } else {
             Ok(text)
         }
@@ -240,8 +338,9 @@ fn parse_mcp_body(content_type: &str, text: &str) -> Result<Value, String> {
     if content_type.contains("text/event-stream") {
         parse_sse_json(text).ok_or_else(|| "no parseable data event in SSE response".to_string())
     } else {
-        serde_json::from_str(text)
-            .map_err(|e| format!("bad response body: {e} (content-type: {content_type:?}, body: {text:?})"))
+        serde_json::from_str(text).map_err(|e| {
+            format!("bad response body: {e} (content-type: {content_type:?}, body: {text:?})")
+        })
     }
 }
 
@@ -269,7 +368,10 @@ fn parse_sse_json(text: &str) -> Option<Value> {
 
 fn extract_result(message: Value) -> Result<Value, String> {
     if let Some(error) = message.get("error") {
-        let msg = error.get("message").and_then(|m| m.as_str()).unwrap_or("unknown MCP error");
+        let msg = error
+            .get("message")
+            .and_then(|m| m.as_str())
+            .unwrap_or("unknown MCP error");
         return Err(msg.to_string());
     }
     Ok(message.get("result").cloned().unwrap_or(Value::Null))
@@ -283,19 +385,36 @@ pub(crate) fn content_text(items: &[Value]) -> String {
         .filter_map(|item| match item.get("type").and_then(|t| t.as_str()) {
             Some("text") => item.get("text").and_then(|t| t.as_str()).map(String::from),
             Some(kind @ ("image" | "audio")) => {
-                let mime = item.get("mimeType").and_then(|m| m.as_str()).unwrap_or("unknown type");
-                let bytes = item.get("data").and_then(|d| d.as_str()).map(|d| d.len() * 3 / 4).unwrap_or(0);
-                Some(format!("[{kind} ({mime}, about {bytes} bytes) returned by the tool; not shown]"))
+                let mime = item
+                    .get("mimeType")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("unknown type");
+                let bytes = item
+                    .get("data")
+                    .and_then(|d| d.as_str())
+                    .map(|d| d.len() * 3 / 4)
+                    .unwrap_or(0);
+                Some(format!(
+                    "[{kind} ({mime}, about {bytes} bytes) returned by the tool; not shown]"
+                ))
             }
             Some("resource") => {
                 let r = item.get("resource");
-                let uri = r.and_then(|r| r.get("uri")).and_then(|u| u.as_str()).unwrap_or("?");
-                Some(match r.and_then(|r| r.get("text")).and_then(|t| t.as_str()) {
-                    Some(t) => format!("[resource {uri}]\n{t}"),
-                    None => format!("[resource {uri}: binary, not shown]"),
-                })
+                let uri = r
+                    .and_then(|r| r.get("uri"))
+                    .and_then(|u| u.as_str())
+                    .unwrap_or("?");
+                Some(
+                    match r.and_then(|r| r.get("text")).and_then(|t| t.as_str()) {
+                        Some(t) => format!("[resource {uri}]\n{t}"),
+                        None => format!("[resource {uri}: binary, not shown]"),
+                    },
+                )
             }
-            Some("resource_link") => item.get("uri").and_then(|u| u.as_str()).map(|u| format!("[resource link: {u}]")),
+            Some("resource_link") => item
+                .get("uri")
+                .and_then(|u| u.as_str())
+                .map(|u| format!("[resource link: {u}]")),
             _ => None,
         })
         .collect::<Vec<_>>()
@@ -316,11 +435,17 @@ mod content_tests {
             json!({ "type": "resource", "resource": { "uri": "file:///b.bin", "blob": "AAAA" } }),
             json!({ "type": "resource_link", "uri": "https://x" }),
         ]);
-        assert_eq!(out, "done\n[image (image/png, about 3 bytes) returned by the tool; not shown]\n[resource file:///a.txt]\nhello\n[resource file:///b.bin: binary, not shown]\n[resource link: https://x]");
+        assert_eq!(
+            out,
+            "done\n[image (image/png, about 3 bytes) returned by the tool; not shown]\n[resource file:///a.txt]\nhello\n[resource file:///b.bin: binary, not shown]\n[resource link: https://x]"
+        );
     }
 }
 
-async fn stdio_read_loop(stdout: tokio::process::ChildStdout, pending: Arc<Mutex<HashMap<i64, oneshot::Sender<Value>>>>) {
+async fn stdio_read_loop(
+    stdout: tokio::process::ChildStdout,
+    pending: Arc<Mutex<HashMap<i64, oneshot::Sender<Value>>>>,
+) {
     let mut reader = BufReader::new(stdout).lines();
     loop {
         match reader.next_line().await {
@@ -329,9 +454,13 @@ async fn stdio_read_loop(stdout: tokio::process::ChildStdout, pending: Arc<Mutex
                 if trimmed.is_empty() {
                     continue;
                 }
-                let Ok(message) = serde_json::from_str::<Value>(trimmed) else { continue };
+                let Ok(message) = serde_json::from_str::<Value>(trimmed) else {
+                    continue;
+                };
                 // The server's tool list changed: the next turn reads it again.
-                if message.get("method").and_then(|m| m.as_str()) == Some("notifications/tools/list_changed") {
+                if message.get("method").and_then(|m| m.as_str())
+                    == Some("notifications/tools/list_changed")
+                {
                     super::tools_changed();
                     continue;
                 }
@@ -357,21 +486,31 @@ mod server_tests {
     /// event stream, as some real servers do.
     async fn serve(listener: TcpListener) {
         loop {
-            let Ok((mut stream, _)) = listener.accept().await else { return };
+            let Ok((mut stream, _)) = listener.accept().await else {
+                return;
+            };
             tokio::spawn(async move {
                 // The headers and the body can arrive in separate reads: read until the body is all there.
                 let mut request = String::new();
                 let mut chunk = vec![0u8; 4096];
                 loop {
-                    let Ok(n) = stream.read(&mut chunk).await else { return };
+                    let Ok(n) = stream.read(&mut chunk).await else {
+                        return;
+                    };
                     if n == 0 {
                         break;
                     }
                     request.push_str(&String::from_utf8_lossy(&chunk[..n]));
-                    let Some((head, body)) = request.split_once("\r\n\r\n") else { continue };
+                    let Some((head, body)) = request.split_once("\r\n\r\n") else {
+                        continue;
+                    };
                     let wanted = head
                         .lines()
-                        .find_map(|l| l.to_lowercase().strip_prefix("content-length:").and_then(|v| v.trim().parse::<usize>().ok()))
+                        .find_map(|l| {
+                            l.to_lowercase()
+                                .strip_prefix("content-length:")
+                                .and_then(|v| v.trim().parse::<usize>().ok())
+                        })
                         .unwrap_or(0);
                     if body.len() >= wanted {
                         break;
@@ -381,22 +520,47 @@ mod server_tests {
                 let message: Value = serde_json::from_str(body).unwrap_or_default();
                 let id = message["id"].clone();
                 let (kind, payload) = match message["method"].as_str() {
-                    Some("initialize") => ("application/json", json!({ "jsonrpc": "2.0", "id": id, "result": { "protocolVersion": "2025-06-18", "capabilities": {} } })),
-                    Some("tools/list") => ("text/event-stream", json!({ "jsonrpc": "2.0", "id": id, "result": { "tools": [{ "name": "echo", "description": "Says it back", "inputSchema": { "type": "object", "properties": { "text": { "type": "string" } } } }] } })),
-                    Some("tools/call") => ("application/json", json!({ "jsonrpc": "2.0", "id": id, "result": { "content": [{ "type": "text", "text": format!("heard {}", message["params"]["arguments"]["text"].as_str().unwrap_or_default()) }] } })),
+                    Some("initialize") => (
+                        "application/json",
+                        json!({ "jsonrpc": "2.0", "id": id, "result": { "protocolVersion": "2025-06-18", "capabilities": {} } }),
+                    ),
+                    Some("tools/list") => (
+                        "text/event-stream",
+                        json!({ "jsonrpc": "2.0", "id": id, "result": { "tools": [{ "name": "echo", "description": "Says it back", "inputSchema": { "type": "object", "properties": { "text": { "type": "string" } } } }] } }),
+                    ),
+                    Some("tools/call") => (
+                        "application/json",
+                        json!({ "jsonrpc": "2.0", "id": id, "result": { "content": [{ "type": "text", "text": format!("heard {}", message["params"]["arguments"]["text"].as_str().unwrap_or_default()) }] } }),
+                    ),
                     _ => ("application/json", json!({})),
                 };
-                let text = if kind == "text/event-stream" { format!("event: message
+                let text = if kind == "text/event-stream" {
+                    format!(
+                        "event: message
 data: {payload}
 
-") } else { payload.to_string() };
-                let status = if message["method"].as_str().is_some_and(|m| m.starts_with("notifications/")) { "202 Accepted" } else { "200 OK" };
-                let reply = format!("HTTP/1.1 {status}
+"
+                    )
+                } else {
+                    payload.to_string()
+                };
+                let status = if message["method"]
+                    .as_str()
+                    .is_some_and(|m| m.starts_with("notifications/"))
+                {
+                    "202 Accepted"
+                } else {
+                    "200 OK"
+                };
+                let reply = format!(
+                    "HTTP/1.1 {status}
 Content-Type: {kind}
 Content-Length: {}
 Connection: close
 
-{text}", text.len());
+{text}",
+                    text.len()
+                );
                 let _ = stream.write_all(reply.as_bytes()).await;
             });
         }
@@ -407,11 +571,26 @@ Connection: close
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("a free port");
         let url = format!("http://{}/mcp", listener.local_addr().expect("an address"));
         tokio::spawn(serve(listener));
-        let config = McpServerConfig { name: "mock".into(), transport: McpTransportConfig::Http { url, headers: HashMap::new() }, timeout_ms: Some(5_000), auth: None };
+        let config = McpServerConfig {
+            name: "mock".into(),
+            transport: McpTransportConfig::Http {
+                url,
+                headers: HashMap::new(),
+            },
+            timeout_ms: Some(5_000),
+            auth: None,
+            allowed_tools: None,
+        };
         let connection = McpConnection::connect(&config).await.expect("connects");
         let tools = connection.list_tools().await.expect("lists");
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].name, "echo");
-        assert_eq!(connection.call_tool("echo", json!({ "text": "hi" })).await.as_deref(), Ok("heard hi"));
+        assert_eq!(
+            connection
+                .call_tool("echo", json!({ "text": "hi" }))
+                .await
+                .as_deref(),
+            Ok("heard hi")
+        );
     }
 }

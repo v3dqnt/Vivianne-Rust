@@ -129,12 +129,16 @@ impl BufferState {
 }
 
 async fn read_all_from(path: &Path) -> BTreeMap<String, DayUsage> {
-    let Ok(content) = tokio::fs::read_to_string(path).await else { return BTreeMap::new() };
+    let Ok(content) = tokio::fs::read_to_string(path).await else {
+        return BTreeMap::new();
+    };
     serde_json::from_str::<BTreeMap<String, DayUsage>>(&content).unwrap_or_default()
 }
 
 async fn read_all_by_source_from(path: &Path) -> UsageBySource {
-    let Ok(content) = tokio::fs::read_to_string(path).await else { return BTreeMap::new() };
+    let Ok(content) = tokio::fs::read_to_string(path).await else {
+        return BTreeMap::new();
+    };
     serde_json::from_str::<UsageBySource>(&content).unwrap_or_default()
 }
 
@@ -165,7 +169,9 @@ fn merge_nested(target: &mut UsageBySource, buffer: &UsageBySource) {
 /// Writes `value` to `path` through a temp file and a rename, off the async threads.
 async fn write_atomic<T: Serialize + Send + 'static>(path: &Path, value: T) -> Result<(), String> {
     let path = path.to_path_buf();
-    tokio::task::spawn_blocking(move || crate::paths::write_json_atomic(&path, &value)).await.map_err(|e| e.to_string())?
+    tokio::task::spawn_blocking(move || crate::paths::write_json_atomic(&path, &value))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 async fn merge_and_write(path: &Path, buffer: &BTreeMap<String, DayUsage>) -> Result<(), String> {
@@ -193,7 +199,11 @@ fn by_source_cutoff() -> String {
 }
 
 /// Merges `buffer` into the nested file at `path`; `cutoff` is the oldest day to keep, `None` keeps all.
-async fn merge_and_write_nested(path: &Path, buffer: &UsageBySource, cutoff: Option<&str>) -> Result<(), String> {
+async fn merge_and_write_nested(
+    path: &Path,
+    buffer: &UsageBySource,
+    cutoff: Option<&str>,
+) -> Result<(), String> {
     let mut disk = read_all_by_source_from(path).await;
     merge_nested(&mut disk, buffer);
     if let Some(cutoff) = cutoff {
@@ -212,7 +222,13 @@ async fn flush_to(state: &mut BufferState, files: &Files, what: &str) {
         }
     }
     if !state.by_source.is_empty() {
-        match merge_and_write_nested(&files.by_source, &state.by_source, Some(&by_source_cutoff())).await {
+        match merge_and_write_nested(
+            &files.by_source,
+            &state.by_source,
+            Some(&by_source_cutoff()),
+        )
+        .await
+        {
             Ok(()) => state.by_source.clear(),
             Err(e) => log::warn!("[usage] {what} by-source failed: {e}"),
         }
@@ -237,7 +253,11 @@ async fn maybe_flush(state: &mut BufferState) {
 
 /// What a request cost: the figure the provider reported, else the price table's, else unknown.
 fn cost_of(usage: &crate::ai::types::Usage, provider: &str, model_id: &str) -> Option<f64> {
-    usage.cost.as_ref().map(|c| c.total).or_else(|| crate::ai::pricing::compute_cost(provider, model_id, usage))
+    usage
+        .cost
+        .as_ref()
+        .map(|c| c.total)
+        .or_else(|| crate::ai::pricing::compute_cost(provider, model_id, usage))
 }
 
 fn is_empty(usage: &crate::ai::types::Usage) -> bool {
@@ -253,7 +273,9 @@ pub fn today_key() -> String {
 /// The date `days` days before today, in the same form.
 #[must_use]
 pub fn days_ago_key(days: i64) -> String {
-    (chrono::Local::now() - chrono::Duration::days(days)).format("%Y-%m-%d").to_string()
+    (chrono::Local::now() - chrono::Duration::days(days))
+        .format("%Y-%m-%d")
+        .to_string()
 }
 
 /// Accumulate `usage` into today's bucket (local date) and today's per-model bucket, pricing it via the
@@ -267,14 +289,22 @@ pub async fn record_usage(usage: &crate::ai::types::Usage, provider: &str, model
     let cost = cost_of(usage, provider, model_id);
     let today = today_key();
     let mut state = USAGE_BUFFER.lock().await;
-    state.by_model.entry(today.clone()).or_default().entry(format!("{provider}/{model_id}")).or_default().accumulate(usage, cost);
+    state
+        .by_model
+        .entry(today.clone())
+        .or_default()
+        .entry(format!("{provider}/{model_id}"))
+        .or_default()
+        .accumulate(usage, cost);
     state.days.entry(today).or_default().accumulate(usage, cost);
     maybe_flush(&mut state).await;
 }
 
 /// Full history for the frontend's usage dashboard.
 pub async fn read_history() -> BTreeMap<String, DayUsage> {
-    let Ok(files) = Files::standard() else { return BTreeMap::new() };
+    let Ok(files) = Files::standard() else {
+        return BTreeMap::new();
+    };
     let mut disk = read_all_from(&files.days).await;
     let state = USAGE_BUFFER.lock().await;
     for (day, usage) in &state.days {
@@ -287,19 +317,32 @@ pub async fn read_history() -> BTreeMap<String, DayUsage> {
 /// additive telemetry. `source_tag` is a free-form label
 /// (`"main:<thread>"`, `"task:<thread>"`).
 /// Best-effort — a failure here should never break a turn.
-pub async fn record_usage_tagged(usage: &crate::ai::types::Usage, provider: &str, model_id: &str, source_tag: &str) {
+pub async fn record_usage_tagged(
+    usage: &crate::ai::types::Usage,
+    provider: &str,
+    model_id: &str,
+    source_tag: &str,
+) {
     if is_empty(usage) {
         return;
     }
     let cost = cost_of(usage, provider, model_id);
     let mut state = USAGE_BUFFER.lock().await;
-    state.by_source.entry(today_key()).or_default().entry(source_tag.to_string()).or_default().accumulate(usage, cost);
+    state
+        .by_source
+        .entry(today_key())
+        .or_default()
+        .entry(source_tag.to_string())
+        .or_default()
+        .accumulate(usage, cost);
     maybe_flush(&mut state).await;
 }
 
 /// Full source-attributed history (the last [`BY_SOURCE_RETENTION_DAYS`] days).
 pub async fn read_history_by_source() -> UsageBySource {
-    let Ok(files) = Files::standard() else { return BTreeMap::new() };
+    let Ok(files) = Files::standard() else {
+        return BTreeMap::new();
+    };
     read_by_source_in(&files).await
 }
 
@@ -320,7 +363,10 @@ pub async fn thread_total(thread: &str) -> DayUsage {
 /// thread 10.
 fn sum_thread(history: &UsageBySource, thread: &str) -> DayUsage {
     let tags = [format!("main:{thread}"), format!("task:{thread}")];
-    let mut total = DayUsage { has_unknown_cost: false, ..DayUsage::default() };
+    let mut total = DayUsage {
+        has_unknown_cost: false,
+        ..DayUsage::default()
+    };
     for sources in history.values() {
         for tag in &tags {
             if let Some(usage) = sources.get(tag) {
@@ -383,11 +429,19 @@ mod tests {
     use super::*;
 
     fn usage(input: u32, output: u32) -> crate::ai::types::Usage {
-        crate::ai::types::Usage { input, output, cache_read: 0, cache_write: 0, total_tokens: input + output, cost: None }
+        crate::ai::types::Usage {
+            input,
+            output,
+            cache_read: 0,
+            cache_write: 0,
+            total_tokens: input + output,
+            cost: None,
+        }
     }
 
     fn temp_files() -> (PathBuf, Files) {
-        let dir = std::env::temp_dir().join(format!("vivianne_usage_test_{}", uuid::Uuid::new_v4()));
+        let dir =
+            std::env::temp_dir().join(format!("vivianne_usage_test_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let files = Files::in_dir(&dir);
         (dir, files)
@@ -395,7 +449,11 @@ mod tests {
 
     fn one(day: &str, key: &str, input: u32) -> UsageBySource {
         let mut map: UsageBySource = BTreeMap::new();
-        map.entry(day.to_string()).or_default().entry(key.to_string()).or_default().accumulate(&usage(input, 1), Some(0.01));
+        map.entry(day.to_string())
+            .or_default()
+            .entry(key.to_string())
+            .or_default()
+            .accumulate(&usage(input, 1), Some(0.01));
         map
     }
 
@@ -416,16 +474,29 @@ mod tests {
         let mut day = DayUsage::default();
         day.accumulate(&usage(100, 50), Some(0.01));
         day.accumulate(&usage(200, 75), None); // model with no known price
-        assert!(day.has_unknown_cost, "one unknown-priced request makes the day's total partial");
-        assert!((day.cost - 0.01).abs() < 1e-9, "the known-cost request's contribution is still counted");
+        assert!(
+            day.has_unknown_cost,
+            "one unknown-priced request makes the day's total partial"
+        );
+        assert!(
+            (day.cost - 0.01).abs() < 1e-9,
+            "the known-cost request's contribution is still counted"
+        );
     }
 
     #[test]
     fn a_reported_cost_wins_over_the_price_table() {
         let mut with_cost = usage(10, 10);
-        with_cost.cost = Some(crate::ai::types::CostBreakdown { total: 0.25, ..Default::default() });
+        with_cost.cost = Some(crate::ai::types::CostBreakdown {
+            total: 0.25,
+            ..Default::default()
+        });
         assert_eq!(cost_of(&with_cost, "harness", "claude-code"), Some(0.25));
-        assert_eq!(cost_of(&usage(10, 10), "harness", "claude-code"), None, "no price and no report is unknown, not zero");
+        assert_eq!(
+            cost_of(&usage(10, 10), "harness", "claude-code"),
+            None,
+            "no price and no report is unknown, not zero"
+        );
     }
 
     #[test]
@@ -449,7 +520,12 @@ mod tests {
     #[test]
     fn a_thread_with_an_unpriced_call_says_its_cost_is_partial() {
         let mut history: UsageBySource = BTreeMap::new();
-        history.entry("2026-10-11".into()).or_default().entry("main:t".into()).or_default().accumulate(&usage(5, 5), None);
+        history
+            .entry("2026-10-11".into())
+            .or_default()
+            .entry("main:t".into())
+            .or_default()
+            .accumulate(&usage(5, 5), None);
         assert!(sum_thread(&history, "t").has_unknown_cost);
     }
 
@@ -457,10 +533,25 @@ mod tests {
     fn per_model_totals_keep_models_apart_and_respect_the_range() {
         let mut history: UsageBySource = BTreeMap::new();
         let mut put = |day: &str, model: &str, input: u32, cost: Option<f64>| {
-            history.entry(day.to_string()).or_default().entry(model.to_string()).or_default().accumulate(&usage(input, 10), cost);
+            history
+                .entry(day.to_string())
+                .or_default()
+                .entry(model.to_string())
+                .or_default()
+                .accumulate(&usage(input, 10), cost);
         };
-        put("2026-10-10", "nebius/nvidia/nemotron-3-ultra", 1000, Some(0.50));
-        put("2026-10-11", "nebius/nvidia/nemotron-3-ultra", 500, Some(0.25));
+        put(
+            "2026-10-10",
+            "nebius/nvidia/nemotron-3-ultra",
+            1000,
+            Some(0.50),
+        );
+        put(
+            "2026-10-11",
+            "nebius/nvidia/nemotron-3-ultra",
+            500,
+            Some(0.25),
+        );
         put("2026-10-11", "nebius/nvidia/nemotron-3-nano", 4000, None);
 
         let all = fold_by_model(&history, None);
@@ -468,7 +559,10 @@ mod tests {
         assert_eq!(all["nebius/nvidia/nemotron-3-ultra"].input, 1500);
         assert_eq!(all["nebius/nvidia/nemotron-3-ultra"].requests, 2);
         assert!((all["nebius/nvidia/nemotron-3-ultra"].cost - 0.75).abs() < 1e-9);
-        assert!(all["nebius/nvidia/nemotron-3-nano"].has_unknown_cost, "an unpriced model is flagged, not shown as free");
+        assert!(
+            all["nebius/nvidia/nemotron-3-nano"].has_unknown_cost,
+            "an unpriced model is flagged, not shown as free"
+        );
 
         // A range keeps only the later day.
         let recent = fold_by_model(&history, Some("2026-10-11"));
@@ -485,23 +579,43 @@ mod tests {
     async fn a_flush_writes_every_file_merges_with_what_is_there_and_empties_the_buffer() {
         let (dir, files) = temp_files();
         let mut state = BufferState::new();
-        state.days.entry("2026-11-01".into()).or_default().accumulate(&usage(10, 5), Some(0.001));
+        state
+            .days
+            .entry("2026-11-01".into())
+            .or_default()
+            .accumulate(&usage(10, 5), Some(0.001));
         state.by_source = one("2026-11-01", "main:t", 10);
         state.by_model = one("2026-11-01", "p/m", 10);
         flush_to(&mut state, &files, "test").await;
         assert!(state.is_empty(), "written buffers are cleared");
 
-        state.days.entry("2026-11-01".into()).or_default().accumulate(&usage(20, 10), Some(0.002));
+        state
+            .days
+            .entry("2026-11-01".into())
+            .or_default()
+            .accumulate(&usage(20, 10), Some(0.002));
         state.by_source = one("2026-11-01", "main:t", 20);
         flush_to(&mut state, &files, "test").await;
 
         let days = read_all_from(&files.days).await;
-        assert_eq!((days["2026-11-01"].input, days["2026-11-01"].requests), (30, 2));
+        assert_eq!(
+            (days["2026-11-01"].input, days["2026-11-01"].requests),
+            (30, 2)
+        );
         let by_source = read_all_by_source_from(&files.by_source).await;
         assert_eq!(by_source["2026-11-01"]["main:t"].input, 30);
-        assert!(read_all_by_source_from(&files.by_model).await.contains_key("2026-11-01"));
-        let leftovers: Vec<_> = std::fs::read_dir(&dir).unwrap().filter_map(Result::ok).filter(|e| e.path().extension().is_some_and(|x| x == "tmp")).collect();
-        assert!(leftovers.is_empty(), "the temp file was renamed over the real one");
+        assert!(read_all_by_source_from(&files.by_model)
+            .await
+            .contains_key("2026-11-01"));
+        let leftovers: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|e| e.path().extension().is_some_and(|x| x == "tmp"))
+            .collect();
+        assert!(
+            leftovers.is_empty(),
+            "the temp file was renamed over the real one"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -516,7 +630,10 @@ mod tests {
         flush_to(&mut state, &files, "test").await;
 
         let by_source = read_all_by_source_from(&files.by_source).await;
-        assert!(!by_source.contains_key("2020-01-01"), "by-source keeps a rolling window");
+        assert!(
+            !by_source.contains_key("2020-01-01"),
+            "by-source keeps a rolling window"
+        );
         assert!(by_source.contains_key(&today_key()));
         let by_model = read_all_by_source_from(&files.by_model).await;
         assert!(by_model.contains_key("2020-01-01"), "by-model is all time");
@@ -531,9 +648,16 @@ mod tests {
         files.days = dir.join("blocked");
         std::fs::create_dir_all(files.days.join("inner")).unwrap();
         let mut state = BufferState::new();
-        state.days.entry("2026-11-01".into()).or_default().accumulate(&usage(1, 1), Some(0.0));
+        state
+            .days
+            .entry("2026-11-01".into())
+            .or_default()
+            .accumulate(&usage(1, 1), Some(0.0));
         flush_to(&mut state, &files, "test").await;
-        assert!(!state.days.is_empty(), "nothing is dropped when the write fails");
+        assert!(
+            !state.days.is_empty(),
+            "nothing is dropped when the write fails"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

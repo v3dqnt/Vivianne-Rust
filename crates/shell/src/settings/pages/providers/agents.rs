@@ -7,20 +7,20 @@ use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::setting::{SettingGroup, SettingItem};
 use gpui_kit::prelude::*;
-use gpui_kit::{App, SharedString, Styled, div};
+use gpui_kit::{App, SharedString, Styled, div, px};
 use vivianne_providers::acp::{self, AuthKind, AuthMethod, AuthState};
 
 use crate::backend;
 use crate::settings::provider_state::{AgentAuth, AgentInfo, AgentReport};
 use crate::settings::values::Shared;
-use crate::settings::widgets::{mono, muted, note, pill, strong};
+use crate::settings::widgets::{mono, muted, note, pill};
 use crate::theme;
 
 pub fn group(values: &Shared) -> SettingGroup {
     let values = values.clone();
     SettingGroup::new()
         .title("Coding agents")
-        .item(note("Other coding agents, run through the Agent Client Protocol. A thread can use one from the model picker. Each starts through Node (npx) or uv (uvx) and downloads the first time it is set up."))
+        .item(note("Coding agents connected over the Agent Client Protocol. Pick one from the model picker in any thread. Each runs through Node (npx) or uv (uvx) and downloads the first time you set it up."))
         .item(SettingItem::render(move |_options, _window, cx| {
             load_once(&values, cx);
             view(&values).into_any_element()
@@ -48,7 +48,14 @@ fn load_once(values: &Shared, cx: &mut App) {
 }
 
 fn info(h: acp::Harness) -> AgentInfo {
-    AgentInfo { id: h.id, name: h.name, description: h.description, launcher: h.launcher, available: h.available, ready: h.ready }
+    AgentInfo {
+        id: h.id,
+        name: h.name,
+        description: h.description,
+        launcher: h.launcher,
+        available: h.available,
+        ready: h.ready,
+    }
 }
 
 fn view(values: &Shared) -> impl IntoElement + use<> {
@@ -64,17 +71,28 @@ fn view(values: &Shared) -> impl IntoElement + use<> {
     let (show, reset) = (values.clone(), values.clone());
     let buttons = h_flex()
         .gap_2()
-        .child(Button::new("agents-log").label("Show log").small().on_click(move |_, _, cx| {
-            show.borrow_mut().providers.agent_log = Some(acp::trace_lines());
-            cx.refresh_windows();
-        }))
-        .child(Button::new("agents-reset").label("Stop running agents").small().ghost().on_click(move |_, _, cx| {
-            if let Some(backend) = backend::get() {
-                backend.acp.reset();
-            }
-            reset.borrow_mut().providers.agent_log = Some(acp::trace_lines());
-            cx.refresh_windows();
-        }));
+        .child(
+            Button::new("agents-log")
+                .label("Show log")
+                .small()
+                .on_click(move |_, _, cx| {
+                    show.borrow_mut().providers.agent_log = Some(acp::trace_lines());
+                    cx.refresh_windows();
+                }),
+        )
+        .child(
+            Button::new("agents-reset")
+                .label("Stop running agents")
+                .small()
+                .ghost()
+                .on_click(move |_, _, cx| {
+                    if let Some(backend) = backend::get() {
+                        backend.acp.reset();
+                    }
+                    reset.borrow_mut().providers.agent_log = Some(acp::trace_lines());
+                    cx.refresh_windows();
+                }),
+        );
     div()
         .flex()
         .flex_col()
@@ -114,48 +132,99 @@ fn row(values: &Shared, agent: &AgentInfo) -> impl IntoElement + use<> {
     let mut actions = h_flex().gap_2();
     if agent.available && !agent.ready {
         let (values, id) = (values.clone(), agent.id.clone());
-        actions = actions.child(Button::new(SharedString::from(format!("setup-{}", agent.id))).label(if busy { "Setting up…" } else { "Set up" }).small().on_click(
-            move |_, _, cx| {
-                if !busy {
-                    set_up(&values, &id, cx);
-                }
-            },
-        ));
+        actions = actions.child(
+            Button::new(SharedString::from(format!("setup-{}", agent.id)))
+                .label(if busy { "Setting up…" } else { "Set up" })
+                .small()
+                .on_click(move |_, _, cx| {
+                    if !busy {
+                        set_up(&values, &id, cx);
+                    }
+                }),
+        );
     }
     if agent.available && agent.ready {
         let (values, id) = (values.clone(), agent.id.clone());
         let checking = matches!(auth, Some(AgentAuth::Checking));
-        actions = actions.child(Button::new(SharedString::from(format!("auth-{}", agent.id))).label(if checking { "Checking…" } else { "Check sign-in" }).small().on_click(
-            move |_, _, cx| {
-                if !checking {
-                    check_sign_in(&values, &id, cx);
-                }
-            },
-        ));
+        actions = actions.child(
+            Button::new(SharedString::from(format!("auth-{}", agent.id)))
+                .label(if checking {
+                    "Checking…"
+                } else {
+                    "Check sign-in"
+                })
+                .small()
+                .on_click(move |_, _, cx| {
+                    if !checking {
+                        check_sign_in(&values, &id, cx);
+                    }
+                }),
+        );
     }
     if agent.available {
         let (values, id) = (values.clone(), agent.id.clone());
-        actions = actions.child(Button::new(SharedString::from(format!("test-{}", agent.id))).label("Test").small().ghost().on_click(move |_, _, cx| {
-            if !busy {
-                test(&values, &id, cx);
-            }
-        }));
+        actions = actions.child(
+            Button::new(SharedString::from(format!("test-{}", agent.id)))
+                .label("Test")
+                .small()
+                .ghost()
+                .on_click(move |_, _, cx| {
+                    if !busy {
+                        test(&values, &id, cx);
+                    }
+                }),
+        );
     }
     div()
         .flex()
         .flex_col()
-        .gap_1()
-        .p_2()
-        .rounded_md()
-        .border_1()
-        .border_color(theme::color(theme::BORDER))
+        .gap(px(8.0))
+        .p(px(12.0))
+        .rounded(px(theme::RADIUS_SURFACE))
+        .bg(theme::color(theme::SURFACE))
         .child(
             h_flex()
                 .justify_between()
                 .items_center()
-                .gap_3()
-                .child(div().flex().flex_col().child(strong(agent.name.clone())).child(muted(agent.description.clone())))
-                .child(h_flex().gap_2().items_center().child(pill(status(agent))).child(actions)),
+                .gap(px(12.0))
+                .child(
+                    h_flex()
+                        .flex_1()
+                        .min_w_0()
+                        .gap(px(12.0))
+                        .items_center()
+                        .child(crate::brand::tile(&agent.id, &agent.name, 36.0))
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .flex_1()
+                                .min_w_0()
+                                .gap(px(2.0))
+                                .child(
+                                    div()
+                                        .text_size(px(theme::TEXT_BASE))
+                                        .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                        .text_color(theme::color(theme::TEXT))
+                                        .child(agent.name.clone()),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(theme::TEXT_SM))
+                                        .text_color(theme::color(theme::MUTED))
+                                        .line_clamp(2)
+                                        .child(agent.description.clone()),
+                                ),
+                        ),
+                )
+                .child(
+                    h_flex()
+                        .flex_none()
+                        .gap_2()
+                        .items_center()
+                        .child(pill(status(agent)))
+                        .child(actions),
+                ),
         )
         .children(progress.filter(|_| busy).map(muted))
         .children(auth.map(|a| auth_view(values, &agent.id, &a)))
@@ -166,15 +235,28 @@ fn row(values: &Shared, agent: &AgentInfo) -> impl IntoElement + use<> {
 fn auth_view(values: &Shared, id: &str, auth: &AgentAuth) -> gpui_kit::AnyElement {
     match auth {
         AgentAuth::Checking => muted("Checking whether it is signed in…").into_any_element(),
-        AgentAuth::SignedIn => div().text_sm().text_color(theme::color(theme::OK)).child("Signed in. It is ready to use.").into_any_element(),
-        AgentAuth::Failed(why) => div().text_sm().text_color(theme::color(theme::DANGER)).child(why.clone()).into_any_element(),
+        AgentAuth::SignedIn => div()
+            .text_sm()
+            .text_color(theme::color(theme::OK))
+            .child("Signed in. It is ready to use.")
+            .into_any_element(),
+        AgentAuth::Failed(why) => div()
+            .text_sm()
+            .text_color(theme::color(theme::DANGER))
+            .child(why.clone())
+            .into_any_element(),
         AgentAuth::Needs(methods) => {
             let rows: Vec<_> = methods.iter().map(|m| method_row(values, id, m)).collect();
             div()
                 .flex()
                 .flex_col()
                 .gap_1()
-                .child(div().text_sm().text_color(theme::color(theme::DANGER)).child("It needs you to sign in before it can be used."))
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(theme::color(theme::DANGER))
+                        .child("It needs you to sign in before it can be used."),
+                )
                 .children(rows)
                 .into_any_element()
         }
@@ -185,8 +267,18 @@ fn method_row(values: &Shared, id: &str, method: &AuthMethod) -> gpui_kit::AnyEl
     let (values, agent_id, method_id) = (values.clone(), id.to_owned(), method.id.clone());
     match (&method.kind, &method.command) {
         (AuthKind::Terminal, Some(command)) => {
-            let (copy, again, text, run) = (command.clone(), values.clone(), command.clone(), command.clone());
-            let (agent, here, here_id, here_values) = (agent_id.clone(), agent_id.clone(), agent_id.clone(), values.clone());
+            let (copy, again, text, run) = (
+                command.clone(),
+                values.clone(),
+                command.clone(),
+                command.clone(),
+            );
+            let (agent, here, here_id, here_values) = (
+                agent_id.clone(),
+                agent_id.clone(),
+                agent_id.clone(),
+                values.clone(),
+            );
             let name = agent_id.clone();
             div()
                 .flex()
@@ -226,36 +318,62 @@ fn method_row(values: &Shared, id: &str, method: &AuthMethod) -> gpui_kit::AnyEl
 fn open_sign_in_window(values: &Shared, id: &str, name: &str, command: &str, cx: &mut App) {
     let (shown, agent) = (values.clone(), id.to_owned());
     let done: crate::signin::OnSignedIn = std::rc::Rc::new(move |cx| {
-        shown.borrow_mut().providers.agent_auth.insert(agent.clone(), AgentAuth::SignedIn);
+        shown
+            .borrow_mut()
+            .providers
+            .agent_auth
+            .insert(agent.clone(), AgentAuth::SignedIn);
         cx.refresh_windows();
     });
-    let label = values.borrow().providers.agents.as_ref().and_then(|list| list.iter().find(|a| a.id == id).map(|a| a.name.clone())).unwrap_or_else(|| name.to_owned());
+    let label = values
+        .borrow()
+        .providers
+        .agents
+        .as_ref()
+        .and_then(|list| list.iter().find(|a| a.id == id).map(|a| a.name.clone()))
+        .unwrap_or_else(|| name.to_owned());
     crate::signin::open(id, &label, command, done, cx);
 }
 
 /// Asks the agent whether it is signed in.
 fn check_sign_in(values: &Shared, id: &str, cx: &mut App) {
-    values.borrow_mut().providers.agent_auth.insert(id.to_owned(), AgentAuth::Checking);
+    values
+        .borrow_mut()
+        .providers
+        .agent_auth
+        .insert(id.to_owned(), AgentAuth::Checking);
     cx.refresh_windows();
     let (values, id) = (values.clone(), id.to_owned());
     let ask = id.clone();
-    backend::run(cx, async move { acp::check_auth(&ask, acp::Depth::Thorough).await }, move |result, cx| {
-        store_auth(&values, &id, result);
-        cx.refresh_windows();
-    });
+    backend::run(
+        cx,
+        async move { acp::check_auth(&ask, acp::Depth::Thorough).await },
+        move |result, cx| {
+            store_auth(&values, &id, result);
+            cx.refresh_windows();
+        },
+    );
 }
 
 /// Signs the agent in the way it offered, which may open a browser, then shows where that left it.
 fn sign_in(values: &Shared, id: &str, method: &str, cx: &mut App) {
-    values.borrow_mut().providers.agent_auth.insert(id.to_owned(), AgentAuth::Checking);
+    values
+        .borrow_mut()
+        .providers
+        .agent_auth
+        .insert(id.to_owned(), AgentAuth::Checking);
     cx.refresh_windows();
     let (values, id, method) = (values.clone(), id.to_owned(), method.to_owned());
     let ask = id.clone();
-    backend::run(cx, async move { acp::sign_in(&ask, &method).await }, move |result, cx| {
-        backend::note_sign_in(&id, &result);
-        store_auth(&values, &id, result);
-        cx.refresh_windows();
-    });
+    backend::run(
+        cx,
+        async move { acp::sign_in(&ask, &method).await },
+        move |result, cx| {
+            backend::note_sign_in(&id, &result);
+            store_auth(&values, &id, result);
+            cx.refresh_windows();
+        },
+    );
 }
 
 fn store_auth(values: &Shared, id: &str, result: Result<AuthState, String>) {
@@ -264,7 +382,11 @@ fn store_auth(values: &Shared, id: &str, result: Result<AuthState, String>) {
         Ok(AuthState::NeedsSignIn(methods)) => AgentAuth::Needs(methods),
         Ok(AuthState::Failed(why)) | Err(why) => AgentAuth::Failed(why),
     };
-    values.borrow_mut().providers.agent_auth.insert(id.to_owned(), auth);
+    values
+        .borrow_mut()
+        .providers
+        .agent_auth
+        .insert(id.to_owned(), auth);
 }
 
 fn report_view(report: &AgentReport) -> impl IntoElement + use<> {
@@ -273,16 +395,31 @@ fn report_view(report: &AgentReport) -> impl IntoElement + use<> {
         .iter()
         .map(|(name, ok, seconds, detail)| {
             let mark = if *ok { "✓" } else { "✗" };
-            let line = div().text_sm().text_color(theme::color(if *ok { theme::MUTED } else { theme::DANGER })).child(format!("{mark} {name} ({seconds:.1}s): {detail}"));
+            let line = div()
+                .text_sm()
+                .text_color(theme::color(if *ok { theme::MUTED } else { theme::DANGER }))
+                .child(format!("{mark} {name} ({seconds:.1}s): {detail}"));
             line.into_any_element()
         })
         .collect();
-    div().flex().flex_col().gap_1().children(steps).children((!report.reply.is_empty()).then(|| muted(format!("It said: \"{}\"", report.reply))))
+    div().flex().flex_col().gap_1().children(steps).children(
+        (!report.reply.is_empty()).then(|| muted(format!("It said: \"{}\"", report.reply))),
+    )
 }
 
 fn log_box(lines: &[String]) -> impl IntoElement + use<> {
-    let text = if lines.is_empty() { "Nothing logged yet.".to_owned() } else { lines.join("\n") };
-    div().p_2().rounded_md().bg(theme::color(theme::CODE_BG)).max_h(gpui_kit::px(220.0)).overflow_hidden().child(mono(text))
+    let text = if lines.is_empty() {
+        "Nothing logged yet.".to_owned()
+    } else {
+        lines.join("\n")
+    };
+    div()
+        .p_2()
+        .rounded_md()
+        .bg(theme::color(theme::CODE_BG))
+        .max_h(gpui_kit::px(220.0))
+        .overflow_hidden()
+        .child(mono(text))
 }
 
 fn set_up(values: &Shared, id: &str, cx: &mut App) {
@@ -293,19 +430,23 @@ fn set_up(values: &Shared, id: &str, cx: &mut App) {
     let ask = id.clone();
     let slot = id.clone();
     watch_progress(values.clone(), id.clone(), cx);
-    backend::run(cx, async move { acp::install(&ask, &move |p| store_progress(&slot, &p)).await }, move |result, cx| {
-        {
-            let mut v = values.borrow_mut();
-            v.providers.finish(&key);
-            if let Err(why) = result {
-                v.providers.error = Some(why);
+    backend::run(
+        cx,
+        async move { acp::install(&ask, &move |p| store_progress(&slot, &p)).await },
+        move |result, cx| {
+            {
+                let mut v = values.borrow_mut();
+                v.providers.finish(&key);
+                if let Err(why) = result {
+                    v.providers.error = Some(why);
+                }
             }
-        }
-        // Whether it is ready now is in the registry's marks.
-        values.borrow_mut().providers.agents = None;
-        let _ = id;
-        cx.refresh_windows();
-    });
+            // Whether it is ready now is in the registry's marks.
+            values.borrow_mut().providers.agents = None;
+            let _ = id;
+            cx.refresh_windows();
+        },
+    );
 }
 
 fn test(values: &Shared, id: &str, cx: &mut App) {
@@ -318,21 +459,35 @@ fn test(values: &Shared, id: &str, cx: &mut App) {
     cx.refresh_windows();
     let (values, id) = (values.clone(), id.to_owned());
     let ask = id.clone();
-    backend::run(cx, async move { acp::debug(&ask, None).await }, move |result, cx| {
-        {
-            let mut v = values.borrow_mut();
-            v.providers.finish(&key);
-            match result {
-                Ok(report) => {
-                    let steps = report.steps.into_iter().map(|s| (s.name, s.ok, millis_to_seconds(s.millis), s.detail)).collect();
-                    v.providers.agent_reports.insert(id, AgentReport { steps, reply: report.reply });
-                    v.providers.agent_log = Some(report.trace);
+    backend::run(
+        cx,
+        async move { acp::debug(&ask, None).await },
+        move |result, cx| {
+            {
+                let mut v = values.borrow_mut();
+                v.providers.finish(&key);
+                match result {
+                    Ok(report) => {
+                        let steps = report
+                            .steps
+                            .into_iter()
+                            .map(|s| (s.name, s.ok, millis_to_seconds(s.millis), s.detail))
+                            .collect();
+                        v.providers.agent_reports.insert(
+                            id,
+                            AgentReport {
+                                steps,
+                                reply: report.reply,
+                            },
+                        );
+                        v.providers.agent_log = Some(report.trace);
+                    }
+                    Err(why) => v.providers.error = Some(why),
                 }
-                Err(why) => v.providers.error = Some(why),
             }
-        }
-        cx.refresh_windows();
-    });
+            cx.refresh_windows();
+        },
+    );
 }
 
 /// What an install last reported, by agent, written from the async side and read while the page redraws.
@@ -342,7 +497,9 @@ static PROGRESS: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new
 fn store_progress(id: &str, progress: &acp::InstallProgress) {
     let megabytes = progress.bytes as f64 / 1_048_576.0;
     let text = format!("{} ({megabytes:.0} MB on disk)", progress.line);
-    let mut all = PROGRESS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut all = PROGRESS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     all.retain(|(known, _)| known != id);
     all.push((id.to_owned(), text));
 }
@@ -351,11 +508,22 @@ fn store_progress(id: &str, progress: &acp::InstallProgress) {
 fn watch_progress(values: Shared, id: String, cx: &mut App) {
     cx.spawn(async move |cx| {
         loop {
-            cx.background_executor().timer(std::time::Duration::from_secs(1)).await;
+            cx.background_executor()
+                .timer(std::time::Duration::from_secs(1))
+                .await;
             let still = values.borrow().providers.is_busy(&format!("agent-{id}"));
-            let text = PROGRESS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().find(|(known, _)| *known == id).map(|(_, t)| t.clone());
+            let text = PROGRESS
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .iter()
+                .find(|(known, _)| *known == id)
+                .map(|(_, t)| t.clone());
             if let Some(text) = text {
-                values.borrow_mut().providers.agent_progress.insert(id.clone(), text);
+                values
+                    .borrow_mut()
+                    .providers
+                    .agent_progress
+                    .insert(id.clone(), text);
             }
             cx.update(|cx| cx.refresh_windows());
             if !still {
@@ -376,7 +544,14 @@ mod tests {
     use super::*;
 
     fn agent(available: bool, ready: bool) -> AgentInfo {
-        AgentInfo { id: "a".into(), name: "A".into(), description: String::new(), launcher: "npx".into(), available, ready }
+        AgentInfo {
+            id: "a".into(),
+            name: "A".into(),
+            description: String::new(),
+            launcher: "npx".into(),
+            available,
+            ready,
+        }
     }
 
     #[test]

@@ -24,6 +24,7 @@ pub fn page(values: &Shared) -> SettingPage {
     SettingPage::new("Diagnostics")
         .icon(IconName::Info)
         .description("What Vivianne records about itself, and how to report a problem.")
+        .group(performance_group())
         .group(sharing_group(values))
         .group(recorded_group(values))
         .group(crashes_group(values))
@@ -49,7 +50,9 @@ thread_local! {
 
 /// Starts the read asked for by [`start_loading`]; called from a draw, which has an `App`.
 fn run_pending_load(cx: &mut App) {
-    let Some(values) = LOAD_REQUEST.with(|slot| slot.borrow_mut().take()) else { return };
+    let Some(values) = LOAD_REQUEST.with(|slot| slot.borrow_mut().take()) else {
+        return;
+    };
     load(&values, cx);
 }
 
@@ -60,14 +63,23 @@ fn load(values: &Shared, cx: &mut App) {
         cx,
         async {
             let settings = vivianne_ai::host::read_settings_json().await;
-            let summary = tokio::task::spawn_blocking(vivianne_telemetry::summary).await.unwrap_or_default();
+            let summary = tokio::task::spawn_blocking(vivianne_telemetry::summary)
+                .await
+                .unwrap_or_default();
             (settings, summary)
         },
         move |(settings, summary), cx| {
             {
                 let mut v = values.borrow_mut();
-                v.share_diagnostics = settings.get("telemetryEnabled").and_then(|s| s.as_bool()).unwrap_or(false);
-                v.share_endpoint = settings.get("telemetryEndpoint").and_then(|s| s.as_str()).unwrap_or_default().to_owned();
+                v.share_diagnostics = settings
+                    .get("telemetryEnabled")
+                    .and_then(|s| s.as_bool())
+                    .unwrap_or(false);
+                v.share_endpoint = settings
+                    .get("telemetryEndpoint")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or_default()
+                    .to_owned();
                 show_summary(&mut v, &summary);
                 v.diag_loaded = true;
                 v.diag_loading = false;
@@ -80,7 +92,11 @@ fn load(values: &Shared, cx: &mut App) {
 fn show_summary(v: &mut crate::settings::values::Values, summary: &Summary) {
     v.diag_events = u32::try_from(summary.event_count).unwrap_or(u32::MAX);
     v.diag_since = summary.first_event_ts.map(time_text).unwrap_or_default();
-    v.diag_kinds = summary.kinds.iter().map(|(kind, count)| (kind.clone(), u32::try_from(*count).unwrap_or(u32::MAX))).collect();
+    v.diag_kinds = summary
+        .kinds
+        .iter()
+        .map(|(kind, count)| (kind.clone(), u32::try_from(*count).unwrap_or(u32::MAX)))
+        .collect();
     v.crashes = summary.crashes.iter().map(crash_row).collect();
     v.open_crash = None;
 }
@@ -90,37 +106,65 @@ fn time_text(ms: u64) -> String {
     let secs = ms / 1000;
     let (y, m, d) = civil(i64::try_from(secs / 86_400).unwrap_or(0));
     let minute_of_day = (secs % 86_400) / 60;
-    format!("{y:04}-{m:02}-{d:02} {:02}:{:02} UTC", minute_of_day / 60, minute_of_day % 60)
+    format!(
+        "{y:04}-{m:02}-{d:02} {:02}:{:02} UTC",
+        minute_of_day / 60,
+        minute_of_day % 60
+    )
 }
 
 fn crash_row(crash: &CrashRecord) -> Crash {
-    let mut trace = vec![format!("at {}", crash.location), format!("version {} on {}", crash.app_version, crash.os)];
+    let mut trace = vec![
+        format!("at {}", crash.location),
+        format!("version {} on {}", crash.app_version, crash.os),
+    ];
     trace.extend(crash.backtrace.lines().take(TRACE_LINES).map(str::to_owned));
-    Crash { time: time_text(crash.ts), kind: crash.message.clone(), trace }
+    Crash {
+        time: time_text(crash.ts),
+        kind: crash.message.clone(),
+        trace,
+    }
 }
 
 /// Reads what is recorded again (after Clear).
 fn reload_summary(values: &Shared, cx: &mut App) {
     let values = values.clone();
-    backend::run(cx, async { tokio::task::spawn_blocking(vivianne_telemetry::summary).await.unwrap_or_default() }, move |summary, cx| {
-        show_summary(&mut values.borrow_mut(), &summary);
-        cx.refresh_windows();
-    });
+    backend::run(
+        cx,
+        async {
+            tokio::task::spawn_blocking(vivianne_telemetry::summary)
+                .await
+                .unwrap_or_default()
+        },
+        move |summary, cx| {
+            show_summary(&mut values.borrow_mut(), &summary);
+            cx.refresh_windows();
+        },
+    );
 }
 
 // ---------------------------------------------------------------- sharing ---
 
 /// Saves one sharing setting, leaving the rest of the settings file as it is.
 fn save_setting(key: &'static str, value: serde_json::Value, cx: &mut App) {
-    backend::run(cx, async move { vivianne_ai::host::update_settings(move |s| s[key] = value).await }, |result, _cx| {
-        if let Err(why) = result {
-            eprintln!("vivianne: could not save the setting: {why}");
-        }
-    });
+    backend::run(
+        cx,
+        async move { vivianne_ai::host::update_settings(move |s| s[key] = value).await },
+        |result, _cx| {
+            if let Err(why) = result {
+                eprintln!("vivianne: could not save the setting: {why}");
+            }
+        },
+    );
 }
 
 fn sharing_group(values: &Shared) -> SettingGroup {
-    let (switch_read, switch_write, input_read, input_write) = (values.clone(), values.clone(), values.clone(), values.clone());
+    let (switch_read, switch_write, input_read, input_write) = (
+        values.clone(),
+        values.clone(),
+        values.clone(),
+        values.clone(),
+    );
     let switch = SettingField::switch(
         move |_| switch_read.borrow().share_diagnostics,
         move |on, cx| {
@@ -201,36 +245,58 @@ fn recorded_group(values: &Shared) -> SettingGroup {
 
 fn crashes_group(values: &Shared) -> SettingGroup {
     let values = values.clone();
-    SettingGroup::new().title("Crashes").item(SettingItem::render(move |_options, _window, _cx| {
-        let (crashes, open) = {
-            let v = values.borrow();
-            (v.crashes.clone(), v.open_crash)
-        };
-        if crashes.is_empty() {
-            return muted("No crashes recorded.").into_any_element();
-        }
-        let rows = crashes.into_iter().enumerate().map(|(index, crash)| {
-            let is_open = open == Some(index);
-            let values = values.clone();
-            let toggle = Button::new(("crash", index))
-                .label(if is_open { "Hide" } else { "Show" })
-                .ghost()
-                .small()
-                .on_click(move |_, _, cx| {
-                    let mut v = values.borrow_mut();
-                    v.open_crash = if v.open_crash == Some(index) { None } else { Some(index) };
-                    cx.refresh_windows();
-                });
+    SettingGroup::new()
+        .title("Crashes")
+        .item(SettingItem::render(move |_options, _window, _cx| {
+            let (crashes, open) = {
+                let v = values.borrow();
+                (v.crashes.clone(), v.open_crash)
+            };
+            if crashes.is_empty() {
+                return muted("No crashes recorded.").into_any_element();
+            }
+            let rows = crashes.into_iter().enumerate().map(|(index, crash)| {
+                let is_open = open == Some(index);
+                let values = values.clone();
+                let toggle = Button::new(("crash", index))
+                    .label(if is_open { "Hide" } else { "Show" })
+                    .ghost()
+                    .small()
+                    .on_click(move |_, _, cx| {
+                        let mut v = values.borrow_mut();
+                        v.open_crash = if v.open_crash == Some(index) {
+                            None
+                        } else {
+                            Some(index)
+                        };
+                        cx.refresh_windows();
+                    });
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(
+                        h_flex()
+                            .justify_between()
+                            .items_center()
+                            .child(strong(crash.time.clone()))
+                            .child(toggle),
+                    )
+                    .child(muted(crash.kind.clone()))
+                    .children(is_open.then(|| {
+                        div()
+                            .flex()
+                            .flex_col()
+                            .children(crash.trace.iter().map(|l| mono(l.clone())))
+                    }))
+            });
             div()
                 .flex()
                 .flex_col()
-                .gap_1()
-                .child(h_flex().justify_between().items_center().child(strong(crash.time.clone())).child(toggle))
-                .child(muted(crash.kind.clone()))
-                .children(is_open.then(|| div().flex().flex_col().children(crash.trace.iter().map(|l| mono(l.clone())))))
-        });
-        div().flex().flex_col().gap_3().children(rows).into_any_element()
-    }))
+                .gap_3()
+                .children(rows)
+                .into_any_element()
+        }))
 }
 
 // ----------------------------------------------------------------- report ---
@@ -276,14 +342,18 @@ fn send_report(values: &Shared, cx: &mut App) {
     };
     cx.refresh_windows();
     let values = values.clone();
-    backend::run(cx, async move { vivianne_telemetry::submit_report(&text, attach).await }, move |result, cx| {
-        {
-            let mut v = values.borrow_mut();
-            v.report_sending = false;
-            v.report_result = Some(report_outcome(&result));
-        }
-        cx.refresh_windows();
-    });
+    backend::run(
+        cx,
+        async move { vivianne_telemetry::submit_report(&text, attach).await },
+        move |result, cx| {
+            {
+                let mut v = values.borrow_mut();
+                v.report_sending = false;
+                v.report_result = Some(report_outcome(&result));
+            }
+            cx.refresh_windows();
+        },
+    );
 }
 
 /// What Send says: where the report was saved, and whether it was uploaded.
@@ -295,7 +365,9 @@ fn report_outcome(result: &Result<Report, String>) -> String {
             match (&report.upload_error, report.uploaded) {
                 (_, true) => format!("{saved} Uploaded."),
                 (Some(why), false) => format!("{saved} Not uploaded: {why}."),
-                (None, false) => format!("{saved} Not uploaded: sharing is off or no https:// address is set."),
+                (None, false) => {
+                    format!("{saved} Not uploaded: sharing is off or no https:// address is set.")
+                }
             }
         }
     }
@@ -308,13 +380,19 @@ mod tests {
     use super::*;
 
     fn report(uploaded: bool, error: Option<&str>) -> Result<Report, String> {
-        Ok(Report { path: PathBuf::from("r.json"), uploaded, upload_error: error.map(str::to_owned) })
+        Ok(Report {
+            path: PathBuf::from("r.json"),
+            uploaded,
+            upload_error: error.map(str::to_owned),
+        })
     }
 
     #[test]
     fn send_says_where_the_report_went_and_whether_it_was_uploaded() {
         assert!(report_outcome(&report(true, None)).ends_with("Uploaded."));
-        assert!(report_outcome(&report(false, Some("no route"))).contains("Not uploaded: no route"));
+        assert!(
+            report_outcome(&report(false, Some("no route"))).contains("Not uploaded: no route")
+        );
         assert!(report_outcome(&report(false, None)).contains("sharing is off"));
         assert!(report_outcome(&report(false, None)).starts_with("Saved to r.json"));
         assert_eq!(report_outcome(&Err("boom".to_owned())), "boom");
@@ -325,4 +403,17 @@ mod tests {
         assert_eq!(time_text(0), "1970-01-01 00:00 UTC");
         assert_eq!(time_text(1_763_600_000_000), "2025-11-20 00:53 UTC");
     }
+}
+
+/// Frame pace of the whole window and the app's log, shown live.
+fn performance_group() -> SettingGroup {
+    SettingGroup::new()
+        .title("Performance")
+        .description("How smoothly the app is drawing, and what its background parts are doing.")
+        .item(SettingItem::render(|_options, window, cx| {
+            let view = window.use_keyed_state("diag-performance", cx, |_window, cx| {
+                crate::rail::performance::PerformanceView::new(cx)
+            });
+            div().h(gpui_kit::px(420.0)).child(view).into_any_element()
+        }))
 }

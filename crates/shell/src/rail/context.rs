@@ -5,7 +5,7 @@ use gpui_kit::{AnyElement, div, px, relative};
 use vivianne_core::Mode;
 use vivianne_runtime::context::Breakdown;
 
-use super::{muted, section};
+use super::muted;
 use crate::theme::{self, color};
 
 /// Above this share of the window the figure turns amber: the model is about to start losing the oldest turns.
@@ -39,33 +39,74 @@ fn compact(tokens: u32) -> String {
     format!("{}{unit}", text.strip_suffix(".0").unwrap_or(&text))
 }
 
-/// The parts are told apart by shade, not hue: a bar of five colours reads as a chart legend to decode, and the
-/// accent is kept for what is selected.
-const COLORS: [u32; 5] = [0x00dd_e1e8, 0x00a9_b0bc, 0x0078_808d, 0x0057_5e6a, 0x003d_434d];
+/// One hue per part, muted enough to sit in the panel, and different enough to tell apart in a thin bar.
+const COLORS: [u32; 5] = [
+    0x005b_8cff,
+    0x00a3_71f7,
+    0x0045_c179,
+    0x00e3_a948,
+    0x008b_93a1,
+];
 
-pub fn card(view: &ContextView) -> AnyElement {
+pub fn card(
+    view: &ContextView,
+    closed: bool,
+    on_toggle: impl Fn(&gpui_kit::ClickEvent, &mut gpui_kit::Window, &mut gpui_kit::App) + 'static,
+) -> AnyElement {
     let used = view.breakdown.total();
     let full = share(used, view.window);
-        let rows = [
+    let rows = [
         view.breakdown.system,
         view.breakdown.tools,
         view.breakdown.user,
         view.breakdown.assistant,
         view.breakdown.tool_results,
     ];
-    let labels = ["System prompt", "Tool definitions", "You", "Assistant", "Tool results"];
-    let share_label = view.window.map(|_| if full < 0.1 { format!("{:.1}%", full * 100.0) } else { format!("{:.0}%", full * 100.0) });
-    let mut lines = vec![muted(match view.window {
-        Some(window) => format!("{} of {}", compact(used), compact(window)),
-        None => format!("{} tokens", compact(used)),
-    })
-    .into_any_element()];
-    // The bar only means something against a known window.
-    if view.window.is_some() {
-        let bar = div().flex().w_full().h(px(4.0)).rounded_full().overflow_hidden().bg(color(theme::RAISED));
-        let bar = rows.iter().zip(COLORS).fold(bar, |bar, (&tokens, hue)| bar.child(div().h_full().w(relative(share(tokens, view.window))).bg(color(hue))));
-        lines.push(bar.into_any_element());
-    }
+    let labels = [
+        "System prompt",
+        "Tool definitions",
+        "You",
+        "Assistant",
+        "Tool results",
+    ];
+    let share_label = view.window.map(|_| {
+        if full < 0.1 {
+            format!("{:.1}%", full * 100.0)
+        } else {
+            format!("{:.0}%", full * 100.0)
+        }
+    });
+    let mut lines = vec![
+        muted(match view.window {
+            Some(window) => format!("{} of {}", compact(used), compact(window)),
+            None => format!("{} tokens", compact(used)),
+        })
+        .into_any_element(),
+    ];
+    // Against the window when it is known (the empty part is what is left); otherwise the parts fill the bar,
+    // so what the context is made of still shows.
+    let whole = view.window.or(Some(used));
+    let bar = div()
+        .flex()
+        .w_full()
+        .h(px(10.0))
+        .gap(px(1.0))
+        .rounded_full()
+        .overflow_hidden()
+        .bg(color(theme::RAISED));
+    let bar = rows
+        .iter()
+        .zip(COLORS)
+        .filter(|(tokens, _)| **tokens > 0)
+        .fold(bar, |bar, (&tokens, hue)| {
+            bar.child(
+                div()
+                    .h_full()
+                    .w(relative(share(tokens, whole)))
+                    .bg(color(hue)),
+            )
+        });
+    lines.push(bar.into_any_element());
     for ((label, tokens), hue) in labels.iter().zip(rows).zip(COLORS) {
         if tokens == 0 {
             continue;
@@ -75,16 +116,39 @@ pub fn card(view: &ContextView) -> AnyElement {
                 .flex()
                 .items_center()
                 .gap(px(8.0))
-                .child(div().size(px(8.0)).flex_none().rounded(px(2.0)).bg(color(hue)))
+                .child(
+                    div()
+                        .size(px(8.0))
+                        .flex_none()
+                        .rounded(px(2.0))
+                        .bg(color(hue)),
+                )
                 .child(muted(*label).flex_1())
-                .child(div().font_family(theme::MONO).text_size(px(theme::TEXT_SM)).child(compact(tokens)))
+                .child(
+                    div()
+                        .font_family(theme::MONO)
+                        .text_size(px(theme::TEXT_SM))
+                        .child(compact(tokens)),
+                )
                 .into_any_element(),
         );
     }
-    super::section_with(
+    super::collapsible(
+        "context",
         "Context",
-        share_label.map(|share| div().text_color(color(if full >= WARN_AT { theme::WARN } else { theme::TEXT })).child(share).into_any_element()),
-        lines,
+        share_label.map(|share| {
+            div()
+                .text_color(color(if full >= WARN_AT {
+                    theme::WARN
+                } else {
+                    theme::TEXT
+                }))
+                .child(share)
+                .into_any_element()
+        }),
+        closed,
+        on_toggle,
+        if closed { Vec::new() } else { lines },
     )
     .into_any_element()
 }

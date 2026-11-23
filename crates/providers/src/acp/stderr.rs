@@ -14,13 +14,22 @@ const DRAIN_WAIT: Duration = Duration::from_millis(250);
 /// The agent's stderr with anything private taken out of it.
 #[must_use]
 pub(super) fn sanitize(text: &str) -> String {
-    static PAIRING: LazyLock<Option<Regex>> = LazyLock::new(|| Regex::new(r"https?://[^\s]*/pair#[^\s]*").ok());
-    static SIGN_IN: LazyLock<Option<Regex>> = LazyLock::new(|| Regex::new(r"https?://accounts\.google\.com[^\s]*").ok());
-    static BEARER: LazyLock<Option<Regex>> = LazyLock::new(|| Regex::new(r"\bBearer\s+[A-Za-z0-9._\-+=/]+").ok());
-    static BASIC: LazyLock<Option<Regex>> = LazyLock::new(|| Regex::new(r"\bAuthorization:\s*Basic\s+\S+").ok());
-    static API_KEY: LazyLock<Option<Regex>> = LazyLock::new(|| Regex::new(r"\bx-api-key:\s*\S+").ok());
-    static SECRET: LazyLock<Option<Regex>> =
-        LazyLock::new(|| Regex::new(r"\b(?:sk-[A-Za-z0-9][A-Za-z0-9_-]{7,}|ghp_[A-Za-z0-9]+|xox[a-zA-Z]-[A-Za-z0-9-]+)\b").ok());
+    static PAIRING: LazyLock<Option<Regex>> =
+        LazyLock::new(|| Regex::new(r"https?://[^\s]*/pair#[^\s]*").ok());
+    static SIGN_IN: LazyLock<Option<Regex>> =
+        LazyLock::new(|| Regex::new(r"https?://accounts\.google\.com[^\s]*").ok());
+    static BEARER: LazyLock<Option<Regex>> =
+        LazyLock::new(|| Regex::new(r"\bBearer\s+[A-Za-z0-9._\-+=/]+").ok());
+    static BASIC: LazyLock<Option<Regex>> =
+        LazyLock::new(|| Regex::new(r"\bAuthorization:\s*Basic\s+\S+").ok());
+    static API_KEY: LazyLock<Option<Regex>> =
+        LazyLock::new(|| Regex::new(r"\bx-api-key:\s*\S+").ok());
+    static SECRET: LazyLock<Option<Regex>> = LazyLock::new(|| {
+        Regex::new(
+            r"\b(?:sk-[A-Za-z0-9][A-Za-z0-9_-]{7,}|ghp_[A-Za-z0-9]+|xox[a-zA-Z]-[A-Za-z0-9-]+)\b",
+        )
+        .ok()
+    });
 
     let mut out = text.replace('\0', "");
     for key in ["HOME", "USERPROFILE"] {
@@ -65,7 +74,9 @@ mod tests {
 
     #[test]
     fn an_agents_stderr_is_cleaned_before_it_is_shown() {
-        let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).unwrap_or_default();
+        let home = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_default();
         let said = format!(
             "error: cannot write {home}/notes.md\0\n\
              open https://claude.ai/pair#abc123\n\
@@ -77,15 +88,37 @@ mod tests {
         );
         let clean = sanitize(&said);
         assert!(!clean.contains('\0'), "{clean}");
-        assert!(!clean.contains("abc123"), "a pairing link is not repeated: {clean}");
-        assert!(!clean.contains("accounts.google.com"), "a sign-in link is not repeated: {clean}");
-        assert!(!clean.contains("abc.def.ghi") && !clean.contains("dXNlcjpwYXNz"), "{clean}");
-        assert!(!clean.contains("ghp_") && !clean.contains("xoxb-") && !clean.contains("1234567890"), "{clean}");
-        assert!(clean.contains("[pairing-url]") && clean.contains("[sign-in-url]"), "{clean}");
-        assert!(clean.contains("Bearer [redacted]") && clean.contains("Authorization: Basic [redacted]"), "{clean}");
+        assert!(
+            !clean.contains("abc123"),
+            "a pairing link is not repeated: {clean}"
+        );
+        assert!(
+            !clean.contains("accounts.google.com"),
+            "a sign-in link is not repeated: {clean}"
+        );
+        assert!(
+            !clean.contains("abc.def.ghi") && !clean.contains("dXNlcjpwYXNz"),
+            "{clean}"
+        );
+        assert!(
+            !clean.contains("ghp_") && !clean.contains("xoxb-") && !clean.contains("1234567890"),
+            "{clean}"
+        );
+        assert!(
+            clean.contains("[pairing-url]") && clean.contains("[sign-in-url]"),
+            "{clean}"
+        );
+        assert!(
+            clean.contains("Bearer [redacted]")
+                && clean.contains("Authorization: Basic [redacted]"),
+            "{clean}"
+        );
         assert!(clean.contains("x-api-key: [redacted]"), "{clean}");
         if home.chars().count() > 1 {
-            assert!(!clean.contains(&home) && clean.contains("~/notes.md"), "a home directory is not repeated: {clean}");
+            assert!(
+                !clean.contains(&home) && clean.contains("~/notes.md"),
+                "a home directory is not repeated: {clean}"
+            );
         }
     }
 }

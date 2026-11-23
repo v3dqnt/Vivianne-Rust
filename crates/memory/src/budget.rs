@@ -68,7 +68,9 @@ pub const MAX_TOKENS: usize = 8_000;
 pub const MIN_TOKENS: usize = 100;
 
 pub fn clamp_tokens(asked: Option<usize>, depth: Depth) -> usize {
-    asked.unwrap_or_else(|| depth.default_tokens()).clamp(MIN_TOKENS, MAX_TOKENS)
+    asked
+        .unwrap_or_else(|| depth.default_tokens())
+        .clamp(MIN_TOKENS, MAX_TOKENS)
 }
 
 /// What fits: the lines in order until the next would pass the budget. The first is always kept, cut to fit if it must be, so a search that
@@ -98,13 +100,24 @@ mod tests {
 
     #[test]
     fn tokens_are_about_a_quarter_of_the_characters() {
-        assert_eq!((tokens(""), tokens("abc"), tokens("abcd"), tokens("abcde")), (0, 1, 1, 2));
+        assert_eq!(
+            (tokens(""), tokens("abc"), tokens("abcd"), tokens("abcde")),
+            (0, 1, 1, 2)
+        );
         assert_eq!(tokens(&"é".repeat(8)), 2, "characters, not bytes");
     }
 
     #[test]
     fn depth_is_read_loosely_and_defaults_to_the_middle() {
-        assert_eq!((Depth::parse("LOW"), Depth::parse(" deep "), Depth::parse("medium"), Depth::parse("max")), (Some(Depth::Low), Some(Depth::High), Some(Depth::Mid), None));
+        assert_eq!(
+            (
+                Depth::parse("LOW"),
+                Depth::parse(" deep "),
+                Depth::parse("medium"),
+                Depth::parse("max")
+            ),
+            (Some(Depth::Low), Some(Depth::High), Some(Depth::Mid), None)
+        );
         assert_eq!(Depth::default(), Depth::Mid);
         assert_eq!(Depth::Mid.hits(), 8, "the old fixed cap");
         assert_eq!(Depth::Mid.hops(), 3, "the old fixed depth");
@@ -123,10 +136,24 @@ mod tests {
 
     #[test]
     fn packing_keeps_the_best_that_fit_and_counts_the_rest() {
-        let lines: Vec<String> = ["a".repeat(40), "b".repeat(40), "c".repeat(40), "d".repeat(8)].into();
+        let lines: Vec<String> = [
+            "a".repeat(40),
+            "b".repeat(40),
+            "c".repeat(40),
+            "d".repeat(8),
+        ]
+        .into();
         assert_eq!(pack(&lines, 100), (lines.clone(), 0), "all fit");
-        assert_eq!(pack(&lines, 25), (lines[..2].to_vec(), 2), "ten tokens each: two fit, the rest are counted");
-        assert_eq!(pack(&lines, 30).1, 1, "a smaller later line does not jump the queue past one that did not fit");
+        assert_eq!(
+            pack(&lines, 25),
+            (lines[..2].to_vec(), 2),
+            "ten tokens each: two fit, the rest are counted"
+        );
+        assert_eq!(
+            pack(&lines, 30).1,
+            1,
+            "a smaller later line does not jump the queue past one that did not fit"
+        );
         assert_eq!(pack(&[], 100), (vec![], 0));
     }
 
@@ -135,6 +162,10 @@ mod tests {
         let (out, left) = pack(&["x".repeat(1_000), "y".to_string()], 10);
         assert_eq!(left, 1);
         assert_eq!(out.len(), 1);
-        assert!(out[0].ends_with('…') && tokens(&out[0]) <= 11, "{}", out[0].len());
+        assert!(
+            out[0].ends_with('…') && tokens(&out[0]) <= 11,
+            "{}",
+            out[0].len()
+        );
     }
 }

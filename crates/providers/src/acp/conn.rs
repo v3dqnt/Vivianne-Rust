@@ -34,7 +34,7 @@ pub(super) const STOP_KILL_AFTER: Duration = Duration::from_secs(5);
 /// How much of the agent's stderr is kept to explain a failure.
 const STDERR_TAIL_CHARS: usize = 4096;
 const TRACE_LINES: usize = 400;
-const TRACE_LINE_CHARS: usize = 400;
+const TRACE_LINE_CHARS: usize = 1500;
 
 // ── What happened, for finding out why one is stuck ─────────────────────────
 
@@ -54,12 +54,20 @@ pub(super) fn trace(who: &str, line: impl AsRef<str>) {
 /// The trace so far, oldest first.
 #[must_use]
 pub fn trace_lines() -> Vec<String> {
-    TRACE.lock().unwrap_or_else(PoisonError::into_inner).iter().cloned().collect()
+    TRACE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .iter()
+        .cloned()
+        .collect()
 }
 
 /// The time of day (UTC) as `hh:mm:ss`.
 fn clock() -> String {
-    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()) % 86_400;
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+        % 86_400;
     format!("{:02}:{:02}:{:02}", secs / 3600, secs / 60 % 60, secs % 60)
 }
 
@@ -87,7 +95,11 @@ pub(super) struct RpcError {
 impl RpcError {
     /// A failure with no answer behind it: the pipe closed, a timeout, a bad frame.
     pub fn transport(message: impl Into<String>) -> Self {
-        Self { code: 0, message: message.into(), data: Value::Null }
+        Self {
+            code: 0,
+            message: message.into(),
+            data: Value::Null,
+        }
     }
 
     /// Whether the agent is saying it needs a sign-in before it will go on.
@@ -98,7 +110,11 @@ impl RpcError {
 
 impl std::fmt::Display for RpcError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.code == 0 { f.write_str(&self.message) } else { write!(f, "{} (code {})", self.message, self.code) }
+        if self.code == 0 {
+            f.write_str(&self.message)
+        } else {
+            write!(f, "{} (code {})", self.message, self.code)
+        }
     }
 }
 
@@ -141,11 +157,16 @@ fn kill_tree_now(pid: u32) {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        let _ = std::process::Command::new("taskkill").args(["/PID", &pid.to_string(), "/F", "/T"]).creation_flags(0x0800_0000).spawn();
+        let _ = std::process::Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/F", "/T"])
+            .creation_flags(0x0800_0000)
+            .spawn();
     }
     #[cfg(not(windows))]
     {
-        let _ = std::process::Command::new("kill").args(["-KILL", &format!("-{pid}")]).spawn();
+        let _ = std::process::Command::new("kill")
+            .args(["-KILL", &format!("-{pid}")])
+            .spawn();
     }
 }
 
@@ -153,11 +174,17 @@ fn kill_tree_now(pid: u32) {
 pub(super) async fn kill_tree(pid: u32) {
     #[cfg(windows)]
     {
-        let _ = quiet("taskkill").args(["/PID", &pid.to_string(), "/F", "/T"]).output().await;
+        let _ = quiet("taskkill")
+            .args(["/PID", &pid.to_string(), "/F", "/T"])
+            .output()
+            .await;
     }
     #[cfg(not(windows))]
     {
-        let _ = quiet("kill").args(["-KILL", &format!("-{pid}")]).output().await;
+        let _ = quiet("kill")
+            .args(["-KILL", &format!("-{pid}")])
+            .output()
+            .await;
     }
 }
 
@@ -203,26 +230,48 @@ impl Conn {
         let mut line = serde_json::to_string(msg).map_err(|e| e.to_string())?;
         line.push('\n');
         let mut stdin = self.stdin.lock().await;
-        stdin.write_all(line.as_bytes()).await.map_err(|e| format!("the agent stopped listening: {e}"))?;
+        stdin
+            .write_all(line.as_bytes())
+            .await
+            .map_err(|e| format!("the agent stopped listening: {e}"))?;
         stdin.flush().await.map_err(|e| e.to_string())
     }
 
-    pub async fn request(&self, method: &str, params: Value, timeout: Option<Duration>) -> Result<Value, RpcError> {
+    pub async fn request(
+        &self,
+        method: &str,
+        params: Value,
+        timeout: Option<Duration>,
+    ) -> Result<Value, RpcError> {
         let id = self.next.fetch_add(1, Ordering::SeqCst);
         trace("harness", format!("-> {method} #{id}"));
         let (tx, rx) = oneshot::channel();
-        self.pending.lock().unwrap_or_else(PoisonError::into_inner).insert(id, tx);
-        let sent = self.write(&json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params })).await;
+        self.pending
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(id, tx);
+        let sent = self
+            .write(&json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }))
+            .await;
         if let Err(why) = sent {
-            self.pending.lock().unwrap_or_else(PoisonError::into_inner).remove(&id);
+            self.pending
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .remove(&id);
             return Err(why.into());
         }
         let answer = match timeout {
             Some(limit) => {
                 let Ok(answer) = tokio::time::timeout(limit, rx).await else {
                     // Nothing will wait for this answer now, so its slot must not stay.
-                    self.pending.lock().unwrap_or_else(PoisonError::into_inner).remove(&id);
-                    return Err(RpcError::transport(format!("the agent didn't answer {method} in {}s", limit.as_secs())));
+                    self.pending
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .remove(&id);
+                    return Err(RpcError::transport(format!(
+                        "the agent didn't answer {method} in {}s",
+                        limit.as_secs()
+                    )));
                 };
                 answer
             }
@@ -232,11 +281,13 @@ impl Conn {
     }
 
     pub async fn notify(&self, method: &str, params: Value) -> Result<(), String> {
-        self.write(&json!({ "jsonrpc": "2.0", "method": method, "params": params })).await
+        self.write(&json!({ "jsonrpc": "2.0", "method": method, "params": params }))
+            .await
     }
 
     pub async fn reply(&self, id: Value, result: Value) -> Result<(), String> {
-        self.write(&json!({ "jsonrpc": "2.0", "id": id, "result": result })).await
+        self.write(&json!({ "jsonrpc": "2.0", "id": id, "result": result }))
+            .await
     }
 
     async fn refuse(&self, id: Value, method: &str) -> Result<(), String> {
@@ -260,7 +311,10 @@ impl Conn {
     /// Whether the agent advertises the capability at `path`. Every capability is an object read by presence
     /// (`{}` is support) or, where a version spells one as a boolean, `true`.
     pub fn flag(&self, path: &str) -> bool {
-        self.caps.get().and_then(|c| c.pointer(path)).is_some_and(|v| v.is_object() || v.as_bool() == Some(true))
+        self.caps
+            .get()
+            .and_then(|c| c.pointer(path))
+            .is_some_and(|v| v.is_object() || v.as_bool() == Some(true))
     }
 
     /// A capability whose home moved between versions.
@@ -274,7 +328,10 @@ impl Conn {
     }
 
     pub fn takes_http_mcp(&self) -> bool {
-        self.cap("/capabilities/session/mcp/http", "/agentCapabilities/mcpCapabilities/http")
+        self.cap(
+            "/capabilities/session/mcp/http",
+            "/agentCapabilities/mcpCapabilities/http",
+        )
     }
 
     /// MCP over ACP: the agent talks to a server through this connection (`mcp/connect`, `mcp/message`). A v2 feature.
@@ -287,13 +344,21 @@ impl Conn {
     /// running.
     pub async fn answer_mcp(self: Arc<Self>, id: Value, method: String, params: Value) {
         let answer: Result<Value, (i64, String)> = match method.as_str() {
-            "mcp/connect" if params.get("serverId").and_then(Value::as_str) == Some(SERVER_NAME) => {
-                Ok(json!({ "connectionId": format!("{SERVER_NAME}-{}", self.next.fetch_add(1, Ordering::SeqCst)) }))
+            "mcp/connect"
+                if params.get("serverId").and_then(Value::as_str) == Some(SERVER_NAME) =>
+            {
+                Ok(
+                    json!({ "connectionId": format!("{SERVER_NAME}-{}", self.next.fetch_add(1, Ordering::SeqCst)) }),
+                )
             }
             "mcp/connect" => Err((-32602, "no such MCP server".into())),
             "mcp/disconnect" => Ok(json!({})),
             "mcp/message" => match params.get("method").and_then(Value::as_str) {
-                Some(inner) => self.mcp.request(inner, params.get("params").unwrap_or(&Value::Null)).await,
+                Some(inner) => {
+                    self.mcp
+                        .request(inner, params.get("params").unwrap_or(&Value::Null))
+                        .await
+                }
                 None => Err((-32602, "no method".into())),
             },
             other => Err((-32601, format!("{other} isn't supported"))),
@@ -313,16 +378,29 @@ impl Conn {
         if self.takes_http_mcp() {
             let mut http = self.mcp_http.lock().await;
             if http.is_none() {
-                *http = serve(self.mcp.clone()).await.map_err(|e| trace("harness", format!("couldn't open the endpoint for Vivianne's tools: {e}"))).ok();
+                *http = serve(self.mcp.clone())
+                    .await
+                    .map_err(|e| {
+                        trace(
+                            "harness",
+                            format!("couldn't open the endpoint for Vivianne's tools: {e}"),
+                        )
+                    })
+                    .ok();
             }
             let open = http.as_ref()?;
-            return Some(json!({ "type": "http", "name": SERVER_NAME, "url": open.url, "headers": [{ "name": "Authorization", "value": format!("Bearer {}", open.token) }] }));
+            return Some(
+                json!({ "type": "http", "name": SERVER_NAME, "url": open.url, "headers": [{ "name": "Authorization", "value": format!("Bearer {}", open.token) }] }),
+            );
         }
         None
     }
 
     pub fn takes_images(&self) -> bool {
-        self.cap("/capabilities/session/prompt/image", "/agentCapabilities/promptCapabilities/image")
+        self.cap(
+            "/capabilities/session/prompt/image",
+            "/agentCapabilities/promptCapabilities/image",
+        )
     }
 
     /// The agent's process id, when it runs as one.
@@ -350,7 +428,12 @@ impl Conn {
     /// What the agent said about being signed in, waiting a moment for it if it has not said yet.
     pub async fn auth_state_soon(&self) -> Option<String> {
         for _ in 0..20 {
-            if let Some(state) = self.auth_state.lock().unwrap_or_else(PoisonError::into_inner).clone() {
+            if let Some(state) = self
+                .auth_state
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone()
+            {
                 return Some(state);
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -359,7 +442,10 @@ impl Conn {
     }
 
     pub fn stderr_tail(&self) -> String {
-        self.stderr.lock().unwrap_or_else(PoisonError::into_inner).clone()
+        self.stderr
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     /// Whether the agent's process is still there.
@@ -375,7 +461,8 @@ impl Conn {
 fn launch_env(harness: &Harness) -> HashMap<String, String> {
     let mut env = harness.env.clone();
     if harness.id == "claude-acp" {
-        env.entry("CLAUDE_AGENT_ACP_EXPERIMENTAL_V2".to_owned()).or_insert_with(|| "1".to_owned());
+        env.entry("CLAUDE_AGENT_ACP_EXPERIMENTAL_V2".to_owned())
+            .or_insert_with(|| "1".to_owned());
     }
     env
 }
@@ -383,15 +470,39 @@ fn launch_env(harness: &Harness) -> HashMap<String, String> {
 /// What to run for this agent: an npx agent already in npx's cache starts straight from it with `node`;
 /// anything else through its launcher, found on the PATH (`npx.cmd` on Windows).
 fn command_for(harness: &Harness) -> Result<(PathBuf, Vec<String>), String> {
-    let cached = if harness.launcher == "npx" { harness.package().and_then(npx_cached_script) } else { None };
+    let cached = if harness.launcher == "npx" {
+        harness.package().and_then(npx_cached_script)
+    } else {
+        None
+    };
     if let Some(script) = cached {
-        let node = which::which("node").map_err(|_| format!("{} needs Node.js, which isn't on this computer's PATH.", harness.name))?;
+        let node = which::which("node").map_err(|_| {
+            format!(
+                "{} needs Node.js, which isn't on this computer's PATH.",
+                harness.name
+            )
+        })?;
         // Whatever follows `-y <package>` is the agent's own arguments.
         let package = harness.package().unwrap_or_default();
-        let rest = harness.args.iter().skip_while(|a| a.as_str() != package).skip(1).cloned();
-        return Ok((node, std::iter::once(script.to_string_lossy().into_owned()).chain(rest).collect()));
+        let rest = harness
+            .args
+            .iter()
+            .skip_while(|a| a.as_str() != package)
+            .skip(1)
+            .cloned();
+        return Ok((
+            node,
+            std::iter::once(script.to_string_lossy().into_owned())
+                .chain(rest)
+                .collect(),
+        ));
     }
-    let program = which::which(&harness.launcher).map_err(|_| format!("{} runs through {}, which isn't installed.", harness.name, harness.launcher))?;
+    let program = which::which(&harness.launcher).map_err(|_| {
+        format!(
+            "{} runs through {}, which isn't installed.",
+            harness.name, harness.launcher
+        )
+    })?;
     Ok((program, harness.args.clone()))
 }
 
@@ -409,14 +520,33 @@ pub(super) async fn spawn(harness: &Harness, cwd: &str) -> Result<Arc<Conn>, Str
         .kill_on_drop(true);
     #[cfg(unix)]
     command.process_group(0);
-    trace(&harness.name, format!("starting: {} {} (in {cwd})", program.display(), args.join(" ")));
-    let mut child = command.spawn().map_err(|e| format!("Couldn't start {} ({}): {e}", harness.name, program.display()))?;
+    trace(
+        &harness.name,
+        format!(
+            "starting: {} {} (in {cwd})",
+            program.display(),
+            args.join(" ")
+        ),
+    );
+    let mut child = command.spawn().map_err(|e| {
+        format!(
+            "Couldn't start {} ({}): {e}",
+            harness.name,
+            program.display()
+        )
+    })?;
     let pid = child.id();
     let stdin = child.stdin.take().ok_or("the agent has no input")?;
     let stdout = child.stdout.take().ok_or("the agent has no output")?;
     let stderr = child.stderr.take().ok_or("the agent has no error output")?;
 
-    let conn = wire(Box::new(stdin), Box::new(BufReader::new(stdout)), Some(child), TreeKillOnDrop { pid }, harness.name.clone());
+    let conn = wire(
+        Box::new(stdin),
+        Box::new(BufReader::new(stdout)),
+        Some(child),
+        TreeKillOnDrop { pid },
+        harness.name.clone(),
+    );
 
     // Its stderr is its log; the last lines also explain a failure, so they are kept on the connection. The
     // reader holds it weakly: it must not keep a connection alive past the turn that ends it.
@@ -468,18 +598,34 @@ pub(super) fn wire(
         tree,
         stderr: Mutex::new(String::new()),
         stderr_done: watch::channel(false).0,
-        stop_kill_after: AtomicU64::new(u64::try_from(STOP_KILL_AFTER.as_millis()).unwrap_or(u64::MAX)),
+        stop_kill_after: AtomicU64::new(
+            u64::try_from(STOP_KILL_AFTER.as_millis()).unwrap_or(u64::MAX),
+        ),
         mcp: Bridge::new(),
         mcp_http: tokio::sync::Mutex::new(None),
         told: Mutex::new(None),
     });
-    tokio::spawn(read_loop(stdout, Arc::downgrade(&conn), pending, sink, alive, who));
+    tokio::spawn(read_loop(
+        stdout,
+        Arc::downgrade(&conn),
+        pending,
+        sink,
+        alive,
+        who,
+    ));
     conn
 }
 
 /// Everything the agent writes on stdout: answers to our requests, its own requests, and `session/update`
 /// notifications.
-async fn read_loop(reader: Box<dyn AsyncBufRead + Unpin + Send>, conn: Weak<Conn>, pending: Pending, sink: Sink, alive: Arc<AtomicBool>, who: String) {
+async fn read_loop(
+    reader: Box<dyn AsyncBufRead + Unpin + Send>,
+    conn: Weak<Conn>,
+    pending: Pending,
+    sink: Sink,
+    alive: Arc<AtomicBool>,
+    who: String,
+) {
     let mut lines = reader.lines();
     while let Ok(Some(line)) = lines.next_line().await {
         let Ok(msg) = serde_json::from_str::<Value>(&line) else {
@@ -487,7 +633,10 @@ async fn read_loop(reader: Box<dyn AsyncBufRead + Unpin + Send>, conn: Weak<Conn
             continue;
         };
         // Streamed text would drown everything else; the rest is shown.
-        let is_chunk = msg.pointer("/params/update/sessionUpdate").and_then(Value::as_str).is_some_and(|k| k.ends_with("_chunk"));
+        let is_chunk = msg
+            .pointer("/params/update/sessionUpdate")
+            .and_then(Value::as_str)
+            .is_some_and(|k| k.ends_with("_chunk"));
         if !is_chunk {
             trace(&who, format!("<- {line}"));
         }
@@ -497,18 +646,35 @@ async fn read_loop(reader: Box<dyn AsyncBufRead + Unpin + Send>, conn: Weak<Conn
             // An answer to one of ours.
             (None, Some(id)) => answer(&pending, &id, &msg),
             // It asks us something.
-            (Some(method), Some(id)) => ask(&conn, &sink, method, id, msg.get("params").cloned().unwrap_or(Value::Null)).await,
+            (Some(method), Some(id)) => {
+                ask(
+                    &conn,
+                    &sink,
+                    method,
+                    id,
+                    msg.get("params").cloned().unwrap_or(Value::Null),
+                )
+                .await
+            }
             // A notification: whether the agent is signed in.
             (Some("auth/status_update"), None) => {
-                let state = msg.pointer("/params/state").and_then(Value::as_str).map(str::to_owned);
+                let state = msg
+                    .pointer("/params/state")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
                 if let (Some(conn), Some(state)) = (conn.upgrade(), state) {
-                    *conn.auth_state.lock().unwrap_or_else(PoisonError::into_inner) = Some(state);
+                    *conn
+                        .auth_state
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner) = Some(state);
                 }
             }
             // A notification: the session's progress.
             (Some("session/update"), None) => {
                 if let Some(sink) = sink.lock().unwrap_or_else(PoisonError::into_inner).as_ref() {
-                    let _ = sink.send(Incoming::Update(msg.get("params").cloned().unwrap_or(Value::Null)));
+                    let _ = sink.send(Incoming::Update(
+                        msg.get("params").cloned().unwrap_or(Value::Null),
+                    ));
                 }
             }
             _ => {}
@@ -517,18 +683,31 @@ async fn read_loop(reader: Box<dyn AsyncBufRead + Unpin + Send>, conn: Weak<Conn
     alive.store(false, Ordering::SeqCst);
     trace(&who, "the agent's output closed: it exited");
     // Whatever was waiting will never be answered now.
-    for (_, waiting) in pending.lock().unwrap_or_else(PoisonError::into_inner).drain() {
+    for (_, waiting) in pending
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .drain()
+    {
         let _ = waiting.send(Err(RpcError::transport("the agent exited")));
     }
 }
 
 fn answer(pending: &Pending, id: &Value, msg: &Value) {
-    let waiting = id.as_u64().and_then(|n| pending.lock().unwrap_or_else(PoisonError::into_inner).remove(&n));
+    let waiting = id.as_u64().and_then(|n| {
+        pending
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&n)
+    });
     let Some(waiting) = waiting else { return };
     let outcome = match msg.get("error") {
         Some(e) => Err(RpcError {
             code: e.get("code").and_then(Value::as_i64).unwrap_or(0),
-            message: e.get("message").and_then(Value::as_str).unwrap_or("error").to_owned(),
+            message: e
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("error")
+                .to_owned(),
             data: e.get("data").cloned().unwrap_or(Value::Null),
         }),
         None => Ok(msg.get("result").cloned().unwrap_or(Value::Null)),
@@ -548,8 +727,19 @@ async fn ask(conn: &Weak<Conn>, sink: &Sink, method: &str, id: Value, params: Va
         return;
     }
     if matches!(method, "session/request_permission" | "elicitation/create") {
-        let item = if method == "elicitation/create" { Incoming::Elicitation { id: id.clone() } } else { Incoming::Permission { id: id.clone(), params } };
-        let sent = sink.lock().unwrap_or_else(PoisonError::into_inner).as_ref().map(|s| s.send(item).is_ok());
+        let item = if method == "elicitation/create" {
+            Incoming::Elicitation { id: id.clone() }
+        } else {
+            Incoming::Permission {
+                id: id.clone(),
+                params,
+            }
+        };
+        let sent = sink
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .map(|s| s.send(item).is_ok());
         if sent == Some(true) {
             return;
         }
@@ -581,7 +771,12 @@ fn explain_initialize_failure(harness: &Harness, error: &RpcError) -> String {
         .data
         .get("supported")
         .and_then(Value::as_array)
-        .map(|v| v.iter().filter_map(Value::as_u64).map(|n| n.to_string()).collect())
+        .map(|v| {
+            v.iter()
+                .filter_map(Value::as_u64)
+                .map(|n| n.to_string())
+                .collect()
+        })
         .unwrap_or_default();
     if error.code == UNSUPPORTED_VERSION && !supported.is_empty() {
         return format!(
@@ -596,8 +791,15 @@ fn explain_initialize_failure(harness: &Harness, error: &RpcError) -> String {
 /// Agrees the protocol version and learns what the agent can do. The answer is kept on the connection as
 /// `caps`, the version as `version`.
 pub(super) async fn handshake(conn: &Conn, harness: &Harness) -> Result<Value, String> {
-    let limit = if harness.managed { INITIALIZE_INSTALLED } else { INITIALIZE_FETCHING };
-    let hello = conn.request("initialize", initialize_params(), Some(limit)).await.map_err(|e| explain_initialize_failure(harness, &e))?;
+    let limit = if harness.managed {
+        INITIALIZE_INSTALLED
+    } else {
+        INITIALIZE_FETCHING
+    };
+    let hello = conn
+        .request("initialize", initialize_params(), Some(limit))
+        .await
+        .map_err(|e| explain_initialize_failure(harness, &e))?;
     let version = hello
         .get("protocolVersion")
         .and_then(Value::as_u64)
@@ -610,7 +812,10 @@ pub(super) async fn handshake(conn: &Conn, harness: &Harness) -> Result<Value, S
     }
     conn.version.store(version, Ordering::SeqCst);
     let _ = conn.caps.set(hello.clone());
-    trace(&harness.name, format!("initialized: protocol version {version}"));
+    trace(
+        &harness.name,
+        format!("initialized: protocol version {version}"),
+    );
     Ok(hello)
 }
 
@@ -633,15 +838,28 @@ pub(super) mod testing {
     pub fn peer(name: &str) -> (Arc<Conn>, Peer) {
         let (to_agent, from_vivianne) = tokio::io::duplex(1 << 16);
         let (to_vivianne, from_agent) = tokio::io::duplex(1 << 16);
-        let conn = wire(Box::new(to_agent), Box::new(BufReader::new(from_agent)), None, TreeKillOnDrop { pid: None }, name.to_owned());
-        (conn, Peer { out: to_vivianne, inp: BufReader::new(from_vivianne) })
+        let conn = wire(
+            Box::new(to_agent),
+            Box::new(BufReader::new(from_agent)),
+            None,
+            TreeKillOnDrop { pid: None },
+            name.to_owned(),
+        );
+        (
+            conn,
+            Peer {
+                out: to_vivianne,
+                inp: BufReader::new(from_vivianne),
+            },
+        )
     }
 
     impl Peer {
         /// The next message Vivianne sends. Panics rather than hang the suite.
         pub async fn recv(&mut self) -> Value {
             let mut line = String::new();
-            let read = tokio::time::timeout(Duration::from_secs(10), self.inp.read_line(&mut line)).await;
+            let read =
+                tokio::time::timeout(Duration::from_secs(10), self.inp.read_line(&mut line)).await;
             assert!(matches!(read, Ok(Ok(n)) if n > 0), "Vivianne sent nothing");
             serde_json::from_str(&line).unwrap_or(Value::Null)
         }
@@ -649,7 +867,9 @@ pub(super) mod testing {
         /// The next frame if Vivianne sends one within `ms`; `None` when it stays quiet.
         pub async fn next_within(&mut self, ms: u64) -> Option<Value> {
             let mut line = String::new();
-            match tokio::time::timeout(Duration::from_millis(ms), self.inp.read_line(&mut line)).await {
+            match tokio::time::timeout(Duration::from_millis(ms), self.inp.read_line(&mut line))
+                .await
+            {
                 Ok(Ok(n)) if n > 0 => serde_json::from_str(&line).ok(),
                 _ => None,
             }
@@ -663,7 +883,8 @@ pub(super) mod testing {
         }
 
         pub async fn answer(&mut self, id: &Value, result: Value) {
-            self.send(json!({ "jsonrpc": "2.0", "id": id, "result": result })).await;
+            self.send(json!({ "jsonrpc": "2.0", "id": id, "result": result }))
+                .await;
         }
 
         pub async fn refuse(&mut self, id: &Value, code: i64, message: &str, data: Value) {
@@ -672,9 +893,17 @@ pub(super) mod testing {
 
         /// Answers `initialize` as an agent of `version`, in that version's own shape, and returns what
         /// Vivianne asked with.
-        pub async fn hello_version(&mut self, version: u64, capabilities: Value, auth: Value) -> Value {
+        pub async fn hello_version(
+            &mut self,
+            version: u64,
+            capabilities: Value,
+            auth: Value,
+        ) -> Value {
             let msg = self.recv().await;
-            assert_eq!(msg["method"], "initialize", "expected initialize, got {msg}");
+            assert_eq!(
+                msg["method"], "initialize",
+                "expected initialize, got {msg}"
+            );
             let answer = if version >= 2 {
                 json!({ "protocolVersion": version, "capabilities": capabilities, "info": { "name": "mock", "version": "0.0.0" }, "authMethods": auth })
             } else {
@@ -686,21 +915,33 @@ pub(super) mod testing {
 
         /// Answers `initialize` as a v2 agent that does everything Vivianne asks for.
         pub async fn hello(&mut self) -> Value {
-            self.hello_version(2, json!({ "session": { "prompt": { "image": {} } } }), json!([])).await
+            self.hello_version(
+                2,
+                json!({ "session": { "prompt": { "image": {} } } }),
+                json!([]),
+            )
+            .await
         }
 
         /// Answers `session/new` and returns what Vivianne asked with.
         pub async fn open(&mut self, session: &str) -> Value {
             let msg = self.recv().await;
-            assert_eq!(msg["method"], "session/new", "expected session/new, got {msg}");
-            self.answer(&msg["id"], json!({ "sessionId": session })).await;
+            assert_eq!(
+                msg["method"], "session/new",
+                "expected session/new, got {msg}"
+            );
+            self.answer(&msg["id"], json!({ "sessionId": session }))
+                .await;
             msg
         }
 
         /// The turn's `session/prompt`, left unanswered so the test can stream updates first.
         pub async fn prompt(&mut self) -> Value {
             let msg = self.recv().await;
-            assert_eq!(msg["method"], "session/prompt", "expected session/prompt, got {msg}");
+            assert_eq!(
+                msg["method"], "session/prompt",
+                "expected session/prompt, got {msg}"
+            );
             msg
         }
 
@@ -753,7 +994,13 @@ mod tests {
             let conn = conn.clone();
             async move { handshake(&conn, &harness("a")).await }
         });
-        agent.hello_version(1, json!({ "promptCapabilities": { "image": true } }), json!([])).await;
+        agent
+            .hello_version(
+                1,
+                json!({ "promptCapabilities": { "image": true } }),
+                json!([]),
+            )
+            .await;
         assert!(asked.await.is_ok_and(|r| r.is_ok()));
         assert_eq!(conn.version(), 1);
         assert!(conn.takes_images());
@@ -767,8 +1014,19 @@ mod tests {
             async move { handshake(&conn, &harness("a")).await }
         });
         let msg = agent.recv().await;
-        agent.refuse(&msg["id"], UNSUPPORTED_VERSION, "unsupported", json!({ "supported": [3, 4] })).await;
-        let failure = asked.await.unwrap_or(Err(String::new())).err().unwrap_or_default();
+        agent
+            .refuse(
+                &msg["id"],
+                UNSUPPORTED_VERSION,
+                "unsupported",
+                json!({ "supported": [3, 4] }),
+            )
+            .await;
+        let failure = asked
+            .await
+            .unwrap_or(Err(String::new()))
+            .err()
+            .unwrap_or_default();
         assert!(failure.contains("version 3, 4"), "{failure}");
     }
 
@@ -780,16 +1038,27 @@ mod tests {
             async move { handshake(&conn, &harness("a")).await }
         });
         agent.hello_version(9, json!({}), json!([])).await;
-        let failure = asked.await.unwrap_or(Err(String::new())).err().unwrap_or_default();
+        let failure = asked
+            .await
+            .unwrap_or(Err(String::new()))
+            .err()
+            .unwrap_or_default();
         assert!(failure.contains("version 9"), "{failure}");
     }
 
     #[tokio::test]
     async fn a_request_that_times_out_leaves_no_waiting_slot_behind() {
         let (conn, mut agent) = peer("mock");
-        let result = conn.request("slow", json!({}), Some(Duration::from_millis(30))).await;
+        let result = conn
+            .request("slow", json!({}), Some(Duration::from_millis(30)))
+            .await;
         assert!(result.is_err_and(|e| e.message.contains("didn't answer slow")));
-        assert!(conn.pending.lock().unwrap_or_else(PoisonError::into_inner).is_empty());
+        assert!(
+            conn.pending
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .is_empty()
+        );
         let _ = agent.recv().await;
     }
 
@@ -805,7 +1074,9 @@ mod tests {
     #[tokio::test]
     async fn requests_nothing_offers_are_refused_and_the_agents_exit_ends_waiting_calls() {
         let (conn, mut agent) = peer("mock");
-        agent.send(json!({ "jsonrpc": "2.0", "id": 3, "method": "fs/read_text_file", "params": {} })).await;
+        agent
+            .send(json!({ "jsonrpc": "2.0", "id": 3, "method": "fs/read_text_file", "params": {} }))
+            .await;
         let refused = agent.recv().await;
         assert_eq!(refused["error"]["code"], -32601);
         let waiting = tokio::spawn({
@@ -814,7 +1085,9 @@ mod tests {
         });
         let _ = agent.recv().await;
         drop(agent);
-        let ended = waiting.await.map_or(None, |r| r.map(|_| ()).err().map(|e| e.message));
+        let ended = waiting
+            .await
+            .map_or(None, |r| r.map(|_| ()).err().map(|e| e.message));
         assert_eq!(ended.as_deref(), Some("the agent exited"));
         assert!(!conn.is_alive());
     }
@@ -823,10 +1096,18 @@ mod tests {
     fn the_stderr_tail_keeps_only_the_newest() {
         let (stdin, _keep) = tokio::io::duplex(8);
         let (_unused, stdout) = tokio::io::duplex(8);
-        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build();
         let Ok(runtime) = runtime else { return };
         runtime.block_on(async {
-            let conn = wire(Box::new(stdin), Box::new(BufReader::new(stdout)), None, TreeKillOnDrop { pid: None }, "t".into());
+            let conn = wire(
+                Box::new(stdin),
+                Box::new(BufReader::new(stdout)),
+                None,
+                TreeKillOnDrop { pid: None },
+                "t".into(),
+            );
             for n in 0..2000 {
                 conn.remember_stderr(&format!("line {n}"));
             }

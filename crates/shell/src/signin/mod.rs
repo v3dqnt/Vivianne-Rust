@@ -44,8 +44,13 @@ pub type OnSignedIn = Rc<dyn Fn(&mut App)>;
 pub fn open(id: &str, name: &str, command: &str, done: OnSignedIn, cx: &mut App) {
     let (id, name, command) = (id.to_owned(), name.to_owned(), command.to_owned());
     let bounds = Bounds::centered(None, size(px(WINDOW_WIDTH), px(WINDOW_HEIGHT)), cx);
-    let options = WindowOptions { window_bounds: Some(gpui_kit::WindowBounds::Windowed(bounds)), ..TitleBar::window_options() };
-    let opened = gpui_kit::open_window(options, cx, move |window, cx| cx.new(|cx| LoginView::new(id, name, &command, done, window, cx)));
+    let options = WindowOptions {
+        window_bounds: Some(gpui_kit::WindowBounds::Windowed(bounds)),
+        ..TitleBar::window_options()
+    };
+    let opened = gpui_kit::open_window(options, cx, move |window, cx| {
+        cx.new(|cx| LoginView::new(id, name, &command, done, window, cx))
+    });
     if let Err(error) = opened {
         eprintln!("vivianne: cannot open the sign-in window: {error}");
     }
@@ -60,7 +65,14 @@ struct LoginView {
 }
 
 impl LoginView {
-    fn new(id: String, name: String, command: &str, done: OnSignedIn, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    fn new(
+        id: String,
+        name: String,
+        command: &str,
+        done: OnSignedIn,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let command = command.to_owned();
         let terminal = cx.new(|cx| TerminalView::running(&root, &command, (COLUMNS, LINES), cx));
@@ -81,7 +93,13 @@ impl LoginView {
             }
         })
         .detach();
-        Self { id, name, terminal, status: Status::Waiting, done }
+        Self {
+            id,
+            name,
+            terminal,
+            status: Status::Waiting,
+            done,
+        }
     }
 
     /// Asks the agent whether it is signed in now, and shows the answer.
@@ -90,7 +108,8 @@ impl LoginView {
             return;
         }
         let id = self.id.clone();
-        let Some(answer) = backend::spawn(async move { acp::check_auth(&id, Depth::Quick).await }) else {
+        let Some(answer) = backend::spawn(async move { acp::check_auth(&id, Depth::Quick).await })
+        else {
             self.status = Status::Problem("The app's services didn't start.".to_owned());
             return;
         };
@@ -103,7 +122,12 @@ impl LoginView {
         .detach();
     }
 
-    fn checked(&mut self, result: Result<AuthState, String>, window: &mut Window, cx: &mut Context<Self>) {
+    fn checked(
+        &mut self,
+        result: Result<AuthState, String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         match result {
             Ok(AuthState::SignedIn) => {
                 self.status = Status::SignedIn;
@@ -124,7 +148,10 @@ impl LoginView {
 impl Render for LoginView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (text, tint) = match &self.status {
-            Status::Waiting => ("Waiting for you to sign in. This window checks by itself.".to_owned(), theme::MUTED),
+            Status::Waiting => (
+                "Waiting for you to sign in. This window checks by itself.".to_owned(),
+                theme::MUTED,
+            ),
             Status::Checking => ("Checking whether it is signed in…".to_owned(), theme::MUTED),
             Status::SignedIn => (format!("{} is signed in. Closing…", self.name), theme::OK),
             Status::Problem(why) => (why.clone(), theme::DANGER),
@@ -138,7 +165,10 @@ impl Render for LoginView {
             .bg(color(theme::BG))
             .text_color(color(theme::TEXT))
             .text_size(px(13.0))
-            .child(div().child(format!("Sign in to {}. Follow what it asks in the terminal below.", self.name)))
+            .child(div().child(format!(
+                "Sign in to {}. Follow what it asks in the terminal below.",
+                self.name
+            )))
             .child(div().flex_1().min_h_0().child(self.terminal.clone()))
             .child(
                 div()
@@ -151,8 +181,15 @@ impl Render for LoginView {
                         div()
                             .flex()
                             .gap(px(8.0))
-                            .child(Button::new("signin-check").label("Check now").on_click(cx.listener(|view, _event, window, cx| view.check_once(window, cx))))
-                            .child(Button::new("signin-close").label("Close").ghost().on_click(|_event, window, _cx| window.remove_window())),
+                            .child(Button::new("signin-check").label("Check now").on_click(
+                                cx.listener(|view, _event, window, cx| view.check_once(window, cx)),
+                            ))
+                            .child(
+                                Button::new("signin-close")
+                                    .label("Close")
+                                    .ghost()
+                                    .on_click(|_event, window, _cx| window.remove_window()),
+                            ),
                     ),
             )
     }

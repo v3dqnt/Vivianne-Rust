@@ -26,3 +26,24 @@ Dependency direction: `shell` -> `runtime` -> `providers`, `tools`, `plugins` ->
 7. Cutover: delete Tauri and the web frontend, MSI, updater.
 
 Each phase is gated by `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test --workspace`.
+
+## The crate graph (R8.1)
+
+This is the graph `scripts/check-boundaries.sh` enforces. An arrow means "may depend on".
+
+```mermaid
+graph TD
+  shell --> memory & multiplayer & remote & runtime & providers & tools & telemetry & core & ai
+  cli --> remote & runtime & providers & tools & core & ai
+  remote --> runtime & providers & tools & core & ai
+  memory --> tools & core & ai
+  multiplayer --> tools & core & ai
+  runtime --> providers & tools & core & ai
+  providers --> core & ai
+  telemetry --> ai
+  tools
+  core
+  ai
+```
+
+Known gaps between this graph and the documented layering above: `ai` is the real foundation of eight crates though it is not in the original table; `runtime` reads `ai` directly (paths, settings, failure kinds); `core` holds the tool-name lists that decide approvals although `tools` does not depend on `core`; `plugins` and `app-api` have no dependents yet.

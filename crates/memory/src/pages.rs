@@ -10,7 +10,7 @@
 //! - **Edited by deltas** (add, edit, remove a bullet), with the same machinery as the user profile (`evolve`).
 //! - **Titles only in the always-on block.** The page names are listed there; their bodies are found through `recall`.
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 use super::MemoryEntry;
@@ -37,9 +37,14 @@ pub fn clean_defs(defs: Vec<PageDef>) -> Result<Vec<PageDef>, String> {
             return Err("a page needs a name and a question".to_string());
         }
         if name.chars().count() > MAX_NAME || question.chars().count() > MAX_QUESTION {
-            return Err(format!("a page name is at most {MAX_NAME} characters and its question at most {MAX_QUESTION}"));
+            return Err(format!(
+                "a page name is at most {MAX_NAME} characters and its question at most {MAX_QUESTION}"
+            ));
         }
-        if out.iter().any(|p| p.name.to_lowercase() == name.to_lowercase()) {
+        if out
+            .iter()
+            .any(|p| p.name.to_lowercase() == name.to_lowercase())
+        {
             return Err(format!("there are two pages called '{name}'"));
         }
         out.push(PageDef { name, question });
@@ -66,7 +71,12 @@ pub fn init(conn: &Connection) -> Result<(), String> {
 pub fn evidence_key(evidence: &[MemoryEntry]) -> String {
     let mut h: u64 = 0xcbf29ce484222325;
     for e in evidence {
-        for b in e.id.bytes().chain(std::iter::once(0)).chain(e.text.bytes()).chain(std::iter::once(0)) {
+        for b in
+            e.id.bytes()
+                .chain(std::iter::once(0))
+                .chain(e.text.bytes())
+                .chain(std::iter::once(0))
+        {
             h ^= b as u64;
             h = h.wrapping_mul(0x100000001b3);
         }
@@ -75,10 +85,23 @@ pub fn evidence_key(evidence: &[MemoryEntry]) -> String {
 }
 
 pub fn row(conn: &Connection, name: &str) -> Option<(String, String)> {
-    conn.query_row("SELECT entry_id, evidence_key FROM memory_pages WHERE name = ?1", params![name], |r| Ok((r.get(0)?, r.get(1)?))).optional().ok().flatten()
+    conn.query_row(
+        "SELECT entry_id, evidence_key FROM memory_pages WHERE name = ?1",
+        params![name],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )
+    .optional()
+    .ok()
+    .flatten()
 }
 
-pub fn put_row(conn: &Connection, name: &str, entry_id: &str, key: &str, now: u64) -> Result<(), String> {
+pub fn put_row(
+    conn: &Connection,
+    name: &str,
+    entry_id: &str,
+    key: &str,
+    now: u64,
+) -> Result<(), String> {
     conn.execute(
         "INSERT INTO memory_pages (name, entry_id, evidence_key, refreshed_at) VALUES (?1, ?2, ?3, ?4)
          ON CONFLICT(name) DO UPDATE SET entry_id = ?2, evidence_key = ?3, refreshed_at = ?4",
@@ -90,18 +113,32 @@ pub fn put_row(conn: &Connection, name: &str, entry_id: &str, key: &str, now: u6
 
 /// Page names that no longer have a definition, with the memory rows that held them.
 pub fn orphans(conn: &Connection, keep: &[String]) -> Vec<(String, String)> {
-    let Ok(mut stmt) = conn.prepare("SELECT name, entry_id FROM memory_pages") else { return Vec::new() };
-    let Ok(rows) = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))) else { return Vec::new() };
+    let Ok(mut stmt) = conn.prepare("SELECT name, entry_id FROM memory_pages") else {
+        return Vec::new();
+    };
+    let Ok(rows) = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+    else {
+        return Vec::new();
+    };
     rows.flatten().filter(|(n, _)| !keep.contains(n)).collect()
 }
 
 pub fn forget_row(conn: &Connection, name: &str) -> Result<(), String> {
-    conn.execute("DELETE FROM memory_pages WHERE name = ?1", params![name]).map(|_| ()).map_err(|e| e.to_string())
+    conn.execute("DELETE FROM memory_pages WHERE name = ?1", params![name])
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 /// A page's stored text: its title, then one bullet per line.
 pub fn render(name: &str, bullets: &[String]) -> String {
-    format!("{name}\n{}", bullets.iter().map(|b| format!("- {b}")).collect::<Vec<_>>().join("\n"))
+    format!(
+        "{name}\n{}",
+        bullets
+            .iter()
+            .map(|b| format!("- {b}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    )
 }
 
 /// The bullets of a stored page (the title line is dropped).
@@ -116,8 +153,29 @@ Add what the evidence shows that answers the question and is missing, edit a bul
 Each bullet is one concrete line that stands alone. State nothing the evidence does not support. Leave everything else alone; [] when nothing changes.";
 
 pub fn prompt_for(question: &str, bullets: &[String], evidence: &[MemoryEntry]) -> String {
-    let current = if bullets.is_empty() { "(empty)".to_string() } else { bullets.iter().enumerate().map(|(i, b)| format!("{}. {b}", i + 1)).collect::<Vec<_>>().join("\n") };
-    let shown = evidence.iter().enumerate().map(|(i, e)| format!("{}. [{}] {}", i + 1, super::evolve::provenance_label(&e.kind), e.text.replace('\n', " "))).collect::<Vec<_>>().join("\n");
+    let current = if bullets.is_empty() {
+        "(empty)".to_string()
+    } else {
+        bullets
+            .iter()
+            .enumerate()
+            .map(|(i, b)| format!("{}. {b}", i + 1))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let shown = evidence
+        .iter()
+        .enumerate()
+        .map(|(i, e)| {
+            format!(
+                "{}. [{}] {}",
+                i + 1,
+                super::evolve::provenance_label(&e.kind),
+                e.text.replace('\n', " ")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
     format!("QUESTION: {question}\n\nCURRENT:\n{current}\n\nEVIDENCE:\n{shown}")
 }
 
@@ -127,7 +185,11 @@ pub fn apply(bullets: &[String], ops: &[serde_json::Value]) -> Vec<String> {
         .iter()
         .map(|op| {
             let mut op = op.clone();
-            if let Some(t) = op.get("text").and_then(|v| v.as_str()).map(super::redact_secrets) {
+            if let Some(t) = op
+                .get("text")
+                .and_then(|v| v.as_str())
+                .map(super::redact_secrets)
+            {
                 op["text"] = serde_json::Value::String(t);
             }
             op
@@ -136,16 +198,32 @@ pub fn apply(bullets: &[String], ops: &[serde_json::Value]) -> Vec<String> {
     super::evolve::apply_profile_delta(bullets, &redacted)
 }
 
-async fn db<T: Send + 'static>(root: &str, f: impl FnOnce(&Connection) -> Result<T, String> + Send + 'static) -> Result<T, String> {
+async fn db<T: Send + 'static>(
+    root: &str,
+    f: impl FnOnce(&Connection) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
     let root = root.to_string();
-    tokio::task::spawn_blocking(move || super::store::with_conn(&root, f)).await.map_err(|e| format!("db task panicked: {e}"))?
+    tokio::task::spawn_blocking(move || super::store::with_conn(&root, f))
+        .await
+        .map_err(|e| format!("db task panicked: {e}"))?
 }
 
 /// The evidence nearest a question: observations first, then facts and notes, never pages.
-async fn gather(root: &str, question: &str, auth: &std::sync::Arc<vivianne_ai::ai::auth::AuthState>) -> Vec<MemoryEntry> {
-    let mut found: Vec<MemoryEntry> = super::store::search_fts(root, question, EVIDENCE * 2).await.unwrap_or_default();
-    if let Ok(Some(v)) = vivianne_ai::ai::embedding::embed_query(Some(auth.as_ref()), question).await {
-        for (e, _) in super::store::search_vector_scored(root, &v, EVIDENCE * 2).await.unwrap_or_default() {
+async fn gather(
+    root: &str,
+    question: &str,
+    auth: &std::sync::Arc<vivianne_ai::ai::auth::AuthState>,
+) -> Vec<MemoryEntry> {
+    let mut found: Vec<MemoryEntry> = super::store::search_fts(root, question, EVIDENCE * 2)
+        .await
+        .unwrap_or_default();
+    if let Ok(Some(v)) =
+        vivianne_ai::ai::embedding::embed_query(Some(auth.as_ref()), question).await
+    {
+        for (e, _) in super::store::search_vector_scored(root, &v, EVIDENCE * 2)
+            .await
+            .unwrap_or_default()
+        {
             if !found.iter().any(|f| f.id == e.id) {
                 found.push(e);
             }
@@ -193,14 +271,29 @@ pub async fn refresh(
             continue;
         }
         let current = match &existing {
-            Some((id, _)) => super::store::get_entries_by_ids(root, std::slice::from_ref(id)).await.ok().and_then(|v| v.into_iter().next()),
+            Some((id, _)) => super::store::get_entries_by_ids(root, std::slice::from_ref(id))
+                .await
+                .ok()
+                .and_then(|v| v.into_iter().next()),
             None => None,
         };
-        let bullets = current.as_ref().map(|e| bullets_of(&e.text)).unwrap_or_default();
+        let bullets = current
+            .as_ref()
+            .map(|e| bullets_of(&e.text))
+            .unwrap_or_default();
         let prompt = prompt_for(&def.question, &bullets, &evidence);
         // A failed call leaves the page and its fingerprint alone: the next pass tries again.
-        let Ok(reply) = vivianne_ai::ai::completion::complete_background(app, model, PAGE_PROMPT, &prompt).await else { continue };
-        let Some(ops) = vivianne_ai::ai::completion::extract_json_array(&reply).and_then(|v| v.as_array().cloned()) else { continue };
+        let Ok(reply) =
+            vivianne_ai::ai::completion::complete_background(app, model, PAGE_PROMPT, &prompt)
+                .await
+        else {
+            continue;
+        };
+        let Some(ops) = vivianne_ai::ai::completion::extract_json_array(&reply)
+            .and_then(|v| v.as_array().cloned())
+        else {
+            continue;
+        };
         let next = apply(&bullets, &ops);
         let now = super::now_ms();
         let entry_id = match (&current, next.is_empty()) {
@@ -246,9 +339,20 @@ pub async fn refresh(
     refreshed
 }
 
-async fn embed(root: &str, auth: &std::sync::Arc<vivianne_ai::ai::auth::AuthState>, id: &str, text: &str) {
+async fn embed(
+    root: &str,
+    auth: &std::sync::Arc<vivianne_ai::ai::auth::AuthState>,
+    id: &str,
+    text: &str,
+) {
     if let Ok(Some(v)) = vivianne_ai::ai::embedding::embed_text(auth, text).await {
-        let _ = super::store::update_embedding(root, id, &v, vivianne_ai::ai::embedding::embedding_model()).await;
+        let _ = super::store::update_embedding(
+            root,
+            id,
+            &v,
+            vivianne_ai::ai::embedding::embedding_model(),
+        )
+        .await;
     }
 }
 
@@ -257,8 +361,15 @@ pub fn titles_line(defs: &[PageDef]) -> Option<String> {
     if defs.is_empty() {
         return None;
     }
-    let names = defs.iter().take(8).map(|d| d.name.as_str()).collect::<Vec<_>>().join("; ");
-    Some(format!("Pages kept for this project (their content is found with recall): {names}."))
+    let names = defs
+        .iter()
+        .take(8)
+        .map(|d| d.name.as_str())
+        .collect::<Vec<_>>()
+        .join("; ");
+    Some(format!(
+        "Pages kept for this project (their content is found with recall): {names}."
+    ))
 }
 
 #[cfg(test)]
@@ -266,10 +377,25 @@ mod tests {
     use super::*;
 
     fn e(id: &str, kind: &str, text: &str) -> MemoryEntry {
-        MemoryEntry { id: id.into(), key: id.into(), text: text.into(), kind: kind.into(), session_id: None, created_at: 0, confidence: 1.0, access_count: 0, last_accessed_at: 0, embedding_model: None, user_wide: false }
+        MemoryEntry {
+            id: id.into(),
+            key: id.into(),
+            text: text.into(),
+            kind: kind.into(),
+            session_id: None,
+            created_at: 0,
+            confidence: 1.0,
+            access_count: 0,
+            last_accessed_at: 0,
+            embedding_model: None,
+            user_wide: false,
+        }
     }
     fn def(n: &str, q: &str) -> PageDef {
-        PageDef { name: n.into(), question: q.into() }
+        PageDef {
+            name: n.into(),
+            question: q.into(),
+        }
     }
 
     #[test]
@@ -278,7 +404,11 @@ mod tests {
         assert_eq!(ok, vec![def("Releases", "How do we release?")]);
         assert!(clean_defs(vec![def("", "q")]).is_err());
         assert!(clean_defs(vec![def("a", "  ")]).is_err());
-        assert!(clean_defs(vec![def("Releases", "q"), def("releases", "other")]).unwrap_err().contains("two pages"));
+        assert!(
+            clean_defs(vec![def("Releases", "q"), def("releases", "other")])
+                .unwrap_err()
+                .contains("two pages")
+        );
         assert!(clean_defs(vec![def(&"n".repeat(61), "q")]).is_err());
         assert!(clean_defs((0..13).map(|i| def(&format!("p{i}"), "q")).collect()).is_err());
         assert!(clean_defs((0..12).map(|i| def(&format!("p{i}"), "q")).collect()).is_ok());
@@ -286,7 +416,10 @@ mod tests {
 
     #[test]
     fn the_fingerprint_changes_with_the_evidence_and_with_nothing_else() {
-        let a = vec![e("1", "fact", "uses vite"), e("2", "observation", "ships fridays")];
+        let a = vec![
+            e("1", "fact", "uses vite"),
+            e("2", "observation", "ships fridays"),
+        ];
         assert_eq!(evidence_key(&a), evidence_key(&a.clone()));
         let mut changed = a.clone();
         changed[1].text = "ships thursdays".to_string();
@@ -294,37 +427,80 @@ mod tests {
         assert_ne!(evidence_key(&a), evidence_key(&a[..1]), "less evidence");
         let mut swapped = a.clone();
         swapped.swap(0, 1);
-        assert_ne!(evidence_key(&a), evidence_key(&swapped), "order is part of it: the nearest comes first");
+        assert_ne!(
+            evidence_key(&a),
+            evidence_key(&swapped),
+            "order is part of it: the nearest comes first"
+        );
         let mut touched = a.clone();
         touched[0].access_count = 9;
-        assert_eq!(evidence_key(&a), evidence_key(&touched), "being recalled is not new evidence");
+        assert_eq!(
+            evidence_key(&a),
+            evidence_key(&touched),
+            "being recalled is not new evidence"
+        );
         assert_eq!(evidence_key(&[]).len(), 16);
     }
 
     #[test]
     fn a_page_is_a_title_and_bullets_and_reads_back() {
-        let text = render("Releases", &["Tag from main".to_string(), "Run the installer build".to_string()]);
+        let text = render(
+            "Releases",
+            &[
+                "Tag from main".to_string(),
+                "Run the installer build".to_string(),
+            ],
+        );
         assert_eq!(text, "Releases\n- Tag from main\n- Run the installer build");
-        assert_eq!(bullets_of(&text), vec!["Tag from main", "Run the installer build"]);
+        assert_eq!(
+            bullets_of(&text),
+            vec!["Tag from main", "Run the installer build"]
+        );
         assert!(bullets_of("Only a title").is_empty());
     }
 
     #[test]
     fn deltas_edit_in_place_and_redact() {
-        let key = format!("sk-{}", "Ab3dE6gH9jK2mN5pQ8sT1vW4yZ7".chars().take(26).collect::<String>());
+        let key = format!(
+            "sk-{}",
+            "Ab3dE6gH9jK2mN5pQ8sT1vW4yZ7"
+                .chars()
+                .take(26)
+                .collect::<String>()
+        );
         let ops = vec![
             serde_json::json!({"op": "edit", "n": 1, "text": "Tag from main, then push the tag"}),
             serde_json::json!({"op": "add", "text": format!("Publish with {key}")}),
             serde_json::json!({"op": "remove", "n": 2}),
         ];
-        let next = apply(&["Tag from main".to_string(), "Upload by hand".to_string()], &ops);
-        assert_eq!(next, vec!["Tag from main, then push the tag".to_string(), "Publish with [REDACTED:openai_key]".to_string()]);
-        assert_eq!(apply(&["a".to_string()], &[]), vec!["a".to_string()], "no change is no change");
+        let next = apply(
+            &["Tag from main".to_string(), "Upload by hand".to_string()],
+            &ops,
+        );
+        assert_eq!(
+            next,
+            vec![
+                "Tag from main, then push the tag".to_string(),
+                "Publish with [REDACTED:openai_key]".to_string()
+            ]
+        );
+        assert_eq!(
+            apply(&["a".to_string()], &[]),
+            vec!["a".to_string()],
+            "no change is no change"
+        );
     }
 
     #[test]
     fn the_prompt_shows_the_question_the_bullets_and_numbered_labelled_evidence() {
-        let p = prompt_for("How do we release?", &["Tag from main".to_string()], &[e("1", "observation", "Ships on fridays"), e("2", "fact", "Use the\ninstaller")]);
+        let p = prompt_for(
+            "How do we release?",
+            &["Tag from main".to_string()],
+            &[
+                e("1", "observation", "Ships on fridays"),
+                e("2", "fact", "Use the\ninstaller"),
+            ],
+        );
         assert!(p.starts_with("QUESTION: How do we release?\n\nCURRENT:\n1. Tag from main\n\nEVIDENCE:\n1. [belief drawn from several facts] Ships on fridays\n2. [saved on purpose] Use the installer"), "{p}");
         assert!(prompt_for("q", &[], &[]).contains("CURRENT:\n(empty)"));
     }
@@ -337,8 +513,14 @@ mod tests {
         put_row(&c, "Releases", "m1", "aaaa", 1).unwrap();
         put_row(&c, "Conventions", "m2", "bbbb", 1).unwrap();
         put_row(&c, "Releases", "m1", "cccc", 2).unwrap();
-        assert_eq!(row(&c, "Releases"), Some(("m1".to_string(), "cccc".to_string())));
-        assert_eq!(orphans(&c, &["Releases".to_string()]), vec![("Conventions".to_string(), "m2".to_string())]);
+        assert_eq!(
+            row(&c, "Releases"),
+            Some(("m1".to_string(), "cccc".to_string()))
+        );
+        assert_eq!(
+            orphans(&c, &["Releases".to_string()]),
+            vec![("Conventions".to_string(), "m2".to_string())]
+        );
         forget_row(&c, "Conventions").unwrap();
         assert!(orphans(&c, &["Releases".to_string()]).is_empty());
     }
@@ -346,8 +528,15 @@ mod tests {
     #[test]
     fn only_the_names_go_into_the_always_on_block() {
         assert_eq!(titles_line(&[]), None);
-        let line = titles_line(&[def("Releases", "How do we release? Secret detail"), def("Conventions", "q")]).unwrap();
-        assert_eq!(line, "Pages kept for this project (their content is found with recall): Releases; Conventions.");
+        let line = titles_line(&[
+            def("Releases", "How do we release? Secret detail"),
+            def("Conventions", "q"),
+        ])
+        .unwrap();
+        assert_eq!(
+            line,
+            "Pages kept for this project (their content is found with recall): Releases; Conventions."
+        );
         assert!(!line.contains("Secret"));
     }
 }

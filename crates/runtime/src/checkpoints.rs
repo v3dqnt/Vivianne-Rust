@@ -11,7 +11,6 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-
 /// Largest diff returned, in bytes.
 pub const MAX_DIFF_BYTES: usize = 10 * 1024 * 1024;
 /// Command lines stop near 32k characters on Windows; pathspecs are batched under this.
@@ -31,18 +30,34 @@ async fn git(dir: &Path, env: &[(&str, &Path)], args: &[&str]) -> Result<String,
     for (k, v) in env {
         cmd.env(k, v);
     }
-    let out = cmd.output().await.map_err(|e| format!("failed to run git: {e}"))?;
+    let out = cmd
+        .output()
+        .await
+        .map_err(|e| format!("failed to run git: {e}"))?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
     } else {
         let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
-        Err(if err.is_empty() { format!("git {} failed", args.join(" ")) } else { err })
+        Err(if err.is_empty() {
+            format!("git {} failed", args.join(" "))
+        } else {
+            err
+        })
     }
 }
 
 /// A folder name safe inside a ref: the scope's text, made of letters, digits and dashes.
 fn scope_ref(scope: &str) -> String {
-    scope.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' }).collect()
+    scope
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect()
 }
 
 fn ref_for(scope: &str, ordinal: u32) -> String {
@@ -50,12 +65,20 @@ fn ref_for(scope: &str, ordinal: u32) -> String {
 }
 
 fn temp_index(dir: &Path) -> Result<PathBuf, String> {
-    let git_dir = vivianne_tools::proc::quiet_std("git").args(["rev-parse", "--absolute-git-dir"]).current_dir(dir).output().map_err(|e| e.to_string())?;
+    let git_dir = vivianne_tools::proc::quiet_std("git")
+        .args(["rev-parse", "--absolute-git-dir"])
+        .current_dir(dir)
+        .output()
+        .map_err(|e| e.to_string())?;
     if !git_dir.status.success() {
         return Err("This folder isn't a git repository.".into());
     }
     let base = PathBuf::from(String::from_utf8_lossy(&git_dir.stdout).trim());
-    Ok(base.join(format!("viv-index-{}-{}", std::process::id(), uuid::Uuid::new_v4().simple())))
+    Ok(base.join(format!(
+        "viv-index-{}-{}",
+        std::process::id(),
+        uuid::Uuid::new_v4().simple()
+    )))
 }
 
 /// Snapshot the working tree of `dir` as the next checkpoint of `scope`.
@@ -65,14 +88,25 @@ pub async fn capture(dir: &Path, scope: &str) -> Result<Snapshot, String> {
     let env = [("GIT_INDEX_FILE", index.as_path())];
     let result = async {
         // Start from HEAD's tree so unchanged files cost nothing, then add the working tree.
-        let head = git(dir, &[], &["rev-parse", "--verify", "-q", "HEAD"]).await.ok();
+        let head = git(dir, &[], &["rev-parse", "--verify", "-q", "HEAD"])
+            .await
+            .ok();
         if head.is_some() {
             git(dir, &env, &["read-tree", "HEAD"]).await?;
         }
         git(dir, &env, &["add", "-A", "--", "."]).await?;
         let tree = git(dir, &env, &["write-tree"]).await?;
         let ordinal = next_ordinal(dir, scope).await?;
-        let mut args = vec!["-c", "user.name=Vivianne", "-c", "user.email=vivianne@localhost", "commit-tree", tree.as_str(), "-m", "viv checkpoint"];
+        let mut args = vec![
+            "-c",
+            "user.name=Vivianne",
+            "-c",
+            "user.email=vivianne@localhost",
+            "commit-tree",
+            tree.as_str(),
+            "-m",
+            "viv checkpoint",
+        ];
         if let Some(h) = head.as_deref() {
             args.extend(["-p", h]);
         }
@@ -86,18 +120,30 @@ pub async fn capture(dir: &Path, scope: &str) -> Result<Snapshot, String> {
 }
 
 async fn next_ordinal(dir: &Path, scope: &str) -> Result<u32, String> {
-    Ok(list(dir, scope).await?.last().map(|s| s.ordinal + 1).unwrap_or(1))
+    Ok(list(dir, scope)
+        .await?
+        .last()
+        .map(|s| s.ordinal + 1)
+        .unwrap_or(1))
 }
 
 /// The checkpoints of `scope`, oldest first.
 pub async fn list(dir: &Path, scope: &str) -> Result<Vec<Snapshot>, String> {
     let prefix = format!("{NS}/{}/ordinal/", scope_ref(scope));
-    let out = git(dir, &[], &["for-each-ref", "--format=%(refname) %(objectname)", &prefix]).await?;
+    let out = git(
+        dir,
+        &[],
+        &["for-each-ref", "--format=%(refname) %(objectname)", &prefix],
+    )
+    .await?;
     let mut list: Vec<Snapshot> = out
         .lines()
         .filter_map(|l| {
             let (name, commit) = l.split_once(' ')?;
-            Some(Snapshot { ordinal: name.strip_prefix(&prefix)?.parse().ok()?, commit: commit.to_string() })
+            Some(Snapshot {
+                ordinal: name.strip_prefix(&prefix)?.parse().ok()?,
+                commit: commit.to_string(),
+            })
         })
         .collect();
     list.sort_by_key(|s| s.ordinal);
@@ -132,8 +178,25 @@ pub fn batch_paths(paths: &[String]) -> Vec<Vec<String>> {
 }
 
 /// Files that differ between two checkpoints, with a one-letter status (A, M, D).
-pub async fn changed_files(dir: &Path, from: &str, to: &str) -> Result<Vec<(String, char)>, String> {
-    let out = git(dir, &[], &["diff-tree", "-r", "--no-renames", "--name-status", "-z", from, to]).await?;
+pub async fn changed_files(
+    dir: &Path,
+    from: &str,
+    to: &str,
+) -> Result<Vec<(String, char)>, String> {
+    let out = git(
+        dir,
+        &[],
+        &[
+            "diff-tree",
+            "-r",
+            "--no-renames",
+            "--name-status",
+            "-z",
+            from,
+            to,
+        ],
+    )
+    .await?;
     let mut parts = out.split('\0').filter(|p| !p.is_empty());
     let mut files = vec![];
     while let (Some(status), Some(path)) = (parts.next(), parts.next()) {
@@ -145,7 +208,11 @@ pub async fn changed_files(dir: &Path, from: &str, to: &str) -> Result<Vec<(Stri
 /// The unified diff between two checkpoints (a turn's changes), capped at `MAX_DIFF_BYTES`.
 /// Returns the text and whether it was cut.
 pub async fn diff(dir: &Path, from: &str, to: &str) -> Result<(String, bool), String> {
-    let files: Vec<String> = changed_files(dir, from, to).await?.into_iter().map(|(p, _)| p).collect();
+    let files: Vec<String> = changed_files(dir, from, to)
+        .await?
+        .into_iter()
+        .map(|(p, _)| p)
+        .collect();
     let mut text = String::new();
     for group in batch_paths(&files) {
         let mut args = vec!["diff", "--no-color", "--no-renames", from, to, "--"];
@@ -173,7 +240,11 @@ struct Lease(String);
 impl Lease {
     fn take(dir: &Path) -> Result<Self, String> {
         let key = dir.to_string_lossy().to_string();
-        if !leases().lock().unwrap_or_else(|e| e.into_inner()).insert(key.clone()) {
+        if !leases()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(key.clone())
+        {
             return Err("A rollback is already running in this folder.".into());
         }
         Ok(Self(key))
@@ -181,7 +252,10 @@ impl Lease {
 }
 impl Drop for Lease {
     fn drop(&mut self) {
-        leases().lock().unwrap_or_else(|e| e.into_inner()).remove(&self.0);
+        leases()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&self.0);
     }
 }
 
@@ -198,10 +272,17 @@ pub struct RollbackReport {
 /// branch are left alone. A safety checkpoint is taken first.
 pub async fn rollback(dir: &Path, scope: &str, ordinal: u32) -> Result<RollbackReport, String> {
     let _lease = Lease::take(dir)?;
-    let target = list(dir, scope).await?.into_iter().find(|s| s.ordinal == ordinal).ok_or_else(|| format!("No checkpoint {ordinal}."))?;
+    let target = list(dir, scope)
+        .await?
+        .into_iter()
+        .find(|s| s.ordinal == ordinal)
+        .ok_or_else(|| format!("No checkpoint {ordinal}."))?;
     let safety = capture(dir, scope).await?;
     let changed = changed_files(dir, &target.commit, &safety.commit).await?;
-    let mut report = RollbackReport { safety: Some(safety), ..Default::default() };
+    let mut report = RollbackReport {
+        safety: Some(safety),
+        ..Default::default()
+    };
     for (path, status) in changed {
         let full = dir.join(&path);
         if status == 'A' {
@@ -213,11 +294,17 @@ pub async fn rollback(dir: &Path, scope: &str, ordinal: u32) -> Result<RollbackR
             if let Some(parent) = full.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
-            let body = vivianne_tools::proc::quiet("git").args(["show", &format!("{}:{}", target.commit, path)]).current_dir(dir).output().await.map_err(|e| e.to_string())?;
+            let body = vivianne_tools::proc::quiet("git")
+                .args(["show", &format!("{}:{}", target.commit, path)])
+                .current_dir(dir)
+                .output()
+                .await
+                .map_err(|e| e.to_string())?;
             if !body.status.success() {
                 return Err(format!("Couldn't read {path} from checkpoint {ordinal}."));
             }
-            std::fs::write(&full, &body.stdout).map_err(|e| format!("Couldn't write {path}: {e}"))?;
+            std::fs::write(&full, &body.stdout)
+                .map_err(|e| format!("Couldn't write {path}: {e}"))?;
             report.restored.push(path);
         }
     }
@@ -232,7 +319,11 @@ const KEEP: usize = 200;
 pub async fn before_turn(dir: &str, scope: &str) {
     let dir = Path::new(dir);
     let work = async {
-        if list(dir, scope).await.map(|l| l.is_empty()).unwrap_or(false) {
+        if list(dir, scope)
+            .await
+            .map(|l| l.is_empty())
+            .unwrap_or(false)
+        {
             capture(dir, scope).await.map(|_| ())
         } else {
             Ok(())
@@ -266,8 +357,13 @@ pub struct LastRun {
 /// The newest run's changes, or `None` while there are fewer than two checkpoints.
 pub async fn last_run(dir: &Path, scope: &str) -> Result<Option<LastRun>, String> {
     let all = list(dir, scope).await?;
-    let [.., before, after] = all.as_slice() else { return Ok(None) };
-    Ok(Some(LastRun { before: before.ordinal, files: changed_files(dir, &before.commit, &after.commit).await? }))
+    let [.., before, after] = all.as_slice() else {
+        return Ok(None);
+    };
+    Ok(Some(LastRun {
+        before: before.ordinal,
+        files: changed_files(dir, &before.commit, &after.commit).await?,
+    }))
 }
 
 /// Per-folder counts for the UI: how many files each checkpoint changed.
@@ -275,7 +371,12 @@ pub async fn summary(dir: &Path, scope: &str) -> Result<HashMap<u32, usize>, Str
     let all = list(dir, scope).await?;
     let mut out = HashMap::new();
     for pair in all.windows(2) {
-        out.insert(pair[1].ordinal, changed_files(dir, &pair[0].commit, &pair[1].commit).await?.len());
+        out.insert(
+            pair[1].ordinal,
+            changed_files(dir, &pair[0].commit, &pair[1].commit)
+                .await?
+                .len(),
+        );
     }
     Ok(out)
 }
@@ -285,8 +386,16 @@ mod tests {
     use super::*;
 
     fn run(dir: &Path, args: &[&str]) -> String {
-        let out = vivianne_tools::proc::quiet_std("git").args(args).current_dir(dir).output().unwrap();
-        assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        let out = vivianne_tools::proc::quiet_std("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         String::from_utf8_lossy(&out.stdout).trim().to_string()
     }
 
@@ -306,10 +415,16 @@ mod tests {
 
     #[test]
     fn pathspecs_are_batched_under_the_command_line_limit() {
-        let paths: Vec<String> = (0..2000).map(|i| format!("src/some/long/path/segment/file-number-{i:05}.rs")).collect();
+        let paths: Vec<String> = (0..2000)
+            .map(|i| format!("src/some/long/path/segment/file-number-{i:05}.rs"))
+            .collect();
         let groups = batch_paths(&paths);
         assert!(groups.len() > 1);
-        assert!(groups.iter().all(|g| g.iter().map(|p| p.len() + 1).sum::<usize>() <= MAX_PATHSPEC_CHARS));
+        assert!(
+            groups
+                .iter()
+                .all(|g| g.iter().map(|p| p.len() + 1).sum::<usize>() <= MAX_PATHSPEC_CHARS)
+        );
         assert_eq!(groups.concat(), paths);
         assert!(batch_paths(&[]).is_empty());
     }
@@ -326,12 +441,39 @@ mod tests {
         let snap = capture(&dir, "thread 1").await.unwrap();
         assert_eq!(snap.ordinal, 1);
         assert_eq!(run(&dir, &["rev-parse", "HEAD"]), head);
-        assert_eq!(run(&dir, &["status", "--porcelain"]), status, "index and files untouched");
-        assert_eq!(run(&dir, &["branch", "--list"]).trim_start_matches("* "), "main");
-        assert_eq!(run(&dir, &["show", &format!("{}:new.txt", snap.commit)]), "fresh");
-        assert!(run(&dir, &["ls-tree", "-r", "--name-only", &snap.commit]).lines().all(|f| f != "ignored.log"));
-        assert!(run(&dir, &["for-each-ref", NS]).contains("refs/viv/checkpoints/thread-1/ordinal/1"));
-        assert_eq!(std::fs::read_dir(dir.join(".git")).unwrap().filter(|e| e.as_ref().unwrap().file_name().to_string_lossy().starts_with("viv-index")).count(), 0);
+        assert_eq!(
+            run(&dir, &["status", "--porcelain"]),
+            status,
+            "index and files untouched"
+        );
+        assert_eq!(
+            run(&dir, &["branch", "--list"]).trim_start_matches("* "),
+            "main"
+        );
+        assert_eq!(
+            run(&dir, &["show", &format!("{}:new.txt", snap.commit)]),
+            "fresh"
+        );
+        assert!(
+            run(&dir, &["ls-tree", "-r", "--name-only", &snap.commit])
+                .lines()
+                .all(|f| f != "ignored.log")
+        );
+        assert!(
+            run(&dir, &["for-each-ref", NS]).contains("refs/viv/checkpoints/thread-1/ordinal/1")
+        );
+        assert_eq!(
+            std::fs::read_dir(dir.join(".git"))
+                .unwrap()
+                .filter(|e| e
+                    .as_ref()
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("viv-index"))
+                .count(),
+            0
+        );
     }
 
     #[tokio::test]
@@ -341,10 +483,26 @@ mod tests {
             capture(&dir, "a").await.unwrap();
         }
         capture(&dir, "b").await.unwrap();
-        assert_eq!(list(&dir, "a").await.unwrap().iter().map(|s| s.ordinal).collect::<Vec<_>>(), [1, 2, 3]);
+        assert_eq!(
+            list(&dir, "a")
+                .await
+                .unwrap()
+                .iter()
+                .map(|s| s.ordinal)
+                .collect::<Vec<_>>(),
+            [1, 2, 3]
+        );
         assert_eq!(list(&dir, "b").await.unwrap().len(), 1);
         assert_eq!(prune(&dir, "a", 1).await.unwrap(), 2);
-        assert_eq!(list(&dir, "a").await.unwrap().iter().map(|s| s.ordinal).collect::<Vec<_>>(), [3]);
+        assert_eq!(
+            list(&dir, "a")
+                .await
+                .unwrap()
+                .iter()
+                .map(|s| s.ordinal)
+                .collect::<Vec<_>>(),
+            [3]
+        );
         assert_eq!(capture(&dir, "a").await.unwrap().ordinal, 4);
     }
 
@@ -355,10 +513,21 @@ mod tests {
         std::fs::write(dir.join("a.txt"), "one\ntwo\n").unwrap();
         std::fs::write(dir.join("made-by-shell.txt"), "hi\n").unwrap();
         let second = capture(&dir, "t").await.unwrap();
-        let files = changed_files(&dir, &first.commit, &second.commit).await.unwrap();
-        assert_eq!(files, [("a.txt".to_string(), 'M'), ("made-by-shell.txt".to_string(), 'A')]);
+        let files = changed_files(&dir, &first.commit, &second.commit)
+            .await
+            .unwrap();
+        assert_eq!(
+            files,
+            [
+                ("a.txt".to_string(), 'M'),
+                ("made-by-shell.txt".to_string(), 'A')
+            ]
+        );
         let (text, cut) = diff(&dir, &first.commit, &second.commit).await.unwrap();
-        assert!(!cut && text.contains("+two") && text.contains("+hi"), "{text}");
+        assert!(
+            !cut && text.contains("+two") && text.contains("+hi"),
+            "{text}"
+        );
         assert_eq!(summary(&dir, "t").await.unwrap()[&2], 2);
     }
 
@@ -367,11 +536,18 @@ mod tests {
         let dir = repo("lastrun");
         assert_eq!(last_run(&dir, "t").await.unwrap(), None);
         capture(&dir, "t").await.unwrap();
-        assert_eq!(last_run(&dir, "t").await.unwrap(), None, "one checkpoint is a baseline, not a run");
+        assert_eq!(
+            last_run(&dir, "t").await.unwrap(),
+            None,
+            "one checkpoint is a baseline, not a run"
+        );
         std::fs::write(dir.join("a.txt"), "two\n").unwrap();
         capture(&dir, "t").await.unwrap();
         let run = last_run(&dir, "t").await.unwrap().unwrap();
-        assert_eq!((run.before, run.files), (1, vec![("a.txt".to_string(), 'M')]));
+        assert_eq!(
+            (run.before, run.files),
+            (1, vec![("a.txt".to_string(), 'M')])
+        );
     }
 
     #[tokio::test]
@@ -386,12 +562,27 @@ mod tests {
         let report = rollback(&dir, "t", first.ordinal).await.unwrap();
         assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "one\n");
         assert!(!dir.join("extra.txt").exists());
-        assert_eq!(std::fs::read_to_string(dir.join("ignored.log")).unwrap(), "keep me");
-        assert_eq!(run(&dir, &["rev-parse", "HEAD"]), head, "the branch didn't move");
-        assert_eq!((report.restored, report.removed), (vec!["a.txt".to_string()], vec!["extra.txt".to_string()]));
+        assert_eq!(
+            std::fs::read_to_string(dir.join("ignored.log")).unwrap(),
+            "keep me"
+        );
+        assert_eq!(
+            run(&dir, &["rev-parse", "HEAD"]),
+            head,
+            "the branch didn't move"
+        );
+        assert_eq!(
+            (report.restored, report.removed),
+            (vec!["a.txt".to_string()], vec!["extra.txt".to_string()])
+        );
         // The safety checkpoint holds what was there, so the rollback can be undone.
-        rollback(&dir, "t", report.safety.unwrap().ordinal).await.unwrap();
-        assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "changed\n");
+        rollback(&dir, "t", report.safety.unwrap().ordinal)
+            .await
+            .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.join("a.txt")).unwrap(),
+            "changed\n"
+        );
         assert!(dir.join("extra.txt").exists());
     }
 
@@ -400,9 +591,19 @@ mod tests {
         let dir = repo("lease");
         capture(&dir, "t").await.unwrap();
         let held = Lease::take(&dir).unwrap();
-        assert!(rollback(&dir, "t", 1).await.unwrap_err().contains("already running"));
+        assert!(
+            rollback(&dir, "t", 1)
+                .await
+                .unwrap_err()
+                .contains("already running")
+        );
         drop(held);
-        assert!(rollback(&dir, "t", 99).await.unwrap_err().contains("No checkpoint 99"));
+        assert!(
+            rollback(&dir, "t", 99)
+                .await
+                .unwrap_err()
+                .contains("No checkpoint 99")
+        );
     }
 
     #[tokio::test]
@@ -416,6 +617,11 @@ mod tests {
         assert_eq!(run(&dir, &["show", &format!("{}:f.txt", snap.commit)]), "x");
         let plain = std::env::temp_dir().join(format!("viv-gc-plain-{}", std::process::id()));
         std::fs::create_dir_all(&plain).unwrap();
-        assert!(capture(&plain, "t").await.unwrap_err().contains("isn't a git repository"));
+        assert!(
+            capture(&plain, "t")
+                .await
+                .unwrap_err()
+                .contains("isn't a git repository")
+        );
     }
 }

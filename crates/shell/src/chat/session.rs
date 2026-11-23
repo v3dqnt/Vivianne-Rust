@@ -16,7 +16,9 @@ use vivianne_ai::ai::types::{CostBreakdown, Usage};
 use vivianne_ai::host::ModelRef;
 use vivianne_ai::inference::usage_store;
 use vivianne_core::{Message, Mode, Role, Thinking};
-use vivianne_providers::acp::{Acp, AcpEvent, Line, Outcome, PermissionRequest, PromptPart, TurnRequest};
+use vivianne_providers::acp::{
+    Acp, AcpEvent, Line, Outcome, PermissionRequest, PromptPart, TurnRequest,
+};
 use vivianne_runtime::checkpoints;
 use vivianne_runtime::context::Breakdown;
 use vivianne_runtime::{Agent, AgentEvent};
@@ -26,7 +28,11 @@ enum Engine {
     /// Vivianne's own loop on a chosen model.
     Own(Arc<Agent>),
     /// A coding agent, which runs its own tools in `workspace`.
-    Harness { id: String, acp: Arc<Acp>, workspace: PathBuf },
+    Harness {
+        id: String,
+        acp: Arc<Acp>,
+        workspace: PathBuf,
+    },
 }
 
 type Approvals = Arc<Mutex<HashMap<String, PermissionRequest>>>;
@@ -141,12 +147,18 @@ impl Session {
 
     /// Answer from now on with the coding agent `id`, working in `workspace`.
     pub fn use_harness(&mut self, id: &str, acp: Arc<Acp>, workspace: PathBuf) {
-        self.engine = Engine::Harness { id: id.to_owned(), acp, workspace };
+        self.engine = Engine::Harness {
+            id: id.to_owned(),
+            acp,
+            workspace,
+        };
     }
 
     /// Start answering `text`. `None` if a run is already going.
     pub fn send(&mut self, text: String, thinking: Thinking) -> Option<Run> {
         let mut history = self.history.take()?;
+        let text = begin_task(&self.thread, &self.folder, text);
+        let request = text.clone();
         self.before_run = Some(history.clone());
         history.push(Message::new(Role::User, text.clone()));
         let (events_tx, events) = mpsc::unbounded_channel();
@@ -154,25 +166,57 @@ impl Session {
         match &self.engine {
             Engine::Own(agent) => {
                 let agent = agent.clone();
-                let (events_tx, watcher) = watch_turn(self.runtime.handle(), self.thread.clone(), events_tx);
+                let (events_tx, watcher) =
+                    watch_turn(self.runtime.handle(), self.thread.clone(), events_tx);
                 let (folder, thread) = (self.folder.display().to_string(), self.thread.clone());
                 let (provider, model) = agent.primary();
-                let model = ModelRef { id: model.clone(), name: model, provider, ..ModelRef::default() };
+                let model = ModelRef {
+                    id: model.clone(),
+                    name: model,
+                    provider,
+                    ..ModelRef::default()
+                };
                 self.task = Some(self.runtime.spawn(async move {
                     let started = Instant::now();
                     // Memory tidies itself while nothing is working; this says something is.
                     let _working = vivianne_memory::sleep::Working::begin();
                     // A baseline to compare the run against, and a snapshot of what it left, so it can be undone.
                     checkpoints::before_turn(&folder, &thread).await;
+                    // In a project paired with a partner: their commits come in, and the agent hears what they did.
+                    let partner = vivianne_multiplayer::global();
+                    let _run = match &partner {
+                        Some(mp) => Some(
+                            mp.before_run(std::path::Path::new(&folder), &mut history)
+                                .await,
+                        ),
+                        None => None,
+                    };
                     let first_new = history.len();
                     let result = agent.run(&mut history, &events_tx, thinking).await;
                     checkpoints::after_turn(&folder, &thread).await;
+                    if let Some(mp) = &partner {
+                        mp.after_run(
+                            std::path::Path::new(&folder),
+                            &request,
+                            &history[first_new..],
+                        )
+                        .await;
+                    }
                     // What the run did is noted in the project's memory (when memory is on for it).
                     if let Some(backend) = crate::backend::get() {
-                        vivianne_memory::agent::after_run(&folder, &backend.events, &model, &history[first_new..]).await;
+                        vivianne_memory::agent::after_run(
+                            &folder,
+                            &backend.events,
+                            &model,
+                            // What the desktop showed is not noted in memory.
+                            &vivianne_runtime::history::without_desktop_content(&history)
+                                [first_new..],
+                        )
+                        .await;
                     }
                     drop(events_tx);
                     let error = result.err().map(|e| e.to_string());
+                    note_outcome(&thread, error.as_deref());
                     watcher.finish(started, error.as_deref()).await;
                     let _ = done_tx.send(Finished { history, error });
                 }));
@@ -181,8 +225,10 @@ impl Session {
                 let stop = CancellationToken::new();
                 self.stop = Some(stop.clone());
                 // What was said before this message, for an agent that wasn't there for it.
-                let earlier: Vec<Line> = self.before_run.as_deref().map(lines_of).unwrap_or_default();
-                let (events_tx, watcher) = watch_turn(self.runtime.handle(), self.thread.clone(), events_tx);
+                let earlier: Vec<Line> =
+                    self.before_run.as_deref().map(lines_of).unwrap_or_default();
+                let (events_tx, watcher) =
+                    watch_turn(self.runtime.handle(), self.thread.clone(), events_tx);
                 let turn = HarnessTurn {
                     acp: acp.clone(),
                     id: id.clone(),
@@ -199,6 +245,7 @@ impl Session {
                     let started = Instant::now();
                     checkpoints::before_turn(&folder, &thread).await;
                     let (reply, error) = turn.run(&events_tx, &stop).await;
+                    note_outcome(&thread, error.as_deref());
                     checkpoints::after_turn(&folder, &thread).await;
                     drop(events_tx);
                     watcher.finish(started, error.as_deref()).await;
@@ -215,6 +262,7 @@ impl Session {
     /// Stop the current run. The conversation goes back to how it was before
     /// the run, so the stopped message is not part of what the model sees.
     pub fn cancel(&mut self) {
+        vivianne_runtime::ledger::finish(&self.thread, vivianne_runtime::ledger::Outcome::Stopped);
         match &self.engine {
             // The coding agent is told to stop and ends its own turn; aborting would leave it working.
             Engine::Harness { .. } => {
@@ -230,7 +278,10 @@ impl Session {
             }
         }
         // Anything the agent was still asking is refused.
-        self.approvals.lock().unwrap_or_else(PoisonError::into_inner).clear();
+        self.approvals
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
         if let Some(before) = self.before_run.take() {
             self.history = Some(before);
         }
@@ -241,7 +292,11 @@ impl Session {
         if let Engine::Own(agent) = &self.engine {
             return agent.answer(id, allow);
         }
-        let request = self.approvals.lock().unwrap_or_else(PoisonError::into_inner).remove(id);
+        let request = self
+            .approvals
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(id);
         request.map(|r| r.answer(allow)).is_some()
     }
 
@@ -250,7 +305,10 @@ impl Session {
     pub fn lost(&mut self) -> String {
         self.task = None;
         self.stop = None;
-        self.approvals.lock().unwrap_or_else(PoisonError::into_inner).clear();
+        self.approvals
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
         if let Some(before) = self.before_run.take() {
             self.history = Some(before);
         }
@@ -285,19 +343,45 @@ struct TurnStats {
 /// Sits between a turn and the chat: records each model call's usage against `thread` (so it is on disk before
 /// the chat hears of it), counts tool calls and notes them, and passes every event on. Returns the sender the
 /// turn writes to, and the watcher to finish once the turn is over.
-fn watch_turn(runtime: &tokio::runtime::Handle, thread: String, chat: mpsc::UnboundedSender<AgentEvent>) -> (mpsc::UnboundedSender<AgentEvent>, Watcher) {
+fn watch_turn(
+    runtime: &tokio::runtime::Handle,
+    thread: String,
+    chat: mpsc::UnboundedSender<AgentEvent>,
+) -> (mpsc::UnboundedSender<AgentEvent>, Watcher) {
     let (tx, mut rx) = mpsc::unbounded_channel::<AgentEvent>();
     let task = runtime.spawn(async move {
         let mut stats = TurnStats::default();
         while let Some(event) = rx.recv().await {
             match &event {
-                AgentEvent::Usage { provider, model, .. } => {
+                AgentEvent::Usage {
+                    provider, model, ..
+                } => {
                     stats.model = Some((provider.clone(), model.clone()));
                     record_usage(&thread, &event).await;
+                    if let AgentEvent::Usage {
+                        input,
+                        output,
+                        cache_read,
+                        cost,
+                        ..
+                    } = &event
+                    {
+                        vivianne_runtime::ledger::record_usage(
+                            &thread,
+                            model,
+                            input + cache_read,
+                            *output,
+                            *cost,
+                        );
+                    }
                 }
                 AgentEvent::ToolEnd { name, is_error, .. } => {
                     stats.tools += 1;
-                    vivianne_telemetry::track("tool.call", json!({ "tool": name, "ok": !is_error }));
+                    vivianne_runtime::ledger::record_step(&thread);
+                    vivianne_telemetry::track(
+                        "tool.call",
+                        json!({ "tool": name, "ok": !is_error }),
+                    );
                 }
                 _ => {}
             }
@@ -329,11 +413,63 @@ impl Watcher {
     }
 }
 
+/// What a resumed task is told, when the message that resumes it is this one.
+pub const RESUME_PROMPT: &str = "Carry on with the task that was interrupted.";
+
+/// Opens the ledger for the task a message starts. The message that resumes a cut-off task carries on under its
+/// ledger (spend and checkpoints stay) and goes to the model with where the task stood; any other message is a new
+/// task, with the limits from settings.
+fn begin_task(thread: &str, folder: &std::path::Path, text: String) -> String {
+    use vivianne_runtime::ledger;
+    if text.trim() == RESUME_PROMPT
+        && let Some(old) = ledger::get(thread).filter(|l| !l.status.is_over())
+    {
+        let resumed = ledger::resume(thread).unwrap_or(old);
+        return format!("{}\n\n{RESUME_PROMPT}", resumed.briefing());
+    }
+    let settings = vivianne_ai::host::settings_blocking();
+    let limit = |key: &str| settings["runLimits"][key].as_f64().filter(|v| *v > 0.0);
+    ledger::begin(
+        thread,
+        &text,
+        Some(&folder.display().to_string()),
+        limit("capUsd"),
+        limit("capHours"),
+    );
+    text
+}
+
+/// Notes how a run ended in its ledger: done, paused on a cap or an error, or waiting out a rate limit.
+fn note_outcome(thread: &str, error: Option<&str>) {
+    use vivianne_runtime::ledger::{self, Outcome};
+    const RATE_LIMIT_WAIT_MS: u64 = 5 * 60 * 1000;
+    let outcome = match error {
+        Some(e) if error_kind(e) == "rate_limit" => Outcome::Waiting(
+            ledger::now_ms() + RATE_LIMIT_WAIT_MS,
+            "rate limited".to_owned(),
+        ),
+        Some(e) => Outcome::Paused(e.chars().take(200).collect()),
+        None => match ledger::get(thread).and_then(|l| l.cap_reached(ledger::now_ms())) {
+            Some(why) => Outcome::Paused(why),
+            None => Outcome::Done,
+        },
+    };
+    ledger::finish(thread, outcome);
+}
+
 /// A coarse, content-free name for why a turn failed. The message itself is never recorded.
 fn error_kind(error: &str) -> &'static str {
     let error = error.to_lowercase();
     let has = |words: &[&str]| words.iter().any(|word| error.contains(word));
-    if has(&["401", "403", "unauthorized", "api key", "sign in", "signed in", "authentication"]) {
+    if has(&[
+        "401",
+        "403",
+        "unauthorized",
+        "api key",
+        "sign in",
+        "signed in",
+        "authentication",
+    ]) {
         "auth"
     } else if has(&["429", "rate limit", "quota"]) {
         "rate_limit"
@@ -348,7 +484,18 @@ fn error_kind(error: &str) -> &'static str {
 
 /// A usage event as what the usage store takes, with the provider and model it names.
 fn usage_of(event: &AgentEvent) -> Option<(Usage, &str, &str)> {
-    let AgentEvent::Usage { provider, model, input, output, cache_read, cache_write, cost } = event else { return None };
+    let AgentEvent::Usage {
+        provider,
+        model,
+        input,
+        output,
+        cache_read,
+        cache_write,
+        cost,
+    } = event
+    else {
+        return None;
+    };
     let clamp = |n: u64| u32::try_from(n).unwrap_or(u32::MAX);
     let usage = Usage {
         input: clamp(*input),
@@ -356,14 +503,19 @@ fn usage_of(event: &AgentEvent) -> Option<(Usage, &str, &str)> {
         cache_read: clamp(*cache_read),
         cache_write: clamp(*cache_write),
         total_tokens: clamp(input.saturating_add(*output)),
-        cost: cost.map(|total| CostBreakdown { total, ..CostBreakdown::default() }),
+        cost: cost.map(|total| CostBreakdown {
+            total,
+            ..CostBreakdown::default()
+        }),
     };
     Some((usage, provider, model))
 }
 
 /// Records a model call's usage for the day, the model and the thread (`main:<thread>`).
 async fn record_usage(thread: &str, event: &AgentEvent) {
-    let Some((usage, provider, model)) = usage_of(event) else { return };
+    let Some((usage, provider, model)) = usage_of(event) else {
+        return;
+    };
     usage_store::record_usage(&usage, provider, model).await;
     usage_store::record_usage_tagged(&usage, provider, model, &format!("main:{thread}")).await;
 }
@@ -384,15 +536,29 @@ struct HarnessTurn {
 
 impl HarnessTurn {
     /// Runs the turn, sending its events on. Returns what the agent said and the failure, if any.
-    async fn run(self, events: &mpsc::UnboundedSender<AgentEvent>, stop: &CancellationToken) -> (String, Option<String>) {
+    async fn run(
+        self,
+        events: &mpsc::UnboundedSender<AgentEvent>,
+        stop: &CancellationToken,
+    ) -> (String, Option<String>) {
         let (acp_tx, mut acp_rx) = mpsc::unbounded_channel();
         let prompt = [PromptPart::Text(self.text.clone())];
         // The agent gets Vivianne's own tools, and the MCP servers the user has added, beside its own.
         let servers = super::own_tools::specs().await;
         let own = super::own_tools::for_turn(std::path::Path::new(&self.cwd), self.plan_mode);
-        let request = TurnRequest { prompt: &prompt, earlier: &self.earlier, plan_mode: self.plan_mode, bypass: self.bypass, mcp_servers: &servers, own: Some(own) };
+        let request = TurnRequest {
+            prompt: &prompt,
+            earlier: &self.earlier,
+            plan_mode: self.plan_mode,
+            bypass: self.bypass,
+            mcp_servers: &servers,
+            own: Some(own),
+        };
         let turn = async {
-            let outcome = self.acp.run_turn(&self.thread, &self.id, &self.cwd, &request, &acp_tx, stop).await;
+            let outcome = self
+                .acp
+                .run_turn(&self.thread, &self.id, &self.cwd, &request, &acp_tx, stop)
+                .await;
             drop(acp_tx);
             outcome
         };
@@ -433,16 +599,47 @@ impl HarnessTurn {
             AcpEvent::Text(piece) => vec![AgentEvent::Text(piece)],
             // Its reasoning is not shown.
             AcpEvent::Thought(_) => Vec::new(),
-            AcpEvent::ToolStart { id, name, args } => vec![AgentEvent::ToolStart { id, name, args }],
-            AcpEvent::ToolEnd { id, name, args, output, is_error } => {
-                vec![AgentEvent::ToolEnd { id, name, output, is_error, details: None, args: Some(args) }]
+            AcpEvent::ToolStart { id, name, args } => {
+                vec![AgentEvent::ToolStart { id, name, args }]
             }
-            AcpEvent::Notice { title, text, is_error } => {
+            AcpEvent::ToolEnd {
+                id,
+                name,
+                args,
+                output,
+                is_error,
+            } => {
+                vec![AgentEvent::ToolEnd {
+                    id,
+                    name,
+                    output,
+                    is_error,
+                    details: None,
+                    args: Some(args),
+                }]
+            }
+            AcpEvent::Notice {
+                title,
+                text,
+                is_error,
+            } => {
                 let id = format!("notice-{}-{plans}", self.thread);
-                let args = json!({ "title": title, "severity": if is_error { "error" } else { "info" } });
+                let args =
+                    json!({ "title": title, "severity": if is_error { "error" } else { "info" } });
                 vec![
-                    AgentEvent::ToolStart { id: id.clone(), name: "notice".to_owned(), args },
-                    AgentEvent::ToolEnd { id, name: "notice".to_owned(), output: text, is_error, details: None, args: None },
+                    AgentEvent::ToolStart {
+                        id: id.clone(),
+                        name: "notice".to_owned(),
+                        args,
+                    },
+                    AgentEvent::ToolEnd {
+                        id,
+                        name: "notice".to_owned(),
+                        output: text,
+                        is_error,
+                        details: None,
+                        args: None,
+                    },
                 ]
             }
             // A plan that was removed leaves nothing to draw.
@@ -451,8 +648,19 @@ impl HarnessTurn {
             AcpEvent::Plan(text) => {
                 let id = format!("plan-{}-{plans}", self.thread);
                 vec![
-                    AgentEvent::ToolStart { id: id.clone(), name: "todo_write".to_owned(), args: json!({}) },
-                    AgentEvent::ToolEnd { id, name: "todo_write".to_owned(), output: text, is_error: false, details: None, args: None },
+                    AgentEvent::ToolStart {
+                        id: id.clone(),
+                        name: "todo_write".to_owned(),
+                        args: json!({}),
+                    },
+                    AgentEvent::ToolEnd {
+                        id,
+                        name: "todo_write".to_owned(),
+                        output: text,
+                        is_error: false,
+                        details: None,
+                        args: None,
+                    },
                 ]
             }
             AcpEvent::Usage(spent) => vec![AgentEvent::Usage {
@@ -465,9 +673,14 @@ impl HarnessTurn {
                 cost: spent.cost,
             }],
             AcpEvent::Permission(request) => {
-                let title = request.why.clone().unwrap_or_else(|| format!("The coding agent wants to use {}", request.tool.name));
+                let title = request.why.clone().unwrap_or_else(|| {
+                    format!("The coding agent wants to use {}", request.tool.name)
+                });
                 let id = format!("ask-{}", uuid::Uuid::new_v4());
-                self.approvals.lock().unwrap_or_else(PoisonError::into_inner).insert(id.clone(), request);
+                self.approvals
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .insert(id.clone(), request);
                 vec![AgentEvent::Approval { id, title }]
             }
         }
@@ -479,8 +692,14 @@ fn lines_of(history: &[Message]) -> Vec<Line> {
     history
         .iter()
         .filter_map(|m| match m.role {
-            Role::User => Some(Line { who: "User", text: m.text.clone() }),
-            Role::Assistant => Some(Line { who: "Assistant", text: m.text.clone() }),
+            Role::User => Some(Line {
+                who: "User",
+                text: m.text.clone(),
+            }),
+            Role::Assistant => Some(Line {
+                who: "Assistant",
+                text: m.text.clone(),
+            }),
             _ => None,
         })
         .collect()
@@ -492,10 +711,27 @@ mod tests {
 
     #[test]
     fn a_usage_event_becomes_the_stores_usage_and_an_unknown_cost_stays_unknown() {
-        let event = |cost| AgentEvent::Usage { provider: "p".into(), model: "m".into(), input: 100, output: 20, cache_read: 3, cache_write: 4, cost };
+        let event = |cost| AgentEvent::Usage {
+            provider: "p".into(),
+            model: "m".into(),
+            input: 100,
+            output: 20,
+            cache_read: 3,
+            cache_write: 4,
+            cost,
+        };
         let with_cost = event(Some(0.5));
         let (usage, provider, model) = usage_of(&with_cost).unwrap();
-        assert_eq!((usage.input, usage.output, usage.cache_read, usage.cache_write, usage.total_tokens), (100, 20, 3, 4, 120));
+        assert_eq!(
+            (
+                usage.input,
+                usage.output,
+                usage.cache_read,
+                usage.cache_write,
+                usage.total_tokens
+            ),
+            (100, 20, 3, 4, 120)
+        );
         assert_eq!(usage.cost.map(|c| c.total), Some(0.5));
         assert_eq!((provider, model), ("p", "m"));
         let unknown = event(None);
@@ -514,7 +750,11 @@ mod tests {
     #[tokio::test]
     async fn the_watcher_passes_every_event_on_and_counts_the_tools() {
         let (chat, mut seen) = mpsc::unbounded_channel();
-        let (tx, watcher) = watch_turn(&tokio::runtime::Handle::current(), "thread-test".to_owned(), chat);
+        let (tx, watcher) = watch_turn(
+            &tokio::runtime::Handle::current(),
+            "thread-test".to_owned(),
+            chat,
+        );
         tx.send(AgentEvent::Text("hi".into())).unwrap();
         tx.send(AgentEvent::Done).unwrap();
         drop(tx);
@@ -522,7 +762,11 @@ mod tests {
         assert_eq!(stats.tools, 0);
         assert_eq!(seen.recv().await, Some(AgentEvent::Text("hi".into())));
         assert_eq!(seen.recv().await, Some(AgentEvent::Done));
-        assert_eq!(seen.recv().await, None, "the chat's channel closes when the turn's does");
+        assert_eq!(
+            seen.recv().await,
+            None,
+            "the chat's channel closes when the turn's does"
+        );
     }
 
     #[test]
@@ -533,6 +777,18 @@ mod tests {
             Message::tool_result("c1", "output".to_owned()),
         ];
         let lines = lines_of(&history);
-        assert_eq!(lines, vec![Line { who: "User", text: "hi".into() }, Line { who: "Assistant", text: "hello".into() }]);
+        assert_eq!(
+            lines,
+            vec![
+                Line {
+                    who: "User",
+                    text: "hi".into()
+                },
+                Line {
+                    who: "Assistant",
+                    text: "hello".into()
+                }
+            ]
+        );
     }
 }

@@ -30,7 +30,10 @@ impl Failure {
             CredentialErrorClass::QuotaOrBilling => FailureKind::OutOfQuota,
             CredentialErrorClass::Other => FailureKind::Permanent,
         };
-        Self { kind, message: message.to_owned() }
+        Self {
+            kind,
+            message: message.to_owned(),
+        }
     }
 
     /// Whether the same call is worth repeating.
@@ -51,9 +54,18 @@ impl Failure {
     #[must_use]
     pub fn is_context_overflow(&self) -> bool {
         let lower = self.message.to_lowercase();
-        ["context length", "context_length", "context window", "maximum context", "prompt is too long", "too many tokens", "request too large", "exceeds the limit"]
-            .iter()
-            .any(|needle| lower.contains(needle))
+        [
+            "context length",
+            "context_length",
+            "context window",
+            "maximum context",
+            "prompt is too long",
+            "too many tokens",
+            "request too large",
+            "exceeds the limit",
+        ]
+        .iter()
+        .any(|needle| lower.contains(needle))
     }
 
     /// The message cut short enough to show.
@@ -67,7 +79,10 @@ impl From<&ProviderError> for Failure {
     fn from(error: &ProviderError) -> Self {
         match error {
             // The provider could not even be set up: another target may still work.
-            ProviderError::Unavailable(message) => Self { kind: FailureKind::OutOfQuota, message: message.clone() },
+            ProviderError::Unavailable(message) => Self {
+                kind: FailureKind::OutOfQuota,
+                message: message.clone(),
+            },
             ProviderError::Failed(message) => Self::from_message(message),
         }
     }
@@ -76,9 +91,18 @@ impl From<&ProviderError> for Failure {
 /// A rejected or missing key is specific to that key, so another target may well work.
 fn mentions_credentials(message: &str) -> bool {
     let lower = message.to_lowercase();
-    ["api key", "api_key", "unauthorized", "401", "403", "forbidden", "authentication", "invalid x-api-key"]
-        .iter()
-        .any(|needle| lower.contains(needle))
+    [
+        "api key",
+        "api_key",
+        "unauthorized",
+        "401",
+        "403",
+        "forbidden",
+        "authentication",
+        "invalid x-api-key",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
 }
 
 #[cfg(test)]
@@ -99,8 +123,14 @@ mod tests {
 
     #[test]
     fn a_request_that_does_not_fit_the_window_is_recognised() {
-        assert!(Failure::from_message("400: This model's maximum context length is 8192 tokens").is_context_overflow());
-        assert!(Failure::from_message("prompt is too long: 250000 tokens > 200000 maximum").is_context_overflow());
+        assert!(
+            Failure::from_message("400: This model's maximum context length is 8192 tokens")
+                .is_context_overflow()
+        );
+        assert!(
+            Failure::from_message("prompt is too long: 250000 tokens > 200000 maximum")
+                .is_context_overflow()
+        );
         assert!(!Failure::from_message("429 rate limit exceeded").is_context_overflow());
     }
 

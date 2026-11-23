@@ -240,7 +240,15 @@ mod tests {
     fn edge_kind_weights_are_as_expected() {
         assert!((EdgeKind::Supersedes.weight() - 0.9).abs() < 0.01);
         assert!((EdgeKind::HasTag { tag: "x".into() }.weight() - 0.8).abs() < 0.01);
-        assert!((EdgeKind::InCluster { cluster_id: "x".into() }.weight() - 0.6).abs() < 0.01);
+        assert!(
+            (EdgeKind::InCluster {
+                cluster_id: "x".into()
+            }
+            .weight()
+                - 0.6)
+                .abs()
+                < 0.01
+        );
         assert!((EdgeKind::RelatesTo { weight: 0.75 }.weight() - 0.75).abs() < 0.01);
         assert!((EdgeKind::Contradicts.weight() - 0.3).abs() < 0.01);
         assert!((EdgeKind::DerivedFrom.weight() - 0.7).abs() < 0.01);

@@ -9,3 +9,18 @@ pub async fn read_settings_json() -> serde_json::Value {
         Err(_) => serde_json::Value::Null,
     }
 }
+
+/// Longest text a tool hands back when it has no tighter limit of its own.
+pub const MAX_UNBOUNDED_TOOL_CHARS: usize = 64 * 1024;
+
+/// `text` cut to at most `max` characters, with a note saying so.
+pub fn clip_tool_text(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_owned();
+    }
+    let kept: String = text.chars().take(max).collect();
+    format!(
+        "{kept}
+… (clipped at {max} characters)"
+    )
+}

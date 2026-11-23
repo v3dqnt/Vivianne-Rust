@@ -23,7 +23,12 @@ pub enum ApiFormat {
 }
 
 impl ApiFormat {
-    pub const ALL: [Self; 4] = [Self::AnthropicMessages, Self::OpenAiChat, Self::OpenAiResponses, Self::GoogleGenerative];
+    pub const ALL: [Self; 4] = [
+        Self::AnthropicMessages,
+        Self::OpenAiChat,
+        Self::OpenAiResponses,
+        Self::GoogleGenerative,
+    ];
 
     /// The name in the provider id and in settings.
     #[must_use]
@@ -113,7 +118,10 @@ pub async fn remove(id: &str) -> Result<(), String> {
 
 fn put(settings: &mut Value, providers: &[CustomProvider]) {
     if let Some(object) = settings.as_object_mut() {
-        object.insert(KEY.to_owned(), serde_json::to_value(providers).unwrap_or(Value::Null));
+        object.insert(
+            KEY.to_owned(),
+            serde_json::to_value(providers).unwrap_or(Value::Null),
+        );
     }
 }
 
@@ -127,7 +135,10 @@ mod tests {
     fn a_new_id_carries_its_format_so_the_registry_can_read_it() {
         for format in ApiFormat::ALL {
             let id = new_id(format);
-            assert!(crate::ai::provider_registry::provider_spec(&id).is_some(), "{id}");
+            assert!(
+                crate::ai::provider_registry::provider_spec(&id).is_some(),
+                "{id}"
+            );
         }
     }
 

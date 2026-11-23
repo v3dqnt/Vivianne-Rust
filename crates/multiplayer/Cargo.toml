@@ -1,0 +1,25 @@
+[package]
+name = "vivianne-multiplayer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+# Direct peer-to-peer connections between two machines, as the old app used.
+iroh = "1.0.3"
+base64 = "0.22"
+chrono = "0.4"
+uuid = { version = "1", features = ["v4"] }
+vivianne-ai.workspace = true
+vivianne-core.workspace = true
+vivianne-tools.workspace = true
+
+[lints]
+workspace = true

@@ -5,11 +5,10 @@ use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::setting::{SettingGroup, SettingItem};
 use gpui_kit::prelude::*;
-use gpui_kit::{App, SharedString, Styled, Window, div};
+use gpui_kit::{App, SharedString, Styled, Window, div, px};
 use vivianne_ai::ai::auth::{CredentialStatus, PoolEntryInfo, RotationStrategy};
 use vivianne_ai::providers::KeySource;
 
-use super::ChatGptCall;
 use crate::backend;
 use crate::settings::provider_state::{CLOUD_PROVIDERS, Pane, provider_name};
 use crate::settings::values::Shared;
@@ -24,7 +23,9 @@ pub fn group(values: &Shared) -> SettingGroup {
     let values = values.clone();
     SettingGroup::new()
         .title("API keys")
-        .item(SettingItem::render(move |_options, window, cx| view(&values, window, cx).into_any_element()))
+        .item(SettingItem::render(move |_options, window, cx| {
+            view(&values, window, cx).into_any_element()
+        }))
 }
 
 fn view(values: &Shared, window: &mut Window, cx: &mut App) -> impl IntoElement + use<> {
@@ -32,9 +33,17 @@ fn view(values: &Shared, window: &mut Window, cx: &mut App) -> impl IntoElement 
         Pane::Cloud(id) => Some(id.clone()),
         _ => None,
     };
-    let rows: Vec<_> = CLOUD_PROVIDERS.iter().map(|(id, name)| row(values, id, name, open.as_deref() == Some(*id))).collect();
+    let rows: Vec<_> = CLOUD_PROVIDERS
+        .iter()
+        .map(|(id, name)| row(values, id, name, open.as_deref() == Some(*id)))
+        .collect();
     let editor = open.map(|id| editor(values, &id, window, cx));
-    div().flex().flex_col().gap_2().children(rows).children(editor)
+    div()
+        .flex()
+        .flex_col()
+        .gap_2()
+        .children(rows)
+        .children(editor)
 }
 
 fn source_label(source: Option<KeySource>) -> &'static str {
@@ -45,34 +54,79 @@ fn source_label(source: Option<KeySource>) -> &'static str {
     }
 }
 
-fn row(values: &Shared, id: &'static str, name: &'static str, open: bool) -> impl IntoElement + use<> {
+fn row(
+    values: &Shared,
+    id: &'static str,
+    name: &'static str,
+    open: bool,
+) -> impl IntoElement + use<> {
     let (source, connected) = {
         let v = values.borrow();
-        (v.providers.sources.get(id).copied().flatten(), v.providers.connected(id))
+        (
+            v.providers.sources.get(id).copied().flatten(),
+            v.providers.connected(id),
+        )
     };
     let toggle = values.clone();
     h_flex()
         .justify_between()
         .items_center()
         .gap_4()
+        .py(px(6.0))
         .child(
             h_flex()
-                .gap_2()
+                .gap(px(12.0))
                 .items_center()
-                .child(dot(if connected { theme::OK } else { theme::MUTED }))
-                .child(strong(name))
-                .child(muted(source_label(source))),
+                .min_w_0()
+                .child(crate::brand::tile(id, name, 32.0))
+                .child(
+                    div()
+                        .text_size(px(theme::TEXT_BASE))
+                        .font_weight(gpui_kit::FontWeight::MEDIUM)
+                        .text_color(theme::color(theme::TEXT))
+                        .child(name),
+                ),
         )
-        .child(Button::new(SharedString::from(format!("provider-{id}"))).label(if open { "Close" } else { "Edit" }).small().ghost().on_click(
-            move |_, _, cx| {
-                if open {
-                    toggle.borrow_mut().providers.pane = Pane::Nothing;
-                } else {
-                    open_provider(&toggle, id, cx);
-                }
-                cx.refresh_windows();
-            },
-        ))
+        .child(
+            h_flex()
+                .gap(px(14.0))
+                .items_center()
+                .flex_none()
+                .child(
+                    h_flex()
+                        .gap(px(7.0))
+                        .items_center()
+                        .child(dot(if connected { theme::OK } else { theme::FAINT }))
+                        .child(
+                            div()
+                                .text_size(px(theme::TEXT_SM))
+                                .text_color(theme::color(if connected {
+                                    theme::TEXT
+                                } else {
+                                    theme::MUTED
+                                }))
+                                .child(source_label(source)),
+                        ),
+                )
+                .child(
+                    Button::new(SharedString::from(format!("provider-{id}")))
+                        .label(match (open, connected) {
+                            (true, _) => "Close",
+                            (false, true) => "Edit key",
+                            (false, false) => "Add key",
+                        })
+                        .small()
+                        .outline()
+                        .on_click(move |_, _, cx| {
+                            if open {
+                                toggle.borrow_mut().providers.pane = Pane::Nothing;
+                            } else {
+                                open_provider(&toggle, id, cx);
+                            }
+                            cx.refresh_windows();
+                        }),
+                ),
+        )
 }
 
 /// Opens a provider's editor and reads its extra keys.
@@ -81,6 +135,10 @@ fn open_provider(values: &Shared, id: &str, cx: &mut App) {
         let mut v = values.borrow_mut();
         v.providers.pane = Pane::Cloud(id.to_owned());
         v.providers.clear_draft(KEY_DRAFT);
+        // A saved key is shown (hidden behind dots) so it can be edited, not only replaced.
+        if let Some(saved) = vivianne_ai::host::stored_api_key(id) {
+            v.providers.set_draft(KEY_DRAFT, saved);
+        }
         v.providers.clear_draft(POOL_LABEL);
         v.providers.clear_draft(POOL_KEY);
         v.providers.pool.clear();
@@ -89,23 +147,42 @@ fn open_provider(values: &Shared, id: &str, cx: &mut App) {
     reload_pool(values, id, cx);
 }
 
-fn editor(values: &Shared, id: &str, window: &mut Window, cx: &mut App) -> impl IntoElement + use<> {
+fn editor(
+    values: &Shared,
+    id: &str,
+    window: &mut Window,
+    cx: &mut App,
+) -> impl IntoElement + use<> {
     let connected = values.borrow().providers.connected(id);
-    let saved = values.borrow().providers.sources.get(id).copied().flatten() == Some(KeySource::Saved);
+    let saved =
+        values.borrow().providers.sources.get(id).copied().flatten() == Some(KeySource::Saved);
     let key = keyed_secret(
         KEY_DRAFT,
         values,
         |v| v.providers.draft(KEY_DRAFT),
         |v, x| v.providers.set_draft(KEY_DRAFT, x),
-        if connected { "Paste a new key to replace it" } else { "Paste the API key" },
+        if connected {
+            "Edit the key"
+        } else {
+            "Paste the API key"
+        },
         window,
         cx,
     );
     let (save, remove) = (values.clone(), values.clone());
     let (save_id, remove_id) = (id.to_owned(), id.to_owned());
-    let mut buttons = h_flex().gap_2().child(btn("key-save", "Save", move |_, _, cx| save_key(&save, &save_id, cx)));
+    let mut buttons = h_flex()
+        .gap_2()
+        .child(btn("key-save", "Save", move |_, _, cx| {
+            save_key(&save, &save_id, cx)
+        }));
     if saved {
-        buttons = buttons.child(Button::new("key-remove").label("Remove").ghost().on_click(move |_, _, cx| delete_key(&remove, &remove_id, cx)));
+        buttons = buttons.child(
+            Button::new("key-remove")
+                .label("Remove")
+                .ghost()
+                .on_click(move |_, _, cx| delete_key(&remove, &remove_id, cx)),
+        );
     }
     let pool = connected.then(|| pool(values, id, window, cx));
     div()
@@ -138,19 +215,42 @@ fn pool(values: &Shared, id: &str, window: &mut Window, cx: &mut App) -> impl In
         window,
         cx,
     );
-    let key = keyed_secret(POOL_KEY, values, |v| v.providers.draft(POOL_KEY), |v, x| v.providers.set_draft(POOL_KEY, x), "Paste another API key", window, cx);
+    let key = keyed_secret(
+        POOL_KEY,
+        values,
+        |v| v.providers.draft(POOL_KEY),
+        |v, x| v.providers.set_draft(POOL_KEY, x),
+        "Paste another API key",
+        window,
+        cx,
+    );
     let (add, clear) = (values.clone(), values.clone());
     let (add_id, clear_id) = (id.to_owned(), id.to_owned());
-    let mut footer = h_flex().gap_2().items_center().child(btn("pool-add", "Add key", move |_, _, cx| add_pool_key(&add, &add_id, cx)));
+    let mut footer =
+        h_flex()
+            .gap_2()
+            .items_center()
+            .child(btn("pool-add", "Add key", move |_, _, cx| {
+                add_pool_key(&add, &add_id, cx)
+            }));
     if any_cooling {
-        footer = footer.child(Button::new("pool-clear").label("Clear cooldowns").ghost().on_click(move |_, _, cx| {
-            let hub = hub();
-            let (values, id) = (clear.clone(), clear_id.clone());
-            if let Some(hub) = hub {
-                let again = id.clone();
-                backend::run(cx, async move { hub.reset_cooldowns(&again).await }, move |(), cx| reload_pool(&values, &id, cx));
-            }
-        }));
+        footer = footer.child(
+            Button::new("pool-clear")
+                .label("Clear cooldowns")
+                .ghost()
+                .on_click(move |_, _, cx| {
+                    let hub = hub();
+                    let (values, id) = (clear.clone(), clear_id.clone());
+                    if let Some(hub) = hub {
+                        let again = id.clone();
+                        backend::run(
+                            cx,
+                            async move { hub.reset_cooldowns(&again).await },
+                            move |(), cx| reload_pool(&values, &id, cx),
+                        );
+                    }
+                }),
+        );
     }
     div()
         .flex()
@@ -170,30 +270,45 @@ fn pool_row(values: &Shared, provider: &str, entry: &PoolEntryInfo) -> impl Into
     let removable = entry.source == "pool";
     let (remove, provider_id, entry_id) = (values.clone(), provider.to_owned(), entry.id.clone());
     let mut row = h_flex().justify_between().items_center().gap_3().child(
-        h_flex().gap_2().items_center().child(strong(entry.label.clone())).child(pill(SharedString::from(status_text(entry)))),
+        h_flex()
+            .gap_2()
+            .items_center()
+            .child(strong(entry.label.clone()))
+            .child(pill(SharedString::from(status_text(entry)))),
     );
     if removable {
-        row = row.child(Button::new(SharedString::from(format!("pool-remove-{}", entry.id))).label("Remove").small().ghost().on_click(move |_, _, cx| {
-            if let Some(hub) = hub() {
-                let (values, id, key_id) = (remove.clone(), provider_id.clone(), entry_id.clone());
-                let (ask_id, ask_key) = (id.clone(), key_id);
-                backend::run(
-                    cx,
-                    async move { hub.remove_pool_key(&ask_id, &ask_key).await },
-                    move |result, cx| {
-                        finish(&values, result, cx);
-                        reload_pool(&values, &id, cx);
-                    },
-                );
-            }
-        }));
+        row = row.child(
+            Button::new(SharedString::from(format!("pool-remove-{}", entry.id)))
+                .label("Remove")
+                .small()
+                .ghost()
+                .on_click(move |_, _, cx| {
+                    if let Some(hub) = hub() {
+                        let (values, id, key_id) =
+                            (remove.clone(), provider_id.clone(), entry_id.clone());
+                        let (ask_id, ask_key) = (id.clone(), key_id);
+                        backend::run(
+                            cx,
+                            async move { hub.remove_pool_key(&ask_id, &ask_key).await },
+                            move |result, cx| {
+                                finish(&values, result, cx);
+                                reload_pool(&values, &id, cx);
+                            },
+                        );
+                    }
+                }),
+        );
     }
     row
 }
 
 fn status_text(entry: &PoolEntryInfo) -> String {
     if !entry.in_cooldown {
-        return if entry.request_count > 0 { format!("{} requests", entry.request_count) } else { "Ready".to_owned() };
+        return if entry.request_count > 0 {
+            format!("{} requests", entry.request_count)
+        } else {
+            "Ready".to_owned()
+        };
     }
     match entry.status {
         CredentialStatus::QuotaOrBilling => "Out of credit, cooling down".to_owned(),
@@ -203,7 +318,12 @@ fn status_text(entry: &PoolEntryInfo) -> String {
 }
 
 /// Which extra key is used first. Only matters with more than one key.
-fn strategy_row(values: &Shared, provider: &str, current: RotationStrategy, enabled: bool) -> impl IntoElement + use<> {
+fn strategy_row(
+    values: &Shared,
+    provider: &str,
+    current: RotationStrategy,
+    enabled: bool,
+) -> impl IntoElement + use<> {
     const ORDER: [(RotationStrategy, &str); 4] = [
         (RotationStrategy::FillFirst, "Use one until it fails"),
         (RotationStrategy::RoundRobin, "Take turns"),
@@ -213,7 +333,9 @@ fn strategy_row(values: &Shared, provider: &str, current: RotationStrategy, enab
     let buttons = ORDER.iter().map(|(strategy, label)| {
         let (values, provider, strategy) = (values.clone(), provider.to_owned(), *strategy);
         let selected = strategy == current;
-        let mut button = Button::new(SharedString::from(format!("strategy-{label}"))).label(*label).small();
+        let mut button = Button::new(SharedString::from(format!("strategy-{label}")))
+            .label(*label)
+            .small();
         if !selected {
             button = button.ghost();
         }
@@ -224,11 +346,19 @@ fn strategy_row(values: &Shared, provider: &str, current: RotationStrategy, enab
             if let Some(hub) = hub() {
                 values.borrow_mut().providers.strategy = strategy;
                 let ask = provider.clone();
-                backend::run(cx, async move { hub.set_strategy(&ask, strategy).await }, |(), cx| cx.refresh_windows());
+                backend::run(
+                    cx,
+                    async move { hub.set_strategy(&ask, strategy).await },
+                    |(), cx| cx.refresh_windows(),
+                );
             }
         })
     });
-    h_flex().gap_1().items_center().child(muted("Order")).children(buttons)
+    h_flex()
+        .gap_1()
+        .items_center()
+        .child(muted("Order"))
+        .children(buttons)
 }
 
 // ── Actions ─────────────────────────────────────────────────────────────────
@@ -250,25 +380,33 @@ fn save_key(values: &Shared, id: &str, cx: &mut App) {
     let Some(hub) = hub() else { return };
     let (values, id) = (values.clone(), id.to_owned());
     let ask = id.clone();
-    backend::run(cx, async move { hub.save_key(&ask, &key).await }, move |result, cx| {
-        if result.is_ok() {
-            values.borrow_mut().providers.clear_draft(KEY_DRAFT);
-        }
-        finish(&values, result, cx);
-        reload_sources(&values, cx);
-        reload_pool(&values, &id, cx);
-    });
+    backend::run(
+        cx,
+        async move { hub.save_key(&ask, &key).await },
+        move |result, cx| {
+            if result.is_ok() {
+                values.borrow_mut().providers.clear_draft(KEY_DRAFT);
+            }
+            finish(&values, result, cx);
+            reload_sources(&values, cx);
+            reload_pool(&values, &id, cx);
+        },
+    );
 }
 
 fn delete_key(values: &Shared, id: &str, cx: &mut App) {
     let Some(hub) = hub() else { return };
     let (values, id) = (values.clone(), id.to_owned());
     let ask = id.clone();
-    backend::run(cx, async move { hub.delete_key(&ask).await }, move |result, cx| {
-        finish(&values, result, cx);
-        reload_sources(&values, cx);
-        reload_pool(&values, &id, cx);
-    });
+    backend::run(
+        cx,
+        async move { hub.delete_key(&ask).await },
+        move |result, cx| {
+            finish(&values, result, cx);
+            reload_sources(&values, cx);
+            reload_pool(&values, &id, cx);
+        },
+    );
 }
 
 fn add_pool_key(values: &Shared, id: &str, cx: &mut App) {
@@ -279,15 +417,19 @@ fn add_pool_key(values: &Shared, id: &str, cx: &mut App) {
     let Some(hub) = hub() else { return };
     let (values, id) = (values.clone(), id.to_owned());
     let ask = id.clone();
-    backend::run(cx, async move { hub.add_pool_key(&ask, &label, &key).await }, move |result, cx| {
-        if result.is_ok() {
-            let mut v = values.borrow_mut();
-            v.providers.clear_draft(POOL_LABEL);
-            v.providers.clear_draft(POOL_KEY);
-        }
-        finish(&values, result, cx);
-        reload_pool(&values, &id, cx);
-    });
+    backend::run(
+        cx,
+        async move { hub.add_pool_key(&ask, &label, &key).await },
+        move |result, cx| {
+            if result.is_ok() {
+                let mut v = values.borrow_mut();
+                v.providers.clear_draft(POOL_LABEL);
+                v.providers.clear_draft(POOL_KEY);
+            }
+            finish(&values, result, cx);
+            reload_pool(&values, &id, cx);
+        },
+    );
 }
 
 /// Reads one provider's keys and how they are taken in turn.
@@ -295,55 +437,55 @@ fn reload_pool(values: &Shared, id: &str, cx: &mut App) {
     let Some(hub) = hub() else { return };
     let (values, id) = (values.clone(), id.to_owned());
     let ask = id.clone();
-    backend::run(cx, async move { hub.pool(&ask).await }, move |(entries, strategy), cx| {
-        let mut v = values.borrow_mut();
-        if v.providers.pane == Pane::Cloud(id) {
-            v.providers.pool = entries;
-            v.providers.strategy = strategy;
-        }
-        drop(v);
-        cx.refresh_windows();
-    });
+    backend::run(
+        cx,
+        async move { hub.pool(&ask).await },
+        move |(entries, strategy), cx| {
+            let mut v = values.borrow_mut();
+            if v.providers.pane == Pane::Cloud(id) {
+                v.providers.pool = entries;
+                v.providers.strategy = strategy;
+            }
+            drop(v);
+            cx.refresh_windows();
+        },
+    );
 }
 
 /// Asks again which providers have a key.
 pub(super) fn reload_sources(values: &Shared, cx: &mut App) {
     let Some(hub) = hub() else { return };
-    let mut ids: Vec<String> = CLOUD_PROVIDERS.iter().map(|(id, _)| (*id).to_owned()).collect();
-    ids.extend(values.borrow().providers.custom.iter().map(|c| c.id.clone()));
-    let values = values.clone();
-    backend::run(cx, async move { hub.sources(&ids).await }, move |sources, cx| {
-        {
-            let mut v = values.borrow_mut();
-            v.providers.sources = sources.into_iter().map(|(id, source)| (id, Some(source))).collect();
-            let keyed: Vec<String> = v.providers.custom.iter().filter(|c| v.providers.connected(&c.id)).map(|c| c.id.clone()).collect();
-            v.providers.custom_keyed = keyed;
-        }
-        cx.refresh_windows();
-    });
-}
-
-pub(super) fn run_chatgpt(values: &Shared, cx: &mut App, call: ChatGptCall) {
-    let Some(hub) = hub() else { return };
-    values.borrow_mut().providers.start("chatgpt");
-    cx.refresh_windows();
+    let mut ids: Vec<String> = CLOUD_PROVIDERS
+        .iter()
+        .map(|(id, _)| (*id).to_owned())
+        .collect();
+    ids.extend(
+        values
+            .borrow()
+            .providers
+            .custom
+            .iter()
+            .map(|c| c.id.clone()),
+    );
     let values = values.clone();
     backend::run(
         cx,
-        async move {
-            match call {
-                ChatGptCall::SignIn => hub.chatgpt_sign_in().await,
-                ChatGptCall::SignOut => hub.chatgpt_sign_out().await,
-            }
-        },
-        move |result, cx| {
+        async move { hub.sources(&ids).await },
+        move |sources, cx| {
             {
                 let mut v = values.borrow_mut();
-                v.providers.finish("chatgpt");
-                match result {
-                    Ok(status) => v.providers.chatgpt = Some(status),
-                    Err(why) => v.providers.error = Some(why),
-                }
+                v.providers.sources = sources
+                    .into_iter()
+                    .map(|(id, source)| (id, Some(source)))
+                    .collect();
+                let keyed: Vec<String> = v
+                    .providers
+                    .custom
+                    .iter()
+                    .filter(|c| v.providers.connected(&c.id))
+                    .map(|c| c.id.clone())
+                    .collect();
+                v.providers.custom_keyed = keyed;
             }
             cx.refresh_windows();
         },

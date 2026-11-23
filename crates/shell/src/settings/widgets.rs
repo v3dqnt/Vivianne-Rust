@@ -285,7 +285,16 @@ pub fn keyed_input(
     cx: &mut App,
 ) -> Input {
     let value = get(&values.borrow());
-    let state = keyed_state(key, values, set, value.clone(), placeholder, false, window, cx);
+    let state = keyed_state(
+        key,
+        values,
+        set,
+        value.clone(),
+        placeholder,
+        false,
+        window,
+        cx,
+    );
     sync_input(&state, &value, window, cx);
     Input::new(&state.read(cx).input).w_full()
 }
@@ -301,7 +310,16 @@ pub fn keyed_secret(
     cx: &mut App,
 ) -> Input {
     let value = get(&values.borrow());
-    let state = keyed_state(key, values, set, value.clone(), placeholder, true, window, cx);
+    let state = keyed_state(
+        key,
+        values,
+        set,
+        value.clone(),
+        placeholder,
+        true,
+        window,
+        cx,
+    );
     sync_input(&state, &value, window, cx);
     Input::new(&state.read(cx).input).w_full().mask_toggle()
 }

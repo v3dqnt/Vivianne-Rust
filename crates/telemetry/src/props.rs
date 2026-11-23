@@ -21,7 +21,9 @@ const KEY_LIKE_RUN: usize = 24;
 pub(crate) fn clean_kind(kind: &str) -> Option<&str> {
     let ok = !kind.is_empty()
         && kind.len() <= MAX_KIND
-        && kind.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'_');
+        && kind
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'_');
     ok.then_some(kind)
 }
 
@@ -40,14 +42,18 @@ pub(crate) fn clean(props: &Value) -> Value {
         }
     }
     while serde_json::to_string(&kept).is_ok_and(|text| text.len() > MAX_PROPS_BYTES) {
-        let Some(last) = kept.keys().next_back().cloned() else { break };
+        let Some(last) = kept.keys().next_back().cloned() else {
+            break;
+        };
         kept.remove(&last);
     }
     Value::Object(kept)
 }
 
 fn is_name(name: &str) -> bool {
-    !name.is_empty() && name.len() <= MAX_NAME && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+    !name.is_empty()
+        && name.len() <= MAX_NAME
+        && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
 }
 
 fn is_allowed(value: &Value) -> bool {
@@ -61,15 +67,28 @@ fn is_allowed(value: &Value) -> bool {
 /// A short name such as `claude-sonnet-5`, `openai/gpt-5.1`, `read_file` or `agent:claude-code`: no spaces, no
 /// path or URL shape, no long run of characters like a key.
 fn is_identifier(text: &str) -> bool {
-    let chars_ok = text.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.' | b':' | b'+' | b'/'));
-    let shaped_like_a_place = text.starts_with(['/', '.', '~']) || text.contains("..") || text.contains("//") || text.contains(":/");
-    !text.is_empty() && text.len() <= MAX_TEXT && chars_ok && !shaped_like_a_place && !has_key_like_run(text)
+    let chars_ok = text
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.' | b':' | b'+' | b'/'));
+    let shaped_like_a_place = text.starts_with(['/', '.', '~'])
+        || text.contains("..")
+        || text.contains("//")
+        || text.contains(":/");
+    !text.is_empty()
+        && text.len() <= MAX_TEXT
+        && chars_ok
+        && !shaped_like_a_place
+        && !has_key_like_run(text)
 }
 
 fn has_key_like_run(text: &str) -> bool {
     let mut run = 0;
     for byte in text.bytes() {
-        run = if byte.is_ascii_alphanumeric() { run + 1 } else { 0 };
+        run = if byte.is_ascii_alphanumeric() {
+            run + 1
+        } else {
+            0
+        };
         if run >= KEY_LIKE_RUN {
             return true;
         }
@@ -120,7 +139,14 @@ mod tests {
         let many: Map<String, Value> = (0..30).map(|n| (format!("k{n:02}"), json!(n))).collect();
         let cleaned = clean(&Value::Object(many));
         assert_eq!(cleaned.as_object().map(Map::len), Some(MAX_PROPS));
-        let wide: Map<String, Value> = (0..MAX_PROPS).map(|n| (format!("{}{n}", "n".repeat(30)), json!("v".repeat(MAX_TEXT)))).collect();
+        let wide: Map<String, Value> = (0..MAX_PROPS)
+            .map(|n| {
+                (
+                    format!("{}{n}", "n".repeat(30)),
+                    json!("v".repeat(MAX_TEXT)),
+                )
+            })
+            .collect();
         let text = serde_json::to_string(&clean(&Value::Object(wide))).unwrap();
         assert!(text.len() <= MAX_PROPS_BYTES);
     }

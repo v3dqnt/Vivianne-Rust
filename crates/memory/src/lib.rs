@@ -27,22 +27,22 @@
 //!   <root>/.vivianne/memory/state.json     — enabled flag, settings, stats
 //!   <root>/.vivianne/memory/entries.jsonl  — append-only memory entries
 
+pub mod agent;
+pub mod budget;
 pub mod defense;
 pub mod entities;
 pub mod evolve;
-pub mod budget;
 pub mod graph;
 pub mod hindsight;
 pub mod observations;
 pub mod pages;
+pub mod paths;
 pub mod reflect;
 pub mod rerank;
 pub mod rrf;
 pub mod sleep;
 pub mod store;
 pub mod temporal;
-pub mod agent;
-pub mod paths;
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -119,19 +119,22 @@ pub fn dynamic_gate_select_with<T>(
 }
 
 /// The gate at its default embedding-calibrated floor.
-pub fn dynamic_gate_select<T>(
-    candidates: Vec<(T, f32)>,
-    max_k: usize,
-) -> Vec<(T, f32)> {
+pub fn dynamic_gate_select<T>(candidates: Vec<(T, f32)>, max_k: usize) -> Vec<(T, f32)> {
     dynamic_gate_select_with(candidates, max_k, GATE_REL_FLOOR)
 }
 
 /// Return the absolute-score floor used by the gate — exposed so the
 /// benchmark harness can measure the tradeoff without hardcoding the
 /// constant.
-pub fn gate_abs_floor() -> f32 { GATE_ABS_FLOOR }
-pub fn gate_rel_floor() -> f32 { GATE_REL_FLOOR }
-pub fn gate_drop_ratio() -> f32 { GATE_DROP_RATIO }
+pub fn gate_abs_floor() -> f32 {
+    GATE_ABS_FLOOR
+}
+pub fn gate_rel_floor() -> f32 {
+    GATE_REL_FLOOR
+}
+pub fn gate_drop_ratio() -> f32 {
+    GATE_DROP_RATIO
+}
 
 // ── Confidence decay with category half-lives ─────────────────────────────
 // Each memory has a confidence score [0, 1] that decays exponentially over
@@ -182,7 +185,14 @@ pub fn effective_confidence(
     access_count: u32,
     half_life_days: f64,
 ) -> f32 {
-    effective_confidence_at(confidence, created_at_ms, last_accessed_at_ms, access_count, half_life_days, now_ms())
+    effective_confidence_at(
+        confidence,
+        created_at_ms,
+        last_accessed_at_ms,
+        access_count,
+        half_life_days,
+        now_ms(),
+    )
 }
 
 /// `effective_confidence` as of `now_ms`.
@@ -294,7 +304,9 @@ pub struct MemoryEntry {
     pub user_wide: bool,
 }
 
-fn default_confidence() -> f32 { 1.0 }
+fn default_confidence() -> f32 {
+    1.0
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -308,7 +320,10 @@ pub struct MemoryStatus {
 }
 
 pub(crate) fn now_ms() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 fn memory_dir(root: &str) -> PathBuf {
@@ -343,7 +358,9 @@ pub(crate) fn persona_path(root: &str) -> PathBuf {
 
 async fn read_state(root: &str) -> MemoryState {
     let path = state_path(root);
-    let Ok(content) = tokio::fs::read_to_string(&path).await else { return MemoryState::default() };
+    let Ok(content) = tokio::fs::read_to_string(&path).await else {
+        return MemoryState::default();
+    };
     serde_json::from_str(&content).unwrap_or_default()
 }
 
@@ -354,7 +371,10 @@ pub(crate) async fn save_state(root: &str, state: &MemoryState) -> Result<(), St
 /// Remember which model worked in `root` last, for sleep-time work.
 pub async fn note_model(root: &str, model: &vivianne_ai::host::ModelRef) {
     let mut state = read_state(root).await;
-    let same = state.last_model.as_ref().is_some_and(|m| m.id == model.id && m.provider == model.provider);
+    let same = state
+        .last_model
+        .as_ref()
+        .is_some_and(|m| m.id == model.id && m.provider == model.provider);
     if !same && state.enabled {
         state.last_model = Some(model.clone());
         let _ = write_state(root, &state).await;
@@ -363,41 +383,64 @@ pub async fn note_model(root: &str, model: &vivianne_ai::host::ModelRef) {
 
 async fn write_state(root: &str, state: &MemoryState) -> Result<(), String> {
     let dir = memory_dir(root);
-    tokio::fs::create_dir_all(&dir).await.map_err(|e| format!("failed to create memory dir: {e}"))?;
-    let json = serde_json::to_string_pretty(state).map_err(|e| format!("failed to serialize memory state: {e}"))?;
-    tokio::fs::write(state_path(root), json).await.map_err(|e| format!("failed to write memory state: {e}"))
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .map_err(|e| format!("failed to create memory dir: {e}"))?;
+    let json = serde_json::to_string_pretty(state)
+        .map_err(|e| format!("failed to serialize memory state: {e}"))?;
+    tokio::fs::write(state_path(root), json)
+        .await
+        .map_err(|e| format!("failed to write memory state: {e}"))
 }
 
 async fn read_entries(root: &str) -> Vec<MemoryEntry> {
-    let Ok(content) = tokio::fs::read_to_string(entries_path(root)).await else { return Vec::new() };
-    content.lines().filter_map(|line| serde_json::from_str::<MemoryEntry>(line).ok()).collect()
+    let Ok(content) = tokio::fs::read_to_string(entries_path(root)).await else {
+        return Vec::new();
+    };
+    content
+        .lines()
+        .filter_map(|line| serde_json::from_str::<MemoryEntry>(line).ok())
+        .collect()
 }
 
 async fn append_entry(root: &str, entry: &MemoryEntry) -> Result<(), String> {
     use tokio::io::AsyncWriteExt;
     let dir = memory_dir(root);
-    tokio::fs::create_dir_all(&dir).await.map_err(|e| format!("failed to create memory dir: {e}"))?;
-    let line = serde_json::to_string(entry).map_err(|e| format!("failed to serialize entry: {e}"))?;
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .map_err(|e| format!("failed to create memory dir: {e}"))?;
+    let line =
+        serde_json::to_string(entry).map_err(|e| format!("failed to serialize entry: {e}"))?;
     let mut file = tokio::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(entries_path(root))
         .await
         .map_err(|e| format!("failed to open entries file: {e}"))?;
-    file.write_all(format!("{line}\n").as_bytes()).await.map_err(|e| format!("failed to append entry: {e}"))?;
+    file.write_all(format!("{line}\n").as_bytes())
+        .await
+        .map_err(|e| format!("failed to append entry: {e}"))?;
     Ok(())
 }
 
 async fn write_entries(root: &str, entries: &[MemoryEntry]) -> Result<(), String> {
     let dir = memory_dir(root);
-    tokio::fs::create_dir_all(&dir).await.map_err(|e| format!("failed to create memory dir: {e}"))?;
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .map_err(|e| format!("failed to create memory dir: {e}"))?;
     let body = entries
         .iter()
         .filter_map(|e| serde_json::to_string(e).ok())
         .collect::<Vec<_>>()
         .join("\n");
-    let body = if body.is_empty() { body } else { format!("{body}\n") };
-    tokio::fs::write(entries_path(root), body).await.map_err(|e| format!("failed to write entries: {e}"))
+    let body = if body.is_empty() {
+        body
+    } else {
+        format!("{body}\n")
+    };
+    tokio::fs::write(entries_path(root), body)
+        .await
+        .map_err(|e| format!("failed to write entries: {e}"))
 }
 
 /// Scrub text that looks like a credential before it's ever written to disk —
@@ -434,7 +477,14 @@ fn cap_text(text: &str, max_bytes: usize) -> (String, bool) {
     while cut > 0 && !text.is_char_boundary(cut) {
         cut -= 1;
     }
-    (format!("{}\n\n[... memory truncated, {} more bytes ...]", &text[..cut], text.len() - cut), true)
+    (
+        format!(
+            "{}\n\n[... memory truncated, {} more bytes ...]",
+            &text[..cut],
+            text.len() - cut
+        ),
+        true,
+    )
 }
 
 pub async fn enable(root: &str) -> Result<MemoryState, String> {
@@ -503,7 +553,9 @@ pub async fn purge(root: &str) -> Result<bool, String> {
     if !dir.exists() {
         return Ok(false);
     }
-    tokio::fs::remove_dir_all(&dir).await.map_err(|e| format!("failed to purge memory: {e}"))?;
+    tokio::fs::remove_dir_all(&dir)
+        .await
+        .map_err(|e| format!("failed to purge memory: {e}"))?;
     Ok(true)
 }
 
@@ -526,7 +578,11 @@ fn format_entries(entries: &[MemoryEntry]) -> String {
     if entries.is_empty() {
         return String::new();
     }
-    entries.iter().map(|e| format!("- [{}] {}", e.kind, e.text.trim())).collect::<Vec<_>>().join("\n")
+    entries
+        .iter()
+        .map(|e| format!("- [{}] {}", e.kind, e.text.trim()))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 pub async fn remember(
@@ -540,7 +596,11 @@ pub async fn remember(
     }
     // Memory defense: secrets and card numbers are hidden (or the memory refused), and counted.
     let mut state = read_state(root).await;
-    let policy = if state.block_secrets { defense::Policy::Block } else { defense::Policy::Redact };
+    let policy = if state.block_secrets {
+        defense::Policy::Block
+    } else {
+        defense::Policy::Redact
+    };
     let screened = match defense::screen(text.trim(), policy) {
         Some(s) => s,
         None => {
@@ -603,7 +663,6 @@ pub async fn forget(root: &str, query: &str) -> Result<usize, String> {
 /// Minimum cumulative weight for a BFS cascade result to be surfaced in
 /// recall output. Lower values surface more distantly-related memories.
 const CASCADE_WEIGHT_FLOOR: f32 = 0.3;
-
 
 /// Load the edge slice reachable from `seeds` within `max_depth` hops — the
 /// input `graph::bfs_cascade` walks. Instead of loading the store's whole
@@ -679,7 +738,11 @@ pub async fn recall(
 /// The end of a day (`YYYY-MM-DD`) or month (`YYYY-MM`), UTC, in ms since
 /// the epoch — the moment `recall`'s `as_of` asks about.
 pub fn parse_as_of(s: &str) -> Option<u64> {
-    let parts: Vec<i64> = s.trim().split('-').map(|p| p.parse::<i64>().ok()).collect::<Option<_>>()?;
+    let parts: Vec<i64> = s
+        .trim()
+        .split('-')
+        .map(|p| p.parse::<i64>().ok())
+        .collect::<Option<_>>()?;
     let (y, m, d) = match parts.as_slice() {
         [y, m] => (*y, *m, None),
         [y, m, d] => (*y, *m, Some(*d)),
@@ -701,7 +764,13 @@ pub fn parse_as_of(s: &str) -> Option<u64> {
     let next = match d {
         Some(d) if (1..=31).contains(&d) => days(y, m, d) + 1,
         Some(_) => return None,
-        None => if m == 12 { days(y + 1, 1, 1) } else { days(y, m + 1, 1) },
+        None => {
+            if m == 12 {
+                days(y + 1, 1, 1)
+            } else {
+                days(y, m + 1, 1)
+            }
+        }
     };
     Some((next * 86_400_000 - 1) as u64)
 }
@@ -728,7 +797,16 @@ pub(crate) async fn recall_in(
     auth: Option<&std::sync::Arc<vivianne_ai::ai::auth::AuthState>>,
     reranker: Option<RerankerOptions<'_>>,
 ) -> Vec<MemoryEntry> {
-    recall_with(root, include_user, query, as_of, auth, reranker, self::budget::Depth::Mid).await
+    recall_with(
+        root,
+        include_user,
+        query,
+        as_of,
+        auth,
+        reranker,
+        self::budget::Depth::Mid,
+    )
+    .await
 }
 
 /// `recall_in` at a chosen depth: how many hits, how many graph hops, and whether the reranker runs (see `budget`).
@@ -750,24 +828,38 @@ pub(crate) async fn recall_with(
         return Vec::new();
     }
 
-    let embedding = vivianne_ai::ai::embedding::embed_query(auth.map(|a| a.as_ref()), query).await.ok().flatten();
+    let embedding = vivianne_ai::ai::embedding::embed_query(auth.map(|a| a.as_ref()), query)
+        .await
+        .ok()
+        .flatten();
     // A time in the question ("last spring", "in March 2025") is a window: what happened in it is its own list, and a fact that fits it ranks higher.
-    let window = as_of.is_none().then(|| self::temporal::window_of(query, chrono::Utc::now().date_naive())).flatten();
+    let window = as_of
+        .is_none()
+        .then(|| self::temporal::window_of(query, chrono::Utc::now().date_naive()))
+        .flatten();
     // This project's store and the user's own, searched together: each
     // gives a keyword list and a vector list, and all four are fused.
     let search = |store: &'static str, user_wide: bool| {
-        let store_root = if user_wide { store.to_string() } else { root.to_string() };
+        let store_root = if user_wide {
+            store.to_string()
+        } else {
+            root.to_string()
+        };
         let embedding = embedding.clone();
         async move {
             if user_wide && !user_store {
                 return Vec::new();
             }
-            let fts = self::store::search_fts_at(&store_root, query, hits_cap * 3, as_of).await.unwrap_or_default();
+            let fts = self::store::search_fts_at(&store_root, query, hits_cap * 3, as_of)
+                .await
+                .unwrap_or_default();
             let vec = match embedding {
-                Some(e) => self::store::search_vector_scored_at(&store_root, &e, hits_cap * 3, as_of)
-                    .await
-                    .map(|hits| hits.into_iter().map(|(e, _)| e).collect())
-                    .unwrap_or_default(),
+                Some(e) => {
+                    self::store::search_vector_scored_at(&store_root, &e, hits_cap * 3, as_of)
+                        .await
+                        .map(|hits| hits.into_iter().map(|(e, _)| e).collect())
+                        .unwrap_or_default()
+                }
                 None => Vec::new(),
             };
             let mark = |mut v: Vec<MemoryEntry>| {
@@ -776,13 +868,23 @@ pub(crate) async fn recall_with(
             };
             // Everything linked to an entity the query names: "what do we know about Tauri" is one lookup, not a guess at wording.
             let ids = self::entities::recall_ids(&store_root, query).await;
-            let named = if ids.is_empty() { Vec::new() } else { self::store::get_entries_by_ids(&store_root, &ids).await.unwrap_or_default() };
+            let named = if ids.is_empty() {
+                Vec::new()
+            } else {
+                self::store::get_entries_by_ids(&store_root, &ids)
+                    .await
+                    .unwrap_or_default()
+            };
             let named = match as_of {
                 Some(t) => named.into_iter().filter(|e| e.created_at <= t).collect(),
                 None => named,
             };
             let timed = match window {
-                Some(w) => self::store::entries_in_window(&store_root, w.start, w.end, hits_cap * 2).await.unwrap_or_default(),
+                Some(w) => {
+                    self::store::entries_in_window(&store_root, w.start, w.end, hits_cap * 2)
+                        .await
+                        .unwrap_or_default()
+                }
                 None => Vec::new(),
             };
             vec![mark(fts), mark(vec), mark(named), mark(timed)]
@@ -790,10 +892,20 @@ pub(crate) async fn recall_with(
     };
     // A connected Hindsight server answers too; what it says joins the ranking as one more list.
     let external = async {
-        if as_of.is_some() { Vec::new() } else { self::hindsight::recall(query).await }
+        if as_of.is_some() {
+            Vec::new()
+        } else {
+            self::hindsight::recall(query).await
+        }
     };
-    let (project_lists, user_lists, external) = tokio::join!(search("", false), search(USER_ROOT, true), external);
-    let lists: Vec<Vec<MemoryEntry>> = project_lists.into_iter().chain(user_lists).chain(std::iter::once(external)).filter(|l| !l.is_empty()).collect();
+    let (project_lists, user_lists, external) =
+        tokio::join!(search("", false), search(USER_ROOT, true), external);
+    let lists: Vec<Vec<MemoryEntry>> = project_lists
+        .into_iter()
+        .chain(user_lists)
+        .chain(std::iter::once(external))
+        .filter(|l| !l.is_empty())
+        .collect();
 
     if lists.is_empty() {
         return Vec::new();
@@ -823,9 +935,16 @@ pub(crate) async fn recall_with(
     // A question with a time in it: a fact from that time gains a little and one from far away loses a little (bounded; see `temporal`).
     if let Some(w) = window {
         for (store, user_wide) in [(root, false), (USER_ROOT, true)] {
-            let ids: Vec<String> = confidence_decayed.iter().filter(|(e, _)| e.user_wide == user_wide).map(|(e, _)| e.id.clone()).collect();
+            let ids: Vec<String> = confidence_decayed
+                .iter()
+                .filter(|(e, _)| e.user_wide == user_wide)
+                .map(|(e, _)| e.id.clone())
+                .collect();
             let times = self::store::times_of(store, &ids).await.unwrap_or_default();
-            for (e, score) in confidence_decayed.iter_mut().filter(|(e, _)| e.user_wide == user_wide) {
+            for (e, score) in confidence_decayed
+                .iter_mut()
+                .filter(|(e, _)| e.user_wide == user_wide)
+            {
                 if let Some(t) = times.get(&e.id) {
                     *score *= self::temporal::multiplier(*t, w);
                 }
@@ -842,15 +961,17 @@ pub(crate) async fn recall_with(
     // is skipped by the topic-stability gate. With no embedding the RRF
     // merge is BM25-only and its scores are noisier, so a slightly relaxed
     // relative floor keeps paraphrase hits from being cut on spread alone.
-    let gate_floor = if embedding.is_some() { GATE_REL_FLOOR } else { GATE_REL_FLOOR_BM25_ONLY };
+    let gate_floor = if embedding.is_some() {
+        GATE_REL_FLOOR
+    } else {
+        GATE_REL_FLOOR_BM25_ONLY
+    };
     let heuristic_results = dynamic_gate_select_with(confidence_decayed, hits_cap, gate_floor);
 
     // Step 4: Optional LLM reranker (with topic-stability gate)
     let selected: Vec<MemoryEntry> = if let Some(opts) = reranker {
-        let candidates: Vec<MemoryEntry> = heuristic_results
-            .iter()
-            .map(|(e, _)| e.clone())
-            .collect();
+        let candidates: Vec<MemoryEntry> =
+            heuristic_results.iter().map(|(e, _)| e.clone()).collect();
 
         if candidates.is_empty() {
             return Vec::new();
@@ -913,12 +1034,7 @@ pub(crate) async fn recall_with(
         if edges.is_empty() {
             continue;
         }
-        let cascade = self::graph::bfs_cascade(
-            &seed_ids,
-            &edges,
-            hops,
-            CASCADE_WEIGHT_FLOOR,
-        );
+        let cascade = self::graph::bfs_cascade(&seed_ids, &edges, hops, CASCADE_WEIGHT_FLOOR);
         if cascade.is_empty() {
             continue;
         }
@@ -956,8 +1072,16 @@ pub(crate) async fn recall_with(
     // batched as one UPDATE per store (the project store and the user-wide
     // one are separate databases) instead of one write per entry.
     {
-        let project_ids: Vec<String> = gated.iter().filter(|e| !e.user_wide).map(|e| e.id.clone()).collect();
-        let user_ids: Vec<String> = gated.iter().filter(|e| e.user_wide).map(|e| e.id.clone()).collect();
+        let project_ids: Vec<String> = gated
+            .iter()
+            .filter(|e| !e.user_wide)
+            .map(|e| e.id.clone())
+            .collect();
+        let user_ids: Vec<String> = gated
+            .iter()
+            .filter(|e| e.user_wide)
+            .map(|e| e.id.clone())
+            .collect();
         if !project_ids.is_empty() {
             let _ = self::store::touch_entries(root, &project_ids).await;
         }
@@ -1024,7 +1148,11 @@ If nothing is durable, respond with [].";
 /// (network, parse, missing key) this silently no-ops and leaves
 /// `last_extraction_at` unchanged so the same batch is retried next trigger,
 /// mirroring `auto_capture`'s existing "best effort, never blocks a turn" contract.
-pub async fn run_l1_extraction(app: vivianne_ai::events::Events, root: String, model: vivianne_ai::host::ModelRef) {
+pub async fn run_l1_extraction(
+    app: vivianne_ai::events::Events,
+    root: String,
+    model: vivianne_ai::host::ModelRef,
+) {
     let state = read_state(&root).await;
     if !state.enabled || !state.extraction_enabled {
         return;
@@ -1035,8 +1163,20 @@ pub async fn run_l1_extraction(app: vivianne_ai::events::Events, root: String, m
         _ => return,
     };
 
-    let user_prompt = batch.iter().enumerate().map(|(i, e)| format!("{}. {}", i + 1, e.text)).collect::<Vec<_>>().join("\n");
-    let response = match vivianne_ai::ai::completion::complete_background(&app, &model, L1_SYSTEM_PROMPT, &user_prompt).await {
+    let user_prompt = batch
+        .iter()
+        .enumerate()
+        .map(|(i, e)| format!("{}. {}", i + 1, e.text))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let response = match vivianne_ai::ai::completion::complete_background(
+        &app,
+        &model,
+        L1_SYSTEM_PROMPT,
+        &user_prompt,
+    )
+    .await
+    {
         Ok(r) => r,
         Err(e) => {
             log::warn!("[memory] L1 extraction call failed, will retry next batch: {e}");
@@ -1044,17 +1184,37 @@ pub async fn run_l1_extraction(app: vivianne_ai::events::Events, root: String, m
         }
     };
 
-    let Some(serde_json::Value::Array(facts)) = vivianne_ai::ai::completion::extract_json_array(&response) else {
+    let Some(serde_json::Value::Array(facts)) =
+        vivianne_ai::ai::completion::extract_json_array(&response)
+    else {
         log::warn!("[memory] L1 extraction returned unparseable output, skipping this batch");
         return;
     };
 
     let mut candidates = Vec::new();
     for fact in &facts {
-        let Some(text) = fact.get("text").and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()) else { continue };
-        let kind = fact.get("kind").and_then(|v| v.as_str()).unwrap_or("episodic");
-        let kind = if matches!(kind, "persona" | "episodic" | "instruction") { kind } else { "episodic" };
-        let scene = fact.get("scene_name").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(String::from);
+        let Some(text) = fact
+            .get("text")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        let kind = fact
+            .get("kind")
+            .and_then(|v| v.as_str())
+            .unwrap_or("episodic");
+        let kind = if matches!(kind, "persona" | "episodic" | "instruction") {
+            kind
+        } else {
+            "episodic"
+        };
+        let scene = fact
+            .get("scene_name")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(String::from);
         let text = redact_secrets(text);
         candidates.push(self::evolve::Candidate {
             entry: MemoryEntry {
@@ -1077,8 +1237,11 @@ pub async fn run_l1_extraction(app: vivianne_ai::events::Events, root: String, m
     // Reconciled against what is already known (ADD / UPDATE / DELETE /
     // NOOP) instead of appended: see `evolve`. Facts about the user
     // themselves are reconciled against the user's own store.
-    let (user_facts, project_facts): (Vec<_>, Vec<_>) = candidates.into_iter().partition(|c| is_user_wide_kind(&c.entry.kind));
-    let (mut added, mut updated, mut deleted, mut skipped) = self::evolve::write_facts(&app, &root, &model, project_facts).await;
+    let (user_facts, project_facts): (Vec<_>, Vec<_>) = candidates
+        .into_iter()
+        .partition(|c| is_user_wide_kind(&c.entry.kind));
+    let (mut added, mut updated, mut deleted, mut skipped) =
+        self::evolve::write_facts(&app, &root, &model, project_facts).await;
     if !user_facts.is_empty() {
         self::sleep::mark_dirty(USER_ROOT);
         let (a, u, d, s) = self::evolve::write_facts(&app, USER_ROOT, &model, user_facts).await;
@@ -1097,7 +1260,10 @@ pub async fn run_l1_extraction(app: vivianne_ai::events::Events, root: String, m
     let _ = write_state(&root, &state).await;
 
     // The profile is the user's: built from their store, kept with it.
-    let persona_after = read_state(USER_ROOT).await.last_persona_synthesis_at.unwrap_or(0);
+    let persona_after = read_state(USER_ROOT)
+        .await
+        .last_persona_synthesis_at
+        .unwrap_or(0);
     if let Ok(n) = self::store::count_since(USER_ROOT, "persona", persona_after).await {
         if n as u64 >= PERSONA_BATCH_SIZE {
             run_l3_persona_synthesis(app, USER_ROOT.to_string(), model).await;
@@ -1110,18 +1276,29 @@ pub async fn run_l1_extraction(app: vivianne_ai::events::Events, root: String, m
 /// contract as `run_l1_extraction`. Chained from the tail of `run_l1_extraction`
 /// (using the same model already resolved there) rather than triggered
 /// separately, since persona facts only ever appear as L1 extraction output.
-pub async fn run_l3_persona_synthesis(app: vivianne_ai::events::Events, root: String, model: vivianne_ai::host::ModelRef) {
+pub async fn run_l3_persona_synthesis(
+    app: vivianne_ai::events::Events,
+    root: String,
+    model: vivianne_ai::host::ModelRef,
+) {
     let state = read_state(&root).await;
-    let current = tokio::fs::read_to_string(persona_path(&root)).await.unwrap_or_default();
+    let current = tokio::fs::read_to_string(persona_path(&root))
+        .await
+        .unwrap_or_default();
     // Only what arrived since the last pass: the profile is edited by
     // deltas (ACE), not regenerated from a window of recent facts, which is
     // how repeated rewrites erode detail.
-    let since = if current.trim().is_empty() { 0 } else { state.last_persona_synthesis_at.unwrap_or(0) };
+    let since = if current.trim().is_empty() {
+        0
+    } else {
+        state.last_persona_synthesis_at.unwrap_or(0)
+    };
     let persona_facts = match self::store::entries_since(&root, "persona", since, 50).await {
         Ok(f) if !f.is_empty() => f,
         _ => return,
     };
-    let Some(profile) = self::evolve::evolve_profile(&app, &model, &current, &persona_facts).await else {
+    let Some(profile) = self::evolve::evolve_profile(&app, &model, &current, &persona_facts).await
+    else {
         let mut state = read_state(&root).await;
         state.last_persona_synthesis_at = Some(now_ms());
         let _ = write_state(&root, &state).await;
@@ -1140,7 +1317,10 @@ pub async fn run_l3_persona_synthesis(app: vivianne_ai::events::Events, root: St
     let mut state = read_state(&root).await;
     state.last_persona_synthesis_at = Some(now_ms());
     let _ = write_state(&root, &state).await;
-    log::info!("[memory] profile updated from {} new facts", persona_facts.len());
+    log::info!(
+        "[memory] profile updated from {} new facts",
+        persona_facts.len()
+    );
 }
 
 /// Background maintenance: infer `RelatesTo` and `InCluster` edges between
@@ -1177,9 +1357,7 @@ pub async fn run_edge_inference(root: &str, entry_id: &str, scene_name: Option<&
             let edge = self::graph::Edge {
                 source: entry_id.clone(),
                 target: sibling.id.clone(),
-                kind: self::graph::EdgeKind::HasTag {
-                    tag: scene.clone(),
-                },
+                kind: self::graph::EdgeKind::HasTag { tag: scene.clone() },
                 created_at: now_ms(),
             };
             let _ = self::store::insert_edge(&root, &edge).await;
@@ -1191,14 +1369,24 @@ pub async fn run_edge_inference(root: &str, entry_id: &str, scene_name: Option<&
 /// without blocking the caller. No-op when `auth` is `None` (no app handle
 /// available at the call site) or when no embedding key is configured —
 /// `ai::embedding::embed_text` already treats that as `Ok(None)`, not an error.
-fn spawn_background_embed(root: &str, entry: &MemoryEntry, auth: Option<std::sync::Arc<vivianne_ai::ai::auth::AuthState>>) {
+fn spawn_background_embed(
+    root: &str,
+    entry: &MemoryEntry,
+    auth: Option<std::sync::Arc<vivianne_ai::ai::auth::AuthState>>,
+) {
     let Some(auth) = auth else { return };
     let root = root.to_string();
     let id = entry.id.clone();
     let text = entry.text.clone();
     tokio::spawn(async move {
         if let Ok(Some(embedding)) = vivianne_ai::ai::embedding::embed_text(&auth, &text).await {
-            let _ = self::store::update_embedding(&root, &id, &embedding, vivianne_ai::ai::embedding::embedding_model()).await;
+            let _ = self::store::update_embedding(
+                &root,
+                &id,
+                &embedding,
+                vivianne_ai::ai::embedding::embedding_model(),
+            )
+            .await;
         }
     });
 }
@@ -1211,17 +1399,33 @@ fn spawn_background_embed(root: &str, entry: &MemoryEntry, auth: Option<std::syn
 /// score across two copies of the same fact. `remember` writes first and
 /// calls this in the background, so the turn the write belongs to never
 /// waits on the embed round-trip.
-fn spawn_background_dedup(root: &str, entry: &MemoryEntry, auth: Option<std::sync::Arc<vivianne_ai::ai::auth::AuthState>>) {
+fn spawn_background_dedup(
+    root: &str,
+    entry: &MemoryEntry,
+    auth: Option<std::sync::Arc<vivianne_ai::ai::auth::AuthState>>,
+) {
     let Some(auth) = auth else { return };
     let root = root.to_string();
     let id = entry.id.clone();
     let text = entry.text.clone();
     tokio::spawn(async move {
-        let Ok(Some(emb)) = vivianne_ai::ai::embedding::embed_text(&auth, &text).await else { return };
-        let _ = self::store::update_embedding(&root, &id, &emb, vivianne_ai::ai::embedding::embedding_model()).await;
+        let Ok(Some(emb)) = vivianne_ai::ai::embedding::embed_text(&auth, &text).await else {
+            return;
+        };
+        let _ = self::store::update_embedding(
+            &root,
+            &id,
+            &emb,
+            vivianne_ai::ai::embedding::embedding_model(),
+        )
+        .await;
         // The self-hit occupies one of the two slots we ask for.
-        let Ok(hits) = self::store::search_vector_scored(&root, &emb, 2).await else { return };
-        let Some((existing, _)) = hits.into_iter().find(|(e, s)| *s >= 0.95 && e.id != id) else { return };
+        let Ok(hits) = self::store::search_vector_scored(&root, &emb, 2).await else {
+            return;
+        };
+        let Some((existing, _)) = hits.into_iter().find(|(e, s)| *s >= 0.95 && e.id != id) else {
+            return;
+        };
         // Drop the fresh copy from both mirrors (SQLite store + entries.jsonl),
         // then reinforce the survivor.
         let _ = self::store::delete_entry(&root, &id).await;

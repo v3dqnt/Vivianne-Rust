@@ -9,7 +9,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::{SharedString, Styled, div};
 
 use crate::settings::values::{
-    Shared, Values, BROWSER_CONNECTED, BROWSER_NOT_INSTALLED, BROWSER_NOT_OPEN, BROWSER_NO_EXT,
+    BROWSER_CONNECTED, BROWSER_NO_EXT, BROWSER_NOT_INSTALLED, BROWSER_NOT_OPEN, Shared, Values,
 };
 use crate::settings::widgets::{btn, field_dropdown, muted, pill, strong};
 
@@ -22,7 +22,11 @@ const PROVIDERS: [(&str, &str); 5] = [
 ];
 
 /// Search providers that need a key, with the name the key is saved under.
-const KEYED: [(&str, &str); 3] = [("tavily", "Tavily"), ("brave", "Brave Search"), ("exa", "Exa")];
+const KEYED: [(&str, &str); 3] = [
+    ("tavily", "Tavily"),
+    ("brave", "Brave Search"),
+    ("exa", "Exa"),
+];
 
 pub fn page(values: &Shared) -> SettingPage {
     SettingPage::new("Web & browser")
@@ -40,7 +44,12 @@ fn search_group(values: &Shared) -> SettingGroup {
         .item(
             SettingItem::new(
                 "Search provider",
-                field_dropdown(values, &PROVIDERS, |v| v.search_provider.clone(), |v, x| v.search_provider = x),
+                field_dropdown(
+                    values,
+                    &PROVIDERS,
+                    |v| v.search_provider.clone(),
+                    |v, x| v.search_provider = x,
+                ),
             )
             .description("Automatic uses the first provider that has a key, then DuckDuckGo."),
         )
@@ -68,9 +77,14 @@ fn keys_group(values: &Shared) -> SettingGroup {
     let items = KEYED.iter().map(|&(id, name)| {
         let (read, write) = (values.clone(), values.clone());
         let field = SettingField::input(
-            move |_| SharedString::from(read.borrow().web_keys.get(id).cloned().unwrap_or_default()),
+            move |_| {
+                SharedString::from(read.borrow().web_keys.get(id).cloned().unwrap_or_default())
+            },
             move |key, cx| {
-                write.borrow_mut().web_keys.insert(id.to_owned(), key.to_string());
+                write
+                    .borrow_mut()
+                    .web_keys
+                    .insert(id.to_owned(), key.to_string());
                 cx.refresh_windows();
             },
         );
@@ -117,7 +131,9 @@ fn state_text(state: u8) -> (&'static str, Option<&'static str>) {
 
 /// Take a browser to the next step of connecting; the last step is connected.
 fn connect(values: &mut Values, index: usize) {
-    let Some(browser) = values.browsers.get_mut(index) else { return };
+    let Some(browser) = values.browsers.get_mut(index) else {
+        return;
+    };
     browser.state = match browser.state {
         BROWSER_NOT_OPEN => BROWSER_NO_EXT,
         BROWSER_NO_EXT => BROWSER_CONNECTED,
@@ -134,7 +150,10 @@ mod tests {
     #[test]
     fn a_browser_steps_from_closed_to_connected() {
         let mut v = Values {
-            browsers: vec![Browser { name: "Arc".into(), state: BROWSER_NOT_OPEN }],
+            browsers: vec![Browser {
+                name: "Arc".into(),
+                state: BROWSER_NOT_OPEN,
+            }],
             ..Values::default()
         };
         connect(&mut v, 0);

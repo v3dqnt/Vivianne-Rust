@@ -39,15 +39,40 @@ pub fn parse_step(reply: &str) -> Option<Step> {
     let start = reply.find('{')?;
     let end = reply.rfind('}')?;
     let v: Value = serde_json::from_str(reply.get(start..=end)?).ok()?;
-    let text = |k: &str| v.get(k).and_then(|x| x.as_str()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    let text = |k: &str| {
+        v.get(k)
+            .and_then(|x| x.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    };
     match v.get("action")?.as_str()?.to_lowercase().as_str() {
-        "search_pages" => Some(Step::Search { target: Target::Pages, query: text("query")? }),
-        "search_observations" => Some(Step::Search { target: Target::Observations, query: text("query")? }),
-        "recall" | "search_facts" => Some(Step::Search { target: Target::Facts, query: text("query")? }),
+        "search_pages" => Some(Step::Search {
+            target: Target::Pages,
+            query: text("query")?,
+        }),
+        "search_observations" => Some(Step::Search {
+            target: Target::Observations,
+            query: text("query")?,
+        }),
+        "recall" | "search_facts" => Some(Step::Search {
+            target: Target::Facts,
+            query: text("query")?,
+        }),
         "expand" => Some(Step::Expand { id: text("id")? }),
         "answer" => {
-            let cites = v.get("cites").and_then(|c| c.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(|s| s.trim().to_string())).collect()).unwrap_or_default();
-            Some(Step::Answer { text: text("text")?, cites })
+            let cites = v
+                .get("cites")
+                .and_then(|c| c.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(|s| s.trim().to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            Some(Step::Answer {
+                text: text("text")?,
+                cites,
+            })
         }
         _ => None,
     }
@@ -76,7 +101,17 @@ fn show(hits: &[Hit]) -> String {
     if hits.is_empty() {
         return "(nothing found)".to_string();
     }
-    hits.iter().map(|h| format!("- [{}] ({}) {}", short(&h.id), h.label, clip(&h.text, SHOWN_CHARS))).collect::<Vec<_>>().join("\n")
+    hits.iter()
+        .map(|h| {
+            format!(
+                "- [{}] ({}) {}",
+                short(&h.id),
+                h.label,
+                clip(&h.text, SHOWN_CHARS)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -122,7 +157,12 @@ pub async fn run(
                 log.push_str("(your last reply was not a JSON object; reply with one)\n");
                 continue;
             }
-            return Ok(Outcome { answer: reply.trim().to_string(), sources: Vec::new(), steps: step_no, finished: false });
+            return Ok(Outcome {
+                answer: reply.trim().to_string(),
+                sources: Vec::new(),
+                steps: step_no,
+                finished: false,
+            });
         };
         match step {
             Step::Answer { text, cites } => {
@@ -134,12 +174,24 @@ pub async fn run(
                         }
                     }
                 }
-                return Ok(Outcome { answer: text, sources, steps: step_no, finished: !forced });
+                return Ok(Outcome {
+                    answer: text,
+                    sources,
+                    steps: step_no,
+                    finished: !forced,
+                });
             }
             _ if forced => continue,
             step => {
                 let what = match &step {
-                    Step::Search { target, query } => format!("{} for \"{query}\"", match target { Target::Pages => "search_pages", Target::Observations => "search_observations", Target::Facts => "recall" }),
+                    Step::Search { target, query } => format!(
+                        "{} for \"{query}\"",
+                        match target {
+                            Target::Pages => "search_pages",
+                            Target::Observations => "search_observations",
+                            Target::Facts => "recall",
+                        }
+                    ),
                     Step::Expand { id } => format!("expand {id}"),
                     Step::Answer { .. } => String::new(),
                 };
@@ -148,7 +200,9 @@ pub async fn run(
                     Step::Expand { id } => match resolve(&id, &seen) {
                         Some(h) => Step::Expand { id: h.id.clone() },
                         None => {
-                            log.push_str(&format!("> {what}\n(no such hit: expand an id you were shown)\n\n"));
+                            log.push_str(&format!(
+                                "> {what}\n(no such hit: expand an id you were shown)\n\n"
+                            ));
                             continue;
                         }
                     },
@@ -164,7 +218,12 @@ pub async fn run(
             }
         }
     }
-    Ok(Outcome { answer: "Could not reach an answer from memory.".to_string(), sources: Vec::new(), steps: MAX_STEPS, finished: false })
+    Ok(Outcome {
+        answer: "Could not reach an answer from memory.".to_string(),
+        sources: Vec::new(),
+        steps: MAX_STEPS,
+        finished: false,
+    })
 }
 
 /// What the tool returns: the answer and where it came from.
@@ -173,7 +232,12 @@ pub fn render(o: &Outcome) -> String {
     if !o.sources.is_empty() {
         out.push_str("\n\nSources:");
         for s in &o.sources {
-            out.push_str(&format!("\n- [{}] ({}) {}", short(&s.id), s.label, clip(&s.text, SOURCE_CHARS)));
+            out.push_str(&format!(
+                "\n- [{}] ({}) {}",
+                short(&s.id),
+                s.label,
+                clip(&s.text, SOURCE_CHARS)
+            ));
         }
     } else if o.finished {
         out.push_str("\n\n(No memory was cited for this.)");
@@ -185,14 +249,31 @@ pub fn render(o: &Outcome) -> String {
 }
 
 async fn labelled(entries: Vec<super::MemoryEntry>) -> Vec<Hit> {
-    entries.into_iter().map(|e| Hit { label: super::evolve::provenance_label(&e.kind).to_string(), id: e.id, text: e.text }).collect()
+    entries
+        .into_iter()
+        .map(|e| Hit {
+            label: super::evolve::provenance_label(&e.kind).to_string(),
+            id: e.id,
+            text: e.text,
+        })
+        .collect()
 }
 
 /// Search one kind of memory in `root`: keyword and meaning, then only that kind.
-async fn search_kind(root: &str, query: &str, kind: &str, auth: &std::sync::Arc<vivianne_ai::ai::auth::AuthState>) -> Vec<Hit> {
-    let mut found = super::store::search_fts(root, query, 40).await.unwrap_or_default();
+async fn search_kind(
+    root: &str,
+    query: &str,
+    kind: &str,
+    auth: &std::sync::Arc<vivianne_ai::ai::auth::AuthState>,
+) -> Vec<Hit> {
+    let mut found = super::store::search_fts(root, query, 40)
+        .await
+        .unwrap_or_default();
     if let Ok(Some(v)) = vivianne_ai::ai::embedding::embed_query(Some(auth.as_ref()), query).await {
-        for (e, _) in super::store::search_vector_scored(root, &v, 40).await.unwrap_or_default() {
+        for (e, _) in super::store::search_vector_scored(root, &v, 40)
+            .await
+            .unwrap_or_default()
+        {
             if !found.iter().any(|f| f.id == e.id) {
                 found.push(e);
             }
@@ -204,8 +285,12 @@ async fn search_kind(root: &str, query: &str, kind: &str, auth: &std::sync::Arc<
 
 /// What an observation rests on, or an entry's own text for anything else.
 async fn expand(root: &str, id: &str) -> Vec<Hit> {
-    let own = super::store::get_entries_by_ids(root, &[id.to_string()]).await.unwrap_or_default();
-    let Some(entry) = own.into_iter().next() else { return Vec::new() };
+    let own = super::store::get_entries_by_ids(root, &[id.to_string()])
+        .await
+        .unwrap_or_default();
+    let Some(entry) = own.into_iter().next() else {
+        return Vec::new();
+    };
     let mut out = labelled(vec![entry.clone()]).await;
     if entry.kind == "observation" {
         let (root_c, id_c) = (root.to_string(), id.to_string());
@@ -220,30 +305,56 @@ async fn expand(root: &str, id: &str) -> Vec<Hit> {
         .ok()
         .and_then(Result::ok)
         .unwrap_or_default();
-        out.extend(labelled(super::store::get_entries_by_ids(root, &ids).await.unwrap_or_default()).await);
+        out.extend(
+            labelled(
+                super::store::get_entries_by_ids(root, &ids)
+                    .await
+                    .unwrap_or_default(),
+            )
+            .await,
+        );
     }
     out
 }
 
 /// The tool: answer `question` from `root`'s memory.
-pub async fn answer(app: &vivianne_ai::events::Events, root: &str, model: &vivianne_ai::host::ModelRef, question: &str) -> Result<String, String> {
+pub async fn answer(
+    app: &vivianne_ai::events::Events,
+    root: &str,
+    model: &vivianne_ai::host::ModelRef,
+    question: &str,
+) -> Result<String, String> {
     if !super::state_snapshot(root).await.enabled {
-        return Ok("Memory is off for this project, so there is nothing to reflect on.".to_string());
+        return Ok(
+            "Memory is off for this project, so there is nothing to reflect on.".to_string(),
+        );
     }
     let auth = vivianne_ai::ai::auth::wait_for_state(app).await;
     let (app, model_c, root_c) = (app.clone(), model.clone(), root.to_string());
     let ask = move |prompt: String| -> BoxFuture<'static, Result<String, String>> {
         let (app, model) = (app.clone(), model_c.clone());
-        Box::pin(async move { vivianne_ai::ai::completion::complete_background(&app, &model, SYSTEM_PROMPT, &prompt).await })
+        Box::pin(async move {
+            vivianne_ai::ai::completion::complete_background(&app, &model, SYSTEM_PROMPT, &prompt)
+                .await
+        })
     };
     let auth_c = auth.clone();
     let fetch = move |step: Step| -> BoxFuture<'static, Vec<Hit>> {
         let (root, auth) = (root_c.clone(), auth_c.clone());
         Box::pin(async move {
             match step {
-                Step::Search { target: Target::Pages, query } => search_kind(&root, &query, "page", &auth).await,
-                Step::Search { target: Target::Observations, query } => search_kind(&root, &query, "observation", &auth).await,
-                Step::Search { target: Target::Facts, query } => labelled(super::recall_at(&root, &query, None, Some(&auth), None).await).await,
+                Step::Search {
+                    target: Target::Pages,
+                    query,
+                } => search_kind(&root, &query, "page", &auth).await,
+                Step::Search {
+                    target: Target::Observations,
+                    query,
+                } => search_kind(&root, &query, "observation", &auth).await,
+                Step::Search {
+                    target: Target::Facts,
+                    query,
+                } => labelled(super::recall_at(&root, &query, None, Some(&auth), None).await).await,
                 Step::Expand { id } => expand(&root, &id).await,
                 Step::Answer { .. } => Vec::new(),
             }
@@ -258,20 +369,40 @@ mod tests {
     use std::sync::Mutex;
 
     fn hit(id: &str, label: &str, text: &str) -> Hit {
-        Hit { id: id.into(), label: label.into(), text: text.into() }
+        Hit {
+            id: id.into(),
+            label: label.into(),
+            text: text.into(),
+        }
     }
 
     /// A scripted model and a scripted memory.
-    fn scripted(replies: Vec<&'static str>, memory: Vec<(Step, Vec<Hit>)>) -> (impl Fn(String) -> BoxFuture<'static, Result<String, String>> + Sync, impl Fn(Step) -> BoxFuture<'static, Vec<Hit>> + Sync, std::sync::Arc<Mutex<Vec<String>>>) {
+    fn scripted(
+        replies: Vec<&'static str>,
+        memory: Vec<(Step, Vec<Hit>)>,
+    ) -> (
+        impl Fn(String) -> BoxFuture<'static, Result<String, String>> + Sync,
+        impl Fn(Step) -> BoxFuture<'static, Vec<Hit>> + Sync,
+        std::sync::Arc<Mutex<Vec<String>>>,
+    ) {
         let prompts = std::sync::Arc::new(Mutex::new(Vec::new()));
         let (p2, replies) = (prompts.clone(), Mutex::new(replies.into_iter()));
         let ask = move |prompt: String| -> BoxFuture<'static, Result<String, String>> {
             p2.lock().unwrap().push(prompt);
-            let next = replies.lock().unwrap().next().map(String::from).ok_or_else(|| "script ran out".to_string());
+            let next = replies
+                .lock()
+                .unwrap()
+                .next()
+                .map(String::from)
+                .ok_or_else(|| "script ran out".to_string());
             Box::pin(async move { next })
         };
         let fetch = move |step: Step| -> BoxFuture<'static, Vec<Hit>> {
-            let found = memory.iter().find(|(s, _)| *s == step).map(|(_, h)| h.clone()).unwrap_or_default();
+            let found = memory
+                .iter()
+                .find(|(s, _)| *s == step)
+                .map(|(_, h)| h.clone())
+                .unwrap_or_default();
             Box::pin(async move { found })
         };
         (ask, fetch, prompts)
@@ -279,37 +410,96 @@ mod tests {
 
     #[test]
     fn steps_are_read_from_a_reply_with_or_without_a_fence() {
-        assert_eq!(parse_step("{\"action\": \"search_pages\", \"query\": \"releases\"}"), Some(Step::Search { target: Target::Pages, query: "releases".into() }));
-        assert_eq!(parse_step("```json\n{\"action\":\"recall\",\"query\":\"vite port\"}\n```"), Some(Step::Search { target: Target::Facts, query: "vite port".into() }));
-        assert_eq!(parse_step("Let me look. {\"action\": \"expand\", \"id\": \"abcd1234\"} ok"), Some(Step::Expand { id: "abcd1234".into() }));
-        assert_eq!(parse_step("{\"action\": \"answer\", \"text\": \"Tag from main\", \"cites\": [\"a1\", 5, \"b2\"]}"), Some(Step::Answer { text: "Tag from main".into(), cites: vec!["a1".into(), "b2".into()] }));
-        for bad in ["", "no json", "{\"action\": \"search_pages\"}", "{\"action\": \"delete\", \"id\": \"x\"}", "{\"query\": \"x\"}", "{\"action\": \"answer\", \"text\": \"  \"}"] {
+        assert_eq!(
+            parse_step("{\"action\": \"search_pages\", \"query\": \"releases\"}"),
+            Some(Step::Search {
+                target: Target::Pages,
+                query: "releases".into()
+            })
+        );
+        assert_eq!(
+            parse_step("```json\n{\"action\":\"recall\",\"query\":\"vite port\"}\n```"),
+            Some(Step::Search {
+                target: Target::Facts,
+                query: "vite port".into()
+            })
+        );
+        assert_eq!(
+            parse_step("Let me look. {\"action\": \"expand\", \"id\": \"abcd1234\"} ok"),
+            Some(Step::Expand {
+                id: "abcd1234".into()
+            })
+        );
+        assert_eq!(
+            parse_step(
+                "{\"action\": \"answer\", \"text\": \"Tag from main\", \"cites\": [\"a1\", 5, \"b2\"]}"
+            ),
+            Some(Step::Answer {
+                text: "Tag from main".into(),
+                cites: vec!["a1".into(), "b2".into()]
+            })
+        );
+        for bad in [
+            "",
+            "no json",
+            "{\"action\": \"search_pages\"}",
+            "{\"action\": \"delete\", \"id\": \"x\"}",
+            "{\"query\": \"x\"}",
+            "{\"action\": \"answer\", \"text\": \"  \"}",
+        ] {
             assert_eq!(parse_step(bad), None, "{bad}");
         }
     }
 
     #[tokio::test]
     async fn it_looks_pages_first_and_answers_citing_what_it_found() {
-        let page = hit("aaaaaaaa-1111", "project page, kept up to date", "Releases\n- Tag from main");
+        let page = hit(
+            "aaaaaaaa-1111",
+            "project page, kept up to date",
+            "Releases\n- Tag from main",
+        );
         let (ask, fetch, prompts) = scripted(
             vec![
                 "{\"action\": \"search_pages\", \"query\": \"how do we release\"}",
                 "{\"action\": \"answer\", \"text\": \"Tag from main.\", \"cites\": [\"aaaaaaaa\"]}",
             ],
-            vec![(Step::Search { target: Target::Pages, query: "how do we release".into() }, vec![page.clone()])],
+            vec![(
+                Step::Search {
+                    target: Target::Pages,
+                    query: "how do we release".into(),
+                },
+                vec![page.clone()],
+            )],
         );
         let o = run("How do we release?", &ask, &fetch).await.unwrap();
-        assert_eq!((o.answer.as_str(), o.steps, o.finished), ("Tag from main.", 2, true));
+        assert_eq!(
+            (o.answer.as_str(), o.steps, o.finished),
+            ("Tag from main.", 2, true)
+        );
         assert_eq!(o.sources, vec![page]);
         let second = prompts.lock().unwrap()[1].clone();
-        assert!(second.contains("> search_pages for \"how do we release\"") && second.contains("[aaaaaaaa] (project page, kept up to date)"), "{second}");
+        assert!(
+            second.contains("> search_pages for \"how do we release\"")
+                && second.contains("[aaaaaaaa] (project page, kept up to date)"),
+            "{second}"
+        );
         let shown = render(&o);
-        assert!(shown.starts_with("Tag from main.\n\nSources:\n- [aaaaaaaa] (project page, kept up to date) Releases"), "{shown}");
+        assert!(
+            shown.starts_with(
+                "Tag from main.\n\nSources:\n- [aaaaaaaa] (project page, kept up to date) Releases"
+            ),
+            "{shown}"
+        );
     }
 
     #[tokio::test]
     async fn a_citation_of_something_never_retrieved_is_dropped() {
-        let (ask, fetch, _) = scripted(vec!["{\"action\": \"answer\", \"text\": \"Probably Fridays.\", \"cites\": [\"deadbeef\", \"abc\"]}"], vec![]);
+        let (ask, fetch, _) = scripted(
+            vec![
+                "{\"action\": \"answer\", \"text\": \"Probably Fridays.\", \"cites\": [\"deadbeef\", \"abc\"]}",
+            ],
+            vec![],
+        );
         let o = run("When do we ship?", &ask, &fetch).await.unwrap();
         assert!(o.sources.is_empty());
         assert!(render(&o).contains("(No memory was cited for this.)"));
@@ -318,18 +508,41 @@ mod tests {
     #[tokio::test]
     async fn the_loop_is_bounded_and_the_last_call_must_answer() {
         let search = "{\"action\": \"recall\", \"query\": \"x\"}";
-        let (ask, fetch, prompts) = scripted(vec![search, search, search, search, search, search, "{\"action\": \"answer\", \"text\": \"Partial.\", \"cites\": []}"], vec![]);
+        let (ask, fetch, prompts) = scripted(
+            vec![
+                search,
+                search,
+                search,
+                search,
+                search,
+                search,
+                "{\"action\": \"answer\", \"text\": \"Partial.\", \"cites\": []}",
+            ],
+            vec![],
+        );
         let o = run("q", &ask, &fetch).await.unwrap();
         assert_eq!((o.answer.as_str(), o.steps), ("Partial.", MAX_STEPS + 1));
         assert!(!o.finished && render(&o).contains("partial"));
         assert!(prompts.lock().unwrap()[MAX_STEPS].contains("out of steps"));
-        assert_eq!(prompts.lock().unwrap().len(), MAX_STEPS + 1, "never more than one extra call");
+        assert_eq!(
+            prompts.lock().unwrap().len(),
+            MAX_STEPS + 1,
+            "never more than one extra call"
+        );
     }
 
     #[tokio::test]
     async fn an_expansion_uses_the_short_id_that_was_shown() {
-        let obs = hit("cccccccc-2222", "belief drawn from several facts", "Ships on Fridays");
-        let fact = hit("dddddddd-3333", "saved on purpose", "Deploys happen Friday afternoon");
+        let obs = hit(
+            "cccccccc-2222",
+            "belief drawn from several facts",
+            "Ships on Fridays",
+        );
+        let fact = hit(
+            "dddddddd-3333",
+            "saved on purpose",
+            "Deploys happen Friday afternoon",
+        );
         let (ask, fetch, _) = scripted(
             vec![
                 "{\"action\": \"search_observations\", \"query\": \"ship\"}",
@@ -338,8 +551,19 @@ mod tests {
                 "{\"action\": \"answer\", \"text\": \"Fridays.\", \"cites\": [\"[dddddddd]\"]}",
             ],
             vec![
-                (Step::Search { target: Target::Observations, query: "ship".into() }, vec![obs]),
-                (Step::Expand { id: "cccccccc-2222".into() }, vec![fact.clone()]),
+                (
+                    Step::Search {
+                        target: Target::Observations,
+                        query: "ship".into(),
+                    },
+                    vec![obs],
+                ),
+                (
+                    Step::Expand {
+                        id: "cccccccc-2222".into(),
+                    },
+                    vec![fact.clone()],
+                ),
             ],
         );
         let o = run("When do we ship?", &ask, &fetch).await.unwrap();

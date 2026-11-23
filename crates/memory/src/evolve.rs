@@ -32,8 +32,8 @@
 //! "core memory" of MemGPT/Letta), while everything else stays behind
 //! `recall`.
 
-use super::{MemoryEntry, redact_secrets};
 use super::graph::{Edge, EdgeKind};
+use super::{MemoryEntry, redact_secrets};
 
 /// At or above this cosine similarity a fact is already known.
 const NOOP_SIM: f32 = 0.93;
@@ -77,7 +77,10 @@ pub fn route(best: Option<(&str, f32)>, add_below: f32) -> Route {
 }
 
 fn normalized(s: &str) -> String {
-    s.to_lowercase().split_whitespace().collect::<Vec<_>>().join(" ")
+    s.to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Nearest stored memories with their similarity. By vector when an
@@ -98,7 +101,11 @@ async fn neighbours(root: &str, text: &str, embedding: Option<&[f32]>) -> Vec<(M
         .unwrap_or_default()
         .into_iter()
         .map(|e| {
-            let s = if normalized(&e.text) == target { 1.0 } else { 0.8 };
+            let s = if normalized(&e.text) == target {
+                1.0
+            } else {
+                0.8
+            };
             (e, s)
         })
         .collect()
@@ -137,7 +144,10 @@ pub async fn write_facts(
 
     let mut review: Vec<(Candidate, Option<Vec<f32>>, Vec<(MemoryEntry, f32)>)> = Vec::new();
     for c in candidates {
-        let emb = vivianne_ai::ai::embedding::embed_text(&auth, &c.entry.text).await.ok().flatten();
+        let emb = vivianne_ai::ai::embedding::embed_text(&auth, &c.entry.text)
+            .await
+            .ok()
+            .flatten();
         let near = neighbours(root, &c.entry.text, emb.as_deref()).await;
         match route(near.first().map(|(e, s)| (e.id.as_str(), *s)), add_below) {
             Route::Noop(id) => {
@@ -175,19 +185,35 @@ pub async fn write_facts(
         }
         prompt.push('\n');
     }
-    let ops = match vivianne_ai::ai::completion::complete_background(app, model, RECONCILE_PROMPT, &prompt).await {
+    let ops = match vivianne_ai::ai::completion::complete_background(
+        app,
+        model,
+        RECONCILE_PROMPT,
+        &prompt,
+    )
+    .await
+    {
         Ok(r) => vivianne_ai::ai::completion::extract_json_array(&r)
             .and_then(|v| v.as_array().cloned())
             .unwrap_or_default(),
         Err(e) => {
-            log::warn!("[memory] reconcile call failed, adding the uncertain facts as they are: {e}");
+            log::warn!(
+                "[memory] reconcile call failed, adding the uncertain facts as they are: {e}"
+            );
             Vec::new()
         }
     };
 
     let mut handled = vec![false; review.len()];
     for op in &ops {
-        let Some(i) = op.get("fact").and_then(|v| v.as_u64()).map(|n| n as usize).filter(|n| *n >= 1 && *n <= review.len()) else { continue };
+        let Some(i) = op
+            .get("fact")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as usize)
+            .filter(|n| *n >= 1 && *n <= review.len())
+        else {
+            continue;
+        };
         if handled[i - 1] {
             continue;
         }
@@ -197,7 +223,11 @@ pub async fn write_facts(
             .and_then(|v| v.as_str())
             .and_then(|t| t.trim_start_matches('m').parse::<usize>().ok())
             .and_then(|n| ids.get(n));
-        let kind = op.get("op").and_then(|v| v.as_str()).unwrap_or("ADD").to_ascii_uppercase();
+        let kind = op
+            .get("op")
+            .and_then(|v| v.as_str())
+            .unwrap_or("ADD")
+            .to_ascii_uppercase();
         handled[i - 1] = true;
         match (kind.as_str(), target) {
             ("NOOP", Some(t)) => {
@@ -205,12 +235,19 @@ pub async fn write_facts(
                 skipped += 1;
             }
             ("UPDATE", Some(t)) => {
-                let merged = op.get("text").and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty());
+                let merged = op
+                    .get("text")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty());
                 match merged {
                     // A user-stated memory only grows: an inferred merge
                     // that drops its words is refused, and the fact is
                     // kept beside it instead.
-                    Some(m) if !user_stated(&t.kind) || normalized(m).contains(&normalized(&t.text)) => {
+                    Some(m)
+                        if !user_stated(&t.kind)
+                            || normalized(m).contains(&normalized(&t.text)) =>
+                    {
                         // The merged fact is a new version: the old one is
                         // closed (not overwritten) and superseded by it, so
                         // what was believed before stays answerable.
@@ -225,8 +262,15 @@ pub async fn write_facts(
                             created_at: now,
                             ..t.clone()
                         };
-                        let new = Candidate { entry: version, scene: c.scene.clone(), extra: c.extra.clone() };
-                        let emb = vivianne_ai::ai::embedding::embed_text(&auth, &m).await.ok().flatten();
+                        let new = Candidate {
+                            entry: version,
+                            scene: c.scene.clone(),
+                            extra: c.extra.clone(),
+                        };
+                        let emb = vivianne_ai::ai::embedding::embed_text(&auth, &m)
+                            .await
+                            .ok()
+                            .flatten();
                         if insert(root, &new, emb.as_deref()).await {
                             let _ = super::store::invalidate_entry(root, &t.id, now).await;
                             link(root, &new.entry.id, &t.id, EdgeKind::Supersedes).await;
@@ -248,7 +292,10 @@ pub async fn write_facts(
                         // Provenance guard: keep what the user said, and
                         // mark the disagreement for whoever recalls it.
                         link(root, &c.entry.id, &t.id, EdgeKind::Contradicts).await;
-                    } else if super::store::invalidate_entry(root, &t.id, super::now_ms()).await.is_ok() {
+                    } else if super::store::invalidate_entry(root, &t.id, super::now_ms())
+                        .await
+                        .is_ok()
+                    {
                         // Closed, not erased: it was true until now.
                         link(root, &c.entry.id, &t.id, EdgeKind::Supersedes).await;
                         deleted += 1;
@@ -272,18 +319,32 @@ pub async fn write_facts(
 }
 
 async fn insert(root: &str, c: &Candidate, embedding: Option<&[f32]>) -> bool {
-    if super::store::insert_entry_with_scene(root, &c.entry, c.scene.as_deref()).await.is_err() {
+    if super::store::insert_entry_with_scene(root, &c.entry, c.scene.as_deref())
+        .await
+        .is_err()
+    {
         return false;
     }
     if let Some(e) = embedding {
-        let _ = super::store::update_embedding(root, &c.entry.id, e, vivianne_ai::ai::embedding::embedding_model()).await;
+        let _ = super::store::update_embedding(
+            root,
+            &c.entry.id,
+            e,
+            vivianne_ai::ai::embedding::embedding_model(),
+        )
+        .await;
     }
     super::entities::record(root, &c.entry.id, &c.extra, super::now_ms()).await;
     true
 }
 
 async fn link(root: &str, source: &str, target: &str, kind: EdgeKind) {
-    let edge = Edge { source: source.to_string(), target: target.to_string(), kind, created_at: super::now_ms() };
+    let edge = Edge {
+        source: source.to_string(),
+        target: target.to_string(),
+        kind,
+        created_at: super::now_ms(),
+    };
     let _ = super::store::insert_edge(root, &edge).await;
 }
 
@@ -312,8 +373,17 @@ pub fn apply_profile_delta(bullets: &[String], ops: &[serde_json::Value]) -> Vec
     let mut slots: Vec<Option<String>> = bullets.iter().cloned().map(Some).collect();
     let mut added = Vec::new();
     for op in ops {
-        let text = op.get("text").and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).map(String::from);
-        let n = op.get("n").and_then(|v| v.as_u64()).map(|n| n as usize).filter(|n| *n >= 1 && *n <= slots.len());
+        let text = op
+            .get("text")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from);
+        let n = op
+            .get("n")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as usize)
+            .filter(|n| *n >= 1 && *n <= slots.len());
         match (op.get("op").and_then(|v| v.as_str()).unwrap_or(""), n, text) {
             ("add", _, Some(t)) => added.push(t),
             ("edit", Some(n), Some(t)) => slots[n - 1] = Some(t),
@@ -339,16 +409,42 @@ pub async fn evolve_profile(
     facts: &[MemoryEntry],
 ) -> Option<String> {
     let bullets = profile_bullets(current);
-    let numbered = bullets.iter().enumerate().map(|(i, b)| format!("{}. {b}", i + 1)).collect::<Vec<_>>().join("\n");
-    let new = facts.iter().map(|f| format!("- {}", f.text)).collect::<Vec<_>>().join("\n");
-    let prompt = format!("CURRENT:\n{}\n\nNEW:\n{new}", if numbered.is_empty() { "(empty)".to_string() } else { numbered });
-    let reply = vivianne_ai::ai::completion::complete_background(app, model, PROFILE_DELTA_PROMPT, &prompt).await.ok()?;
-    let ops = vivianne_ai::ai::completion::extract_json_array(&reply)?.as_array()?.clone();
+    let numbered = bullets
+        .iter()
+        .enumerate()
+        .map(|(i, b)| format!("{}. {b}", i + 1))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let new = facts
+        .iter()
+        .map(|f| format!("- {}", f.text))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let prompt = format!(
+        "CURRENT:\n{}\n\nNEW:\n{new}",
+        if numbered.is_empty() {
+            "(empty)".to_string()
+        } else {
+            numbered
+        }
+    );
+    let reply =
+        vivianne_ai::ai::completion::complete_background(app, model, PROFILE_DELTA_PROMPT, &prompt)
+            .await
+            .ok()?;
+    let ops = vivianne_ai::ai::completion::extract_json_array(&reply)?
+        .as_array()?
+        .clone();
     if ops.is_empty() {
         return None;
     }
     let next = apply_profile_delta(&bullets, &ops);
-    Some(next.iter().map(|b| format!("- {b}")).collect::<Vec<_>>().join("\n"))
+    Some(
+        next.iter()
+            .map(|b| format!("- {b}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
 }
 
 // ── Always in context ───────────────────────────────────────────────────
@@ -367,13 +463,21 @@ pub async fn core_block(root: &str) -> Option<String> {
         return None;
     }
     let mut lines: Vec<String> = Vec::new();
-    let mut stated = super::store::recent_by_kind(root, "instruction", 30).await.unwrap_or_default();
-    stated.extend(super::store::recent_by_kind(root, "fact", 30).await.unwrap_or_default());
+    let mut stated = super::store::recent_by_kind(root, "instruction", 30)
+        .await
+        .unwrap_or_default();
+    stated.extend(
+        super::store::recent_by_kind(root, "fact", 30)
+            .await
+            .unwrap_or_default(),
+    );
     stated.sort_by_key(|e| e.created_at);
     for e in &stated {
         lines.push(format!("- {}", e.text.trim()));
     }
-    let profile = tokio::fs::read_to_string(super::persona_path(root)).await.unwrap_or_default();
+    let profile = tokio::fs::read_to_string(super::persona_path(root))
+        .await
+        .unwrap_or_default();
     let mut bullets = profile_bullets(&profile);
 
     // render() is re-run while shedding: the two sections share headers and
@@ -389,7 +493,13 @@ pub async fn core_block(root: &str) -> Option<String> {
                 body.push_str("\n\n");
             }
             body.push_str("About the user (inferred from past sessions):\n");
-            body.push_str(&bullets.iter().map(|b| format!("- {b}")).collect::<Vec<_>>().join("\n"));
+            body.push_str(
+                &bullets
+                    .iter()
+                    .map(|b| format!("- {b}"))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            );
         }
         body
     }
@@ -423,7 +533,9 @@ pub async fn core_block(root: &str) -> Option<String> {
         body.push_str("\n…");
     }
     // Which pages exist, by name only: what they say is found with recall.
-    let pages = super::pages::titles_line(&super::state_snapshot(root).await.pages).map(|l| format!("\n\n{l}")).unwrap_or_default();
+    let pages = super::pages::titles_line(&super::state_snapshot(root).await.pages)
+        .map(|l| format!("\n\n{l}"))
+        .unwrap_or_default();
     Some(format!(
         "<core_memory>\nFrom memory, always in view. Follow the user's instructions here unless they say otherwise now; use recall for anything else from before.\n\n{body}{pages}\n</core_memory>"
     ))
@@ -463,14 +575,25 @@ mod tests {
 
     #[test]
     fn profile_changes_by_delta_and_keeps_the_rest() {
-        let bullets = profile_bullets("# Profile\n- Uses pnpm\n- Prefers dark mode\n* Works in Rust");
-        assert_eq!(bullets, vec!["Uses pnpm", "Prefers dark mode", "Works in Rust"]);
+        let bullets =
+            profile_bullets("# Profile\n- Uses pnpm\n- Prefers dark mode\n* Works in Rust");
+        assert_eq!(
+            bullets,
+            vec!["Uses pnpm", "Prefers dark mode", "Works in Rust"]
+        );
         let ops: Vec<serde_json::Value> = serde_json::from_str(
             r#"[{"op":"edit","n":2,"text":"Prefers light mode"},{"op":"remove","n":1},{"op":"add","text":"Writes papers in LaTeX"},{"op":"remove","n":99}]"#,
         )
         .unwrap();
         let out = apply_profile_delta(&bullets, &ops);
-        assert_eq!(out, vec!["Prefers light mode", "Works in Rust", "Writes papers in LaTeX"]);
+        assert_eq!(
+            out,
+            vec![
+                "Prefers light mode",
+                "Works in Rust",
+                "Writes papers in LaTeX"
+            ]
+        );
     }
 
     #[test]

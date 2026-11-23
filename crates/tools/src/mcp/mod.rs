@@ -32,6 +32,8 @@ pub enum McpTransportConfig {
         #[serde(default)]
         headers: HashMap<String, String>,
     },
+    /// A connector built into the app (`connections::native`).
+    Native { connector: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +52,10 @@ pub struct McpServerConfig {
     /// `~/.viv/mcp_oauth.json`, never in the config file.
     #[serde(default)]
     pub auth: Option<String>,
+    /// The tools of this server the model may use, by the server's own names. `None` offers all of them. A server
+    /// with dozens of tools the task never needs would otherwise fill the context window with their definitions.
+    #[serde(default)]
+    pub allowed_tools: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,7 +74,9 @@ fn default_schema() -> serde_json::Value {
 
 /// `~/.viv/<parts>`.
 pub(crate) fn viv_home_path(parts: &[&str]) -> std::path::PathBuf {
-    let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).map_or_else(std::env::temp_dir, std::path::PathBuf::from);
+    let home = std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map_or_else(std::env::temp_dir, std::path::PathBuf::from);
     parts.iter().fold(home.join(".viv"), |p, part| p.join(part))
 }
 
@@ -95,11 +103,16 @@ lazy_static::lazy_static! {
 
 /// The server and the tool a public name `mcp__<server>__<tool>` stands for, given the servers there are. The longest server name
 /// that fits wins, so a server called `foo__bar` gets `mcp__foo__bar__baz` rather than a server `foo` being asked for `bar__baz`.
-pub fn split_public_name<'a>(name: &str, servers: impl IntoIterator<Item = &'a str>) -> Option<(String, String)> {
+pub fn split_public_name<'a>(
+    name: &str,
+    servers: impl IntoIterator<Item = &'a str>,
+) -> Option<(String, String)> {
     let rest = name.strip_prefix("mcp__")?;
     servers
         .into_iter()
-        .filter(|s| rest.len() > s.len() + 2 && rest.starts_with(*s) && rest[s.len()..].starts_with("__"))
+        .filter(|s| {
+            rest.len() > s.len() + 2 && rest.starts_with(*s) && rest[s.len()..].starts_with("__")
+        })
         .max_by_key(|s| s.len())
         .map(|s| (s.to_string(), rest[s.len() + 2..].to_string()))
 }
@@ -127,7 +140,9 @@ fn configs_path() -> Option<std::path::PathBuf> {
 async fn persist_configs() {
     let Some(path) = configs_path() else { return };
     let configs: Vec<McpServerConfig> = CONFIGS.read().await.values().cloned().collect();
-    let Ok(json) = serde_json::to_string_pretty(&configs) else { return };
+    let Ok(json) = serde_json::to_string_pretty(&configs) else {
+        return;
+    };
     if let Err(e) = tokio::fs::write(&path, json).await {
         log::warn!("mcp: failed to persist server configs: {e}");
     }
@@ -137,8 +152,12 @@ async fn persist_configs() {
 /// exist yet or fails to parse) — pass the result to `restore_servers` at
 /// startup to reconnect everything from the previous session.
 pub async fn load_persisted_configs() -> Vec<McpServerConfig> {
-    let Some(path) = configs_path() else { return Vec::new() };
-    let Ok(content) = tokio::fs::read_to_string(&path).await else { return Vec::new() };
+    let Some(path) = configs_path() else {
+        return Vec::new();
+    };
+    let Ok(content) = tokio::fs::read_to_string(&path).await else {
+        return Vec::new();
+    };
     serde_json::from_str(&content).unwrap_or_default()
 }
 
@@ -149,8 +168,14 @@ pub async fn add_server(config: McpServerConfig) -> Result<Vec<McpToolDef>, Stri
     remove_connection(&config.name).await;
     let connection = McpConnection::connect(&config).await?;
     let tools = connection.list_tools().await?;
-    CONNECTIONS.write().await.insert(config.name.clone(), Arc::new(connection));
-    LAST_TOOLS.write().await.insert(config.name.clone(), tools.clone());
+    CONNECTIONS
+        .write()
+        .await
+        .insert(config.name.clone(), Arc::new(connection));
+    LAST_TOOLS
+        .write()
+        .await
+        .insert(config.name.clone(), tools.clone());
     CONFIGS.write().await.insert(config.name.clone(), config);
     remember_names(CONFIGS.read().await.keys().cloned().collect());
     persist_configs().await;
@@ -193,16 +218,31 @@ pub async fn list_all_tools() -> Vec<(String, McpToolDef)> {
         // A failed re-list keeps the server's last good tools: a network blip shouldn't change the model's tools mid-conversation.
         let tools = match conn.list_tools().await {
             Ok(tools) => {
-                LAST_TOOLS.write().await.insert(server.clone(), tools.clone());
+                LAST_TOOLS
+                    .write()
+                    .await
+                    .insert(server.clone(), tools.clone());
                 tools
             }
             Err(e) => {
                 log::warn!("mcp: couldn't re-list '{server}' ({e}); keeping its last tool list");
-                LAST_TOOLS.read().await.get(server).cloned().unwrap_or_default()
+                LAST_TOOLS
+                    .read()
+                    .await
+                    .get(server)
+                    .cloned()
+                    .unwrap_or_default()
             }
         };
+        let allowed = CONFIGS
+            .read()
+            .await
+            .get(server)
+            .and_then(|c| c.allowed_tools.clone());
         for tool in tools {
-            out.push((server.clone(), tool));
+            if allowed.as_ref().is_none_or(|a| a.contains(&tool.name)) {
+                out.push((server.clone(), tool));
+            }
         }
     }
     out
@@ -210,7 +250,8 @@ pub async fn list_all_tools() -> Vec<(String, McpToolDef)> {
 
 /// The tools as the model sees them, readable without awaiting: `(public name, description, parameters)`. Filled by
 /// [`refresh_tools`]; empty until a server has connected.
-static SNAPSHOT: std::sync::RwLock<Vec<(String, String, serde_json::Value)>> = std::sync::RwLock::new(Vec::new());
+static SNAPSHOT: std::sync::RwLock<Vec<(String, String, serde_json::Value)>> =
+    std::sync::RwLock::new(Vec::new());
 static SNAPSHOT_VERSION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(u64::MAX);
 
 #[must_use]
@@ -227,7 +268,13 @@ pub async fn refresh_tools() {
     let mut tools: Vec<(String, String, serde_json::Value)> = list_all_tools()
         .await
         .into_iter()
-        .map(|(server, tool)| (format!("mcp__{server}__{}", tool.name), tool.description, tool.input_schema))
+        .map(|(server, tool)| {
+            (
+                format!("mcp__{server}__{}", tool.name),
+                tool.description,
+                tool.input_schema,
+            )
+        })
         .collect();
     tools.sort_by(|a, b| a.0.cmp(&b.0));
     *SNAPSHOT.write().unwrap_or_else(|e| e.into_inner()) = tools;
@@ -235,16 +282,40 @@ pub async fn refresh_tools() {
 
 /// Runs a tool by its public name (`mcp__<server>__<tool>`).
 pub async fn call_public(name: &str, args: serde_json::Value) -> Result<String, String> {
-    let (server, tool) = route(name).ok_or_else(|| format!("no connected MCP server has a tool called {name}"))?;
+    let (server, tool) =
+        route(name).ok_or_else(|| format!("no connected MCP server has a tool called {name}"))?;
     call_tool(&server, &tool, args).await
 }
 
-pub async fn call_tool(server_name: &str, tool_name: &str, args: serde_json::Value) -> Result<String, String> {
+pub async fn call_tool(
+    server_name: &str,
+    tool_name: &str,
+    args: serde_json::Value,
+) -> Result<String, String> {
     let conn = {
         let connections = CONNECTIONS.read().await;
         connections.get(server_name).cloned()
     };
-    let Some(conn) = conn else { return Err(format!("MCP server '{server_name}' is not connected")) };
+    let Some(conn) = conn else {
+        return Err(format!("MCP server '{server_name}' is not connected"));
+    };
+    // What the model was not offered it cannot call either, whatever name it makes up.
+    let allowed = CONFIGS
+        .read()
+        .await
+        .get(server_name)
+        .and_then(|c| c.allowed_tools.clone());
+    if allowed.is_some_and(|a| !a.iter().any(|t| t == tool_name)) {
+        return Err(format!("{tool_name} is not available from {server_name}."));
+    }
+    if server_name == crate::browser::SERVER {
+        return crate::browser::call_guarded(tool_name, args, |a| conn.call_tool(tool_name, a))
+            .await;
+    }
+    if server_name == crate::computer::SERVER {
+        return crate::computer::call_guarded(tool_name, args, |a| conn.call_tool(tool_name, a))
+            .await;
+    }
     conn.call_tool(tool_name, args).await
 }
 
@@ -272,9 +343,18 @@ mod name_tests {
     #[test]
     fn a_public_name_routes_to_the_longest_server_that_fits() {
         let servers = ["foo", "foo__bar", "linear"];
-        assert_eq!(split_public_name("mcp__foo__bar__baz", servers), Some(("foo__bar".into(), "baz".into())));
-        assert_eq!(split_public_name("mcp__foo__qux", servers), Some(("foo".into(), "qux".into())));
-        assert_eq!(split_public_name("mcp__linear__create_issue", servers), Some(("linear".into(), "create_issue".into())));
+        assert_eq!(
+            split_public_name("mcp__foo__bar__baz", servers),
+            Some(("foo__bar".into(), "baz".into()))
+        );
+        assert_eq!(
+            split_public_name("mcp__foo__qux", servers),
+            Some(("foo".into(), "qux".into()))
+        );
+        assert_eq!(
+            split_public_name("mcp__linear__create_issue", servers),
+            Some(("linear".into(), "create_issue".into()))
+        );
         assert_eq!(split_public_name("mcp__unknown__x", servers), None);
         assert_eq!(split_public_name("mcp__linear__", servers), None);
         assert_eq!(split_public_name("read", servers), None);

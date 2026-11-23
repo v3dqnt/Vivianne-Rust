@@ -11,14 +11,21 @@ pub const RRF_K: u32 = 60;
 
 /// Merge ranked lists by id, summing RRF scores for items that appear in
 /// more than one list. Returns items sorted by descending merged score.
-pub fn rrf_merge<T: Clone>(lists: &[Vec<T>], get_id: impl Fn(&T) -> String, k: u32) -> Vec<(T, f64)> {
+pub fn rrf_merge<T: Clone>(
+    lists: &[Vec<T>],
+    get_id: impl Fn(&T) -> String,
+    k: u32,
+) -> Vec<(T, f64)> {
     let mut merged: Vec<(String, T, f64)> = Vec::new();
 
     for list in lists {
         for (rank, item) in list.iter().enumerate() {
             let id = get_id(item);
             let score = 1.0 / (k as f64 + rank as f64 + 1.0);
-            if let Some(existing) = merged.iter_mut().find(|(existing_id, _, _)| *existing_id == id) {
+            if let Some(existing) = merged
+                .iter_mut()
+                .find(|(existing_id, _, _)| *existing_id == id)
+            {
                 existing.2 += score;
             } else {
                 merged.push((id, item.clone(), score));
@@ -27,7 +34,10 @@ pub fn rrf_merge<T: Clone>(lists: &[Vec<T>], get_id: impl Fn(&T) -> String, k: u
     }
 
     merged.sort_by(|a, b| b.2.total_cmp(&a.2));
-    merged.into_iter().map(|(_, item, score)| (item, score)).collect()
+    merged
+        .into_iter()
+        .map(|(_, item, score)| (item, score))
+        .collect()
 }
 
 #[cfg(test)]

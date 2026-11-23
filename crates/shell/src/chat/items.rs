@@ -23,7 +23,11 @@ pub enum Item {
     Tool(ToolItem),
     Notice(String),
     /// A coding agent asks to do something. `answer` is `None` until the user decides.
-    Approval { id: String, title: String, answer: Option<bool> },
+    Approval {
+        id: String,
+        title: String,
+        answer: Option<bool>,
+    },
 }
 
 /// The transcript of a saved conversation: what was said, and each tool call with what it answered. The
@@ -41,7 +45,9 @@ pub fn from_history(history: &[vivianne_core::Message]) -> Vec<Item> {
                     items.push(Item::Assistant(message.text.clone()));
                 }
                 for call in &message.tool_calls {
-                    let answer = history.iter().find(|m| m.role == Role::Tool && m.tool_call_id.as_deref() == Some(&call.id));
+                    let answer = history.iter().find(|m| {
+                        m.role == Role::Tool && m.tool_call_id.as_deref() == Some(&call.id)
+                    });
                     items.push(Item::Tool(ToolItem {
                         id: call.id.clone(),
                         name: call.name.clone(),
@@ -70,10 +76,17 @@ pub enum Change {
 
 /// Records the user's answer to an approval; the index of the item, if it was waiting.
 pub fn answer_approval(items: &mut [Item], id: &str, allow: bool) -> Option<usize> {
-    let found = items.iter_mut().enumerate().find_map(|(index, item)| match item {
-        Item::Approval { id: waiting, answer, .. } if waiting == id && answer.is_none() => Some((index, answer)),
-        _ => None,
-    })?;
+    let found = items
+        .iter_mut()
+        .enumerate()
+        .find_map(|(index, item)| match item {
+            Item::Approval {
+                id: waiting,
+                answer,
+                ..
+            } if waiting == id && answer.is_none() => Some((index, answer)),
+            _ => None,
+        })?;
     *found.1 = Some(allow);
     Some(found.0)
 }
@@ -110,10 +123,14 @@ pub fn apply(items: &mut Vec<Item>, event: &AgentEvent) -> Change {
             args,
             ..
         } => {
-            let running = items.iter_mut().enumerate().rev().find_map(|(index, item)| match item {
-                Item::Tool(tool) if tool.id == *id => Some((index, tool)),
-                _ => None,
-            });
+            let running = items
+                .iter_mut()
+                .enumerate()
+                .rev()
+                .find_map(|(index, item)| match item {
+                    Item::Tool(tool) if tool.id == *id => Some((index, tool)),
+                    _ => None,
+                });
             let Some((index, tool)) = running else {
                 return Change::Nothing;
             };
@@ -126,7 +143,11 @@ pub fn apply(items: &mut Vec<Item>, event: &AgentEvent) -> Change {
             Change::Updated(index)
         }
         AgentEvent::Approval { id, title } => {
-            items.push(Item::Approval { id: id.clone(), title: title.clone(), answer: None });
+            items.push(Item::Approval {
+                id: id.clone(),
+                title: title.clone(),
+                answer: None,
+            });
             Change::Appended
         }
         AgentEvent::StepLimit => {
@@ -138,10 +159,15 @@ pub fn apply(items: &mut Vec<Item>, event: &AgentEvent) -> Change {
             Change::Appended
         }
         AgentEvent::Compacted { before, after } => {
-            items.push(Item::Notice(format!("Condensed the earlier conversation to make room ({before} to {after} tokens).")));
+            items.push(Item::Notice(format!(
+                "Condensed the earlier conversation to make room ({before} to {after} tokens)."
+            )));
             Change::Appended
         }
-        AgentEvent::Retrying { .. } | AgentEvent::Usage { .. } | AgentEvent::Stopped | AgentEvent::Done => Change::Nothing,
+        AgentEvent::Retrying { .. }
+        | AgentEvent::Usage { .. }
+        | AgentEvent::Stopped
+        | AgentEvent::Done => Change::Nothing,
     }
 }
 
@@ -173,7 +199,11 @@ mod tests {
     #[test]
     fn a_saved_conversation_comes_back_as_messages_and_tool_rows_without_the_checkpoint() {
         use vivianne_core::{Message, Role, ToolCall};
-        let call = ToolCall { id: "c".into(), name: "read".into(), args: json!({"path": "a.rs"}) };
+        let call = ToolCall {
+            id: "c".into(),
+            name: "read".into(),
+            args: json!({"path": "a.rs"}),
+        };
         let history = vec![
             Message::new(Role::User, "<compacted_history>\nsummary"),
             Message::new(Role::User, "look at a.rs"),
@@ -184,7 +214,9 @@ mod tests {
         let items = from_history(&history);
         assert_eq!(items.len(), 4);
         assert!(matches!(&items[0], Item::User(t) if t == "look at a.rs"));
-        assert!(matches!(&items[2], Item::Tool(t) if t.is_error && t.output.as_deref() == Some("error: no such file")));
+        assert!(
+            matches!(&items[2], Item::Tool(t) if t.is_error && t.output.as_deref() == Some("error: no such file"))
+        );
         assert!(matches!(&items[3], Item::Assistant(t) if t == "it is missing"));
     }
 
@@ -233,11 +265,23 @@ mod tests {
     #[test]
     fn each_event_says_what_it_changed() {
         let mut items = Vec::new();
-        assert_eq!(apply(&mut items, &AgentEvent::Text("a".into())), Change::Appended);
-        assert_eq!(apply(&mut items, &AgentEvent::Text("b".into())), Change::Updated(0));
+        assert_eq!(
+            apply(&mut items, &AgentEvent::Text("a".into())),
+            Change::Appended
+        );
+        assert_eq!(
+            apply(&mut items, &AgentEvent::Text("b".into())),
+            Change::Updated(0)
+        );
         assert_eq!(apply(&mut items, &tool_start("1")), Change::Appended);
-        assert_eq!(apply(&mut items, &tool_end("1", "ok", false)), Change::Updated(1));
-        assert_eq!(apply(&mut items, &tool_end("gone", "ok", false)), Change::Nothing);
+        assert_eq!(
+            apply(&mut items, &tool_end("1", "ok", false)),
+            Change::Updated(1)
+        );
+        assert_eq!(
+            apply(&mut items, &tool_end("gone", "ok", false)),
+            Change::Nothing
+        );
         assert_eq!(apply(&mut items, &AgentEvent::Done), Change::Nothing);
     }
 
@@ -261,18 +305,29 @@ mod tests {
             args: Some(json!({"old_string": "a", "new_string": "b"})),
         };
         apply(&mut items, &end);
-        let Item::Tool(tool) = &items[0] else { panic!("not a tool") };
+        let Item::Tool(tool) = &items[0] else {
+            panic!("not a tool")
+        };
         assert_eq!(tool.args["new_string"], "b");
     }
 
     #[test]
     fn an_approval_waits_until_answered_and_is_answered_once() {
         let mut items = Vec::new();
-        let ask = AgentEvent::Approval { id: "a1".into(), title: "Run tests".into() };
+        let ask = AgentEvent::Approval {
+            id: "a1".into(),
+            title: "Run tests".into(),
+        };
         assert_eq!(apply(&mut items, &ask), Change::Appended);
         assert_eq!(answer_approval(&mut items, "a1", true), Some(0));
         assert_eq!(answer_approval(&mut items, "a1", false), None);
         assert_eq!(answer_approval(&mut items, "other", true), None);
-        assert!(matches!(&items[0], Item::Approval { answer: Some(true), .. }));
+        assert!(matches!(
+            &items[0],
+            Item::Approval {
+                answer: Some(true),
+                ..
+            }
+        ));
     }
 }

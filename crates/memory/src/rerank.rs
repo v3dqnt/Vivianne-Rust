@@ -54,10 +54,12 @@ struct TopicTracker {
 static TOPIC_TRACKER: OnceLock<Mutex<TopicTracker>> = OnceLock::new();
 
 fn topic_tracker() -> &'static Mutex<TopicTracker> {
-    TOPIC_TRACKER.get_or_init(|| Mutex::new(TopicTracker {
-        last_embedding: None,
-        turns_since_rerank: 0,
-    }))
+    TOPIC_TRACKER.get_or_init(|| {
+        Mutex::new(TopicTracker {
+            last_embedding: None,
+            turns_since_rerank: 0,
+        })
+    })
 }
 
 /// Determine whether the LLM reranker should run this turn.
@@ -246,10 +248,11 @@ pub async fn rerank(
     }
 
     let prompt = build_rerank_prompt(focused_query, candidates)?;
-    let response = vivianne_ai::ai::completion::complete_background(app, model, LLM_RERANK_SYSTEM, &prompt)
-        .await
-        .map_err(|e| log::warn!("[memory_rerank] LLM rerank call failed: {e}"))
-        .ok()?;
+    let response =
+        vivianne_ai::ai::completion::complete_background(app, model, LLM_RERANK_SYSTEM, &prompt)
+            .await
+            .map_err(|e| log::warn!("[memory_rerank] LLM rerank call failed: {e}"))
+            .ok()?;
 
     let indices = parse_rerank_response(&response)?;
 
@@ -341,7 +344,10 @@ mod tests {
 
     #[test]
     fn build_prompt_includes_query_and_entries() {
-        let entries = vec![test_entry("e1", "memory one"), test_entry("e2", "memory two")];
+        let entries = vec![
+            test_entry("e1", "memory one"),
+            test_entry("e2", "memory two"),
+        ];
         let prompt = build_rerank_prompt("what is this?", &entries).expect("should build");
         assert!(prompt.contains("CURRENT REQUEST: what is this?"));
         assert!(prompt.contains("1. memory one"));
@@ -354,7 +360,11 @@ mod tests {
         // score — below GATE_REL_FLOOR (0.90), so the gate correctly cuts it.
         let entries = vec![test_entry("a", "aaa"), test_entry("b", "bbb")];
         let result = rerank_and_gate(entries, 8);
-        assert_eq!(result.len(), 1, "the dynamic gate should drop entries whose score falls below 90% of the top score");
+        assert_eq!(
+            result.len(),
+            1,
+            "the dynamic gate should drop entries whose score falls below 90% of the top score"
+        );
     }
 
     #[test]

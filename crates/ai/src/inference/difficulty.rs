@@ -50,41 +50,184 @@ pub struct Verdict {
 
 /// Words that mean the work needs thinking, not typing.
 const HARD_WORDS: &[&str] = &[
-    "architecture", "refactor", "redesign", "design", "root cause", "race condition", "deadlock", "performance", "optimi", "migrate", "security",
-    "prove", "derive", "algorithm", "across the codebase", "end to end", "end-to-end", "investigate", "why does", "why is", "debug", "concurrency",
-    "trade-off", "tradeoff", "plan the", "strategy", "multi-step", "reverse engineer",
+    "architecture",
+    "refactor",
+    "redesign",
+    "design",
+    "root cause",
+    "race condition",
+    "deadlock",
+    "performance",
+    "optimi",
+    "migrate",
+    "security",
+    "prove",
+    "derive",
+    "algorithm",
+    "across the codebase",
+    "end to end",
+    "end-to-end",
+    "investigate",
+    "why does",
+    "why is",
+    "debug",
+    "concurrency",
+    "trade-off",
+    "tradeoff",
+    "plan the",
+    "strategy",
+    "multi-step",
+    "reverse engineer",
 ];
 
 /// Words that mean it is a small, bounded job.
 const EASY_WORDS: &[&str] = &[
-    "rename", "typo", "list ", "show me", "what is", "what's", "summarise", "summarize", "translate", "format", "sort ", "count ", "find the file",
-    "where is", "open ", "read ", "tl;dr", "one line", "quick", "simple",
+    "rename",
+    "typo",
+    "list ",
+    "show me",
+    "what is",
+    "what's",
+    "summarise",
+    "summarize",
+    "translate",
+    "format",
+    "sort ",
+    "count ",
+    "find the file",
+    "where is",
+    "open ",
+    "read ",
+    "tl;dr",
+    "one line",
+    "quick",
+    "simple",
 ];
 
 /// Verbs that ask for something to be made.
-const MAKE_VERBS: &[&str] = &["create", "build", "make", "implement", "develop", "write", "design", "set up", "setup", "generate", "scaffold", "code"];
+const MAKE_VERBS: &[&str] = &[
+    "create",
+    "build",
+    "make",
+    "implement",
+    "develop",
+    "write",
+    "design",
+    "set up",
+    "setup",
+    "generate",
+    "scaffold",
+    "code",
+];
 
 /// Things that are made of many parts. "A website" is not a one-liner.
 const BIG_THINGS: &[&str] = &[
-    "website", "web site", "web app", "webapp", "app", "application", "platform", "system", "game", "api", "backend", "back-end", "frontend", "front-end",
-    "dashboard", "pipeline", "compiler", "framework", "service", "server", "database", "e-commerce", "ecommerce", "store", "portal", "extension", "plugin",
-    "bot", "cli", "library", "engine", "interpreter", "simulator", "crm", "saas",
+    "website",
+    "web site",
+    "web app",
+    "webapp",
+    "app",
+    "application",
+    "platform",
+    "system",
+    "game",
+    "api",
+    "backend",
+    "back-end",
+    "frontend",
+    "front-end",
+    "dashboard",
+    "pipeline",
+    "compiler",
+    "framework",
+    "service",
+    "server",
+    "database",
+    "e-commerce",
+    "ecommerce",
+    "store",
+    "portal",
+    "extension",
+    "plugin",
+    "bot",
+    "cli",
+    "library",
+    "engine",
+    "interpreter",
+    "simulator",
+    "crm",
+    "saas",
 ];
 
 /// Pieces that make a build bigger.
-const SCOPE_WORDS: &[&str] = &["auth", "login", "database", "tests", "deploy", "full-stack", "full stack", "responsive", "payments", "admin", "docker", "ci"];
+const SCOPE_WORDS: &[&str] = &[
+    "auth",
+    "login",
+    "database",
+    "tests",
+    "deploy",
+    "full-stack",
+    "full stack",
+    "responsive",
+    "payments",
+    "admin",
+    "docker",
+    "ci",
+];
 
 /// Greetings, thanks and one-word acknowledgements: no task in them, so no
 /// model is needed to see they are easy.
 pub fn is_small_talk(text: &str) -> bool {
-    let t: String = text.trim().to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect();
+    let t: String = text
+        .trim()
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+        .collect();
     let words: Vec<&str> = t.split_whitespace().collect();
     if words.is_empty() {
         return true;
     }
     const TALK: &[&str] = &[
-        "hi", "hello", "hey", "yo", "sup", "thanks", "thank", "you", "thx", "ok", "okay", "yes", "no", "yep", "nope", "sure", "cool", "nice", "great", "good", "morning",
-        "evening", "afternoon", "night", "bye", "goodbye", "please", "lol", "hmm", "test", "testing", "there", "how", "are", "whats", "up", "again", "got", "it",
+        "hi",
+        "hello",
+        "hey",
+        "yo",
+        "sup",
+        "thanks",
+        "thank",
+        "you",
+        "thx",
+        "ok",
+        "okay",
+        "yes",
+        "no",
+        "yep",
+        "nope",
+        "sure",
+        "cool",
+        "nice",
+        "great",
+        "good",
+        "morning",
+        "evening",
+        "afternoon",
+        "night",
+        "bye",
+        "goodbye",
+        "please",
+        "lol",
+        "hmm",
+        "test",
+        "testing",
+        "there",
+        "how",
+        "are",
+        "whats",
+        "up",
+        "again",
+        "got",
+        "it",
     ];
     words.len() <= 4 && words.iter().all(|w| TALK.contains(w))
 }
@@ -98,7 +241,12 @@ pub fn rules(text: &str) -> Difficulty {
     let words = t.split_whitespace().count();
     // How many separate things are asked: sentences, list items, "and then".
     let asks = t.matches('?').count()
-        + t.lines().filter(|l| l.trim_start().starts_with(['-', '*', '1', '2', '3', '4', '5'])).count()
+        + t.lines()
+            .filter(|l| {
+                l.trim_start()
+                    .starts_with(['-', '*', '1', '2', '3', '4', '5'])
+            })
+            .count()
         + t.matches(" and then ").count()
         + t.matches(" then ").count();
     let hard_hits = HARD_WORDS.iter().filter(|w| t.contains(*w)).count();
@@ -107,8 +255,17 @@ pub fn rules(text: &str) -> Difficulty {
     let mut score: i32 = 0;
     // Asking for something to be built is at least a normal task, and
     // a whole website, app or system is a big one.
-    let makes = MAKE_VERBS.iter().any(|v| t.split(|c: char| !c.is_alphanumeric() && c != '-').any(|w| w == *v) || t.contains(&format!("{v} a ")) || t.contains(&format!("{v} an ")));
-    let big = BIG_THINGS.iter().any(|b| t.split(|c: char| !c.is_alphanumeric() && c != '-').any(|w| w == *b) || t.contains(&format!(" {b} ")));
+    let makes = MAKE_VERBS.iter().any(|v| {
+        t.split(|c: char| !c.is_alphanumeric() && c != '-')
+            .any(|w| w == *v)
+            || t.contains(&format!("{v} a "))
+            || t.contains(&format!("{v} an "))
+    });
+    let big = BIG_THINGS.iter().any(|b| {
+        t.split(|c: char| !c.is_alphanumeric() && c != '-')
+            .any(|w| w == *b)
+            || t.contains(&format!(" {b} "))
+    });
     if makes && big {
         score += 2;
         score += SCOPE_WORDS.iter().filter(|w| t.contains(*w)).count().min(2) as i32;
@@ -157,7 +314,10 @@ pub fn questions() -> serde_json::Value {
 }
 
 fn p_of(answers: &serde_json::Value, q: &str) -> f64 {
-    answers.pointer(&format!("/{q}/noul")).and_then(|v| v.as_f64()).unwrap_or(0.0)
+    answers
+        .pointer(&format!("/{q}/noul"))
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0)
 }
 
 /// Laya's reading, only when it is clearly sure: the winning level has at
@@ -171,7 +331,11 @@ pub fn from_laya(answers: &serde_json::Value) -> Option<Difficulty> {
     let level = Difficulty::parse(choice)?;
     let probs = answers.pointer("/difficulty/probabilities")?.as_object()?;
     let top = probs.get(choice).and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let second = probs.iter().filter(|(k, _)| k.as_str() != choice).filter_map(|(_, v)| v.as_f64()).fold(0.0_f64, f64::max);
+    let second = probs
+        .iter()
+        .filter(|(k, _)| k.as_str() != choice)
+        .filter_map(|(_, v)| v.as_f64())
+        .fold(0.0_f64, f64::max);
     if top < 0.5 || top - second < 0.15 {
         return None;
     }
@@ -193,15 +357,23 @@ struct JevAnswer {
 pub async fn classify(text: &str) -> Verdict {
     // No task in it: nothing for a model to weigh.
     if is_small_talk(text) {
-        return Verdict { level: Difficulty::Easy, by: "rules" };
+        return Verdict {
+            level: Difficulty::Easy,
+            by: "rules",
+        };
     }
     // The rules are the floor: a model can say a task is harder than the words
     // suggest, but a request to build a website never reads as trivial.
     let floor = rules(text);
     if crate::ai::laya::installed() && crate::ai::laya::enabled().await {
-        if let Some(answers) = crate::ai::laya::ask(text, questions(), Duration::from_millis(1500)).await {
+        if let Some(answers) =
+            crate::ai::laya::ask(text, questions(), Duration::from_millis(1500)).await
+        {
             if let Some(level) = from_laya(&answers) {
-                return Verdict { level: level.max(floor), by: "laya" };
+                return Verdict {
+                    level: level.max(floor),
+                    by: "laya",
+                };
             }
         }
     }
@@ -217,12 +389,18 @@ pub async fn classify(text: &str) -> Verdict {
         if let Some(a) = crate::ai::jev::decide::<JevAnswer>(schema, text).await {
             if a.confidence >= 0.5 {
                 if let Some(level) = Difficulty::parse(&a.difficulty) {
-                    return Verdict { level: level.max(floor), by: "jev" };
+                    return Verdict {
+                        level: level.max(floor),
+                        by: "jev",
+                    };
                 }
             }
         }
     }
-    Verdict { level: floor, by: "rules" }
+    Verdict {
+        level: floor,
+        by: "rules",
+    }
 }
 
 /// Try the classifier on a task, from Settings.
@@ -261,7 +439,16 @@ mod tests {
 
     #[test]
     fn small_talk_is_easy_without_asking_a_model() {
-        for t in ["hi", "Hello!", "hey there", "thanks", "thank you", "ok", "how are you", "good morning"] {
+        for t in [
+            "hi",
+            "Hello!",
+            "hey there",
+            "thanks",
+            "thank you",
+            "ok",
+            "how are you",
+            "good morning",
+        ] {
             assert!(is_small_talk(t), "{t}");
             assert_eq!(rules(t), Difficulty::Easy, "{t}");
         }
@@ -273,8 +460,14 @@ mod tests {
     fn building_something_is_never_trivial() {
         assert!(rules("create a website") >= Difficulty::Medium);
         assert!(rules("build me an app") >= Difficulty::Medium);
-        assert_eq!(rules("build a full-stack web app with auth, a database and tests"), Difficulty::Hard);
-        assert_eq!(rules("make a script that backs up my notes folder"), Difficulty::Medium);
+        assert_eq!(
+            rules("build a full-stack web app with auth, a database and tests"),
+            Difficulty::Hard
+        );
+        assert_eq!(
+            rules("make a script that backs up my notes folder"),
+            Difficulty::Medium
+        );
     }
 
     #[test]

@@ -20,6 +20,8 @@ path = "src/bin/spike_terminal.rs"
 
 [dependencies]
 vivianne-memory.workspace = true
+vivianne-multiplayer.workspace = true
+vivianne-remote.workspace = true
 uuid = { version = "1", features = ["v4"] }
 vivianne-core.workspace = true
 vivianne-ai.workspace = true
@@ -30,12 +32,17 @@ vivianne-tools.workspace = true
 async-trait.workspace = true
 futures.workspace = true
 tokio.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 # One exact version, upgraded deliberately (ADR 0016). Kit brings its own GPUI snapshot.
-gpui-kit = "=0.9.1"
+anyhow = "1"
+gltf = { version = "1", default-features = false, features = ["utils", "names"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+gpui-kit = { version = "=0.9.1", features = ["syntect"] }
 raw-window-handle = "0.6"
 alacritty_terminal = "0.25"
 which = "7"
+chrono = "0.4"
 tokio-util = "0.7"
 
 [target.'cfg(windows)'.dependencies]

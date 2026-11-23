@@ -7,18 +7,25 @@
 //! other models live in [`resilience`].
 
 mod agent;
+pub mod attachments;
 mod attempts;
+pub mod automation;
+pub mod checkpoints;
 mod compact;
+pub mod config;
 pub mod context;
 mod event;
-mod history;
-pub mod checkpoints;
+pub mod history;
 pub mod instructions;
+pub mod ledger;
+pub mod orchestration;
+pub mod profiles;
+pub mod projects;
+mod prompt;
+pub mod resilience;
 pub mod store;
 pub mod thread_tools;
 pub mod title;
-mod prompt;
-pub mod resilience;
 
 pub use agent::{Agent, AgentError, ContextSource, Target};
 pub use event::AgentEvent;

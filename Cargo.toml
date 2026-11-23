@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/core",
+    "crates/attachments",
     "crates/runtime",
     "crates/providers",
     "crates/tools",
@@ -11,6 +12,8 @@ members = [
     "crates/ai",
     "crates/telemetry",
     "crates/memory",
+    "crates/multiplayer",
+    "crates/remote",
     "crates/shell",
 ]
 
@@ -37,9 +40,16 @@ vivianne-providers = { path = "crates/providers" }
 vivianne-ai = { path = "crates/ai" }
 vivianne-telemetry = { path = "crates/telemetry" }
 vivianne-memory = { path = "crates/memory" }
+vivianne-multiplayer = { path = "crates/multiplayer" }
+vivianne-remote = { path = "crates/remote" }
 vivianne-tools = { path = "crates/tools" }
 vivianne-plugins = { path = "crates/plugins" }
 vivianne-app-api = { path = "crates/app-api" }
+
+# gpui-component's Settings dialog is restyled (a flat sidebar, a real page header, headings that read as headings).
+# Vendored from 0.9.1 with those changes only; see vendor/gpui-component/README.md.
+[patch.crates-io]
+gpui-component = { path = "vendor/gpui-component" }
 
 [workspace.lints.rust]
 # deny, not forbid: only the shell's Windows glue may opt in with #[allow(unsafe_code)].

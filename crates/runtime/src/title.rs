@@ -36,7 +36,10 @@ pub fn fallback_title(text: &str) -> String {
             }
         }
     }
-    let words: Vec<&str> = s.split_whitespace().filter(|w| !w.starts_with("http://") && !w.starts_with("https://")).collect();
+    let words: Vec<&str> = s
+        .split_whitespace()
+        .filter(|w| !w.starts_with("http://") && !w.starts_with("https://"))
+        .collect();
     let mut s = words.join(" ");
     s.retain(|c| !matches!(c, '*' | '_' | '`' | '#' | '>'));
     let s = s.trim();
@@ -44,7 +47,8 @@ pub fn fallback_title(text: &str) -> String {
     let mut end = s.len();
     let chars: Vec<(usize, char)> = s.char_indices().collect();
     for (i, &(at, c)) in chars.iter().enumerate() {
-        if matches!(c, '.' | '?' | '!') && chars.get(i + 1).is_none_or(|&(_, n)| n == ' ') && at > 8 {
+        if matches!(c, '.' | '?' | '!') && chars.get(i + 1).is_none_or(|&(_, n)| n == ' ') && at > 8
+        {
             end = at + c.len_utf8();
             break;
         }
@@ -55,7 +59,9 @@ pub fn fallback_title(text: &str) -> String {
     }
     let cut = cut_at_word(sentence, MAX_CHARS);
     let mut chars = cut.chars();
-    chars.next().map_or_else(String::new, |first| first.to_uppercase().chain(chars).collect())
+    chars.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(chars).collect()
+    })
 }
 
 fn cut_at_word(s: &str, max: usize) -> String {
@@ -88,7 +94,12 @@ pub fn parse_title(answer: &str) -> Option<String> {
         }
     }
     // Quotes and a full stop can wrap each other (`"Title".` or `"Title."`), so trim until neither is left.
-    let t = t.trim_matches(|c: char| matches!(c, '"' | '\'' | '`' | '*' | '“' | '”' | '‘' | '’' | '#' | '.') || c.is_whitespace());
+    let t = t.trim_matches(|c: char| {
+        matches!(
+            c,
+            '"' | '\'' | '`' | '*' | '“' | '”' | '‘' | '’' | '#' | '.'
+        ) || c.is_whitespace()
+    });
     if t.is_empty() || t.chars().count() > 60 || t.split_whitespace().count() > 12 {
         return None;
     }
@@ -101,15 +112,27 @@ pub fn parse_title(answer: &str) -> Option<String> {
 pub fn decide(existing: Option<(&str, &str)>, first_ask: Option<&str>) -> (String, &'static str) {
     match existing {
         Some((name, USER)) if !name.trim().is_empty() => (name.to_owned(), USER),
-        Some((name, AUTO)) if !name.trim().is_empty() && name != "New chat" => (name.to_owned(), AUTO),
-        _ => (first_ask.map_or_else(|| "New chat".to_owned(), fallback_title), AUTO),
+        Some((name, AUTO)) if !name.trim().is_empty() && name != "New chat" => {
+            (name.to_owned(), AUTO)
+        }
+        _ => (
+            first_ask.map_or_else(|| "New chat".to_owned(), fallback_title),
+            AUTO,
+        ),
     }
 }
 
 /// The first thing a person asked: the first user message that is not a condensed-history checkpoint.
 #[must_use]
 pub fn first_ask(messages: &[Message]) -> Option<&str> {
-    messages.iter().find(|m| m.role == Role::User && !m.text.trim().is_empty() && !m.text.trim_start().starts_with(OPEN)).map(|m| m.text.as_str())
+    messages
+        .iter()
+        .find(|m| {
+            m.role == Role::User
+                && !m.text.trim().is_empty()
+                && !m.text.trim_start().starts_with(OPEN)
+        })
+        .map(|m| m.text.as_str())
 }
 
 #[cfg(test)]
@@ -118,33 +141,65 @@ mod tests {
 
     #[test]
     fn a_title_is_the_first_sentence_cleaned_and_cut_at_a_word() {
-        assert_eq!(fallback_title("fix the login timeout. It happens on mobile"), "Fix the login timeout");
-        assert_eq!(fallback_title("```rust\nfn main() {}\n``` why does this panic?"), "Why does this panic?");
-        assert_eq!(fallback_title("see https://example.com/x for **context**"), "See for context");
-        let long = fallback_title("please refactor the authentication module so that sessions are stored in the database");
+        assert_eq!(
+            fallback_title("fix the login timeout. It happens on mobile"),
+            "Fix the login timeout"
+        );
+        assert_eq!(
+            fallback_title("```rust\nfn main() {}\n``` why does this panic?"),
+            "Why does this panic?"
+        );
+        assert_eq!(
+            fallback_title("see https://example.com/x for **context**"),
+            "See for context"
+        );
+        let long = fallback_title(
+            "please refactor the authentication module so that sessions are stored in the database",
+        );
         assert!(long.chars().count() <= 49 && long.ends_with('…'), "{long}");
         assert_eq!(fallback_title("   "), "New chat");
     }
 
     #[test]
     fn a_models_answer_is_a_title_only_if_it_looks_like_one() {
-        assert_eq!(parse_title("Title: \"Fix login timeout\"."), Some("Fix login timeout".to_owned()));
-        assert_eq!(parse_title("\n\n**Plot cat weights**\nmore"), Some("Plot cat weights".to_owned()));
+        assert_eq!(
+            parse_title("Title: \"Fix login timeout\"."),
+            Some("Fix login timeout".to_owned())
+        );
+        assert_eq!(
+            parse_title("\n\n**Plot cat weights**\nmore"),
+            Some("Plot cat weights".to_owned())
+        );
         assert!(parse_title(&"word ".repeat(20)).is_none());
         assert!(parse_title("  ").is_none());
     }
 
     #[test]
     fn what_the_user_typed_is_never_replaced_and_a_made_title_stays() {
-        assert_eq!(decide(Some(("My name", USER)), Some("something else")), ("My name".to_owned(), USER));
-        assert_eq!(decide(Some(("Fix login", AUTO)), Some("other")), ("Fix login".to_owned(), AUTO));
-        assert_eq!(decide(None, Some("fix the build please")), ("Fix the build please".to_owned(), AUTO));
-        assert_eq!(decide(Some(("New chat", AUTO)), Some("hello there friend")).0, "Hello there friend");
+        assert_eq!(
+            decide(Some(("My name", USER)), Some("something else")),
+            ("My name".to_owned(), USER)
+        );
+        assert_eq!(
+            decide(Some(("Fix login", AUTO)), Some("other")),
+            ("Fix login".to_owned(), AUTO)
+        );
+        assert_eq!(
+            decide(None, Some("fix the build please")),
+            ("Fix the build please".to_owned(), AUTO)
+        );
+        assert_eq!(
+            decide(Some(("New chat", AUTO)), Some("hello there friend")).0,
+            "Hello there friend"
+        );
     }
 
     #[test]
     fn the_first_ask_skips_a_checkpoint() {
-        let history = vec![Message::new(Role::User, format!("{OPEN}\nsummary")), Message::new(Role::User, "the real ask")];
+        let history = vec![
+            Message::new(Role::User, format!("{OPEN}\nsummary")),
+            Message::new(Role::User, "the real ask"),
+        ];
         assert_eq!(first_ask(&history), Some("the real ask"));
     }
 }

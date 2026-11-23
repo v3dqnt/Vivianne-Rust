@@ -55,12 +55,17 @@ pub(crate) struct Limits {
 
 impl Default for Limits {
     fn default() -> Self {
-        Self { max_events: MAX_EVENTS, trim_at_bytes: TRIM_AT_BYTES }
+        Self {
+            max_events: MAX_EVENTS,
+            trim_at_bytes: TRIM_AT_BYTES,
+        }
     }
 }
 
 pub(crate) fn now_ms() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
 
 /// The folder the files live in (`~/.viv/agent`), or any folder for a test.
@@ -76,7 +81,10 @@ impl Store {
     }
 
     pub(crate) fn at(dir: PathBuf) -> Self {
-        Self { dir, limits: Limits::default() }
+        Self {
+            dir,
+            limits: Limits::default(),
+        }
     }
 
     #[cfg(test)]
@@ -99,8 +107,13 @@ impl Store {
 
     /// Records one event: the kind and properties are cleaned first, so what is written is never free text.
     pub(crate) fn track(&self, kind: &str, props: &Value) -> Result<(), String> {
-        let kind = props::clean_kind(kind).ok_or_else(|| format!("'{kind}' is not an event name"))?;
-        let event = TelemetryEvent { ts: now_ms(), kind: kind.to_owned(), props: props::clean(props) };
+        let kind =
+            props::clean_kind(kind).ok_or_else(|| format!("'{kind}' is not an event name"))?;
+        let event = TelemetryEvent {
+            ts: now_ms(),
+            kind: kind.to_owned(),
+            props: props::clean(props),
+        };
         self.append(&event)
     }
 
@@ -109,9 +122,14 @@ impl Store {
         let _guard = APPEND.lock().unwrap_or_else(PoisonError::into_inner);
         std::fs::create_dir_all(&self.dir).map_err(|e| format!("folder: {e}"))?;
         let path = self.events_path();
-        let mut file = std::fs::OpenOptions::new().create(true).append(true).open(&path).map_err(|e| format!("open: {e}"))?;
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .map_err(|e| format!("open: {e}"))?;
         // One write per line, so a reader never sees half of one.
-        file.write_all(format!("{line}\n").as_bytes()).map_err(|e| format!("write: {e}"))?;
+        file.write_all(format!("{line}\n").as_bytes())
+            .map_err(|e| format!("write: {e}"))?;
         // The size is a stat call, not a read: the file is only opened again when it has grown well past the cap.
         let size = file.metadata().map_or(0, |m| m.len());
         drop(file);
@@ -124,7 +142,9 @@ impl Store {
     /// Keeps the newest events: at most `max_events`, and at most half the trim size in bytes, so one trim is
     /// followed by many appends and an old file with long lines cannot be trimmed on every one.
     fn trim(&self, path: &Path) {
-        let Ok(contents) = std::fs::read_to_string(path) else { return };
+        let Ok(contents) = std::fs::read_to_string(path) else {
+            return;
+        };
         let budget = usize::try_from(self.limits.trim_at_bytes / 2).unwrap_or(usize::MAX);
         let (mut kept, mut bytes) = (Vec::new(), 0_usize);
         for line in contents.lines().rev().take(self.limits.max_events) {
@@ -136,15 +156,21 @@ impl Store {
         }
         kept.reverse();
         let tmp = path.with_extension("tmp");
-        let written = std::fs::write(&tmp, format!("{}\n", kept.join("\n"))).and_then(|()| std::fs::rename(&tmp, path));
+        let written = std::fs::write(&tmp, format!("{}\n", kept.join("\n")))
+            .and_then(|()| std::fs::rename(&tmp, path));
         if let Err(e) = written {
             log::debug!("[telemetry] could not trim: {e}");
         }
     }
 
     pub(crate) fn read_events(&self) -> Vec<TelemetryEvent> {
-        let Ok(contents) = std::fs::read_to_string(self.events_path()) else { return Vec::new() };
-        contents.lines().filter_map(|line| serde_json::from_str::<TelemetryEvent>(line).ok()).collect()
+        let Ok(contents) = std::fs::read_to_string(self.events_path()) else {
+            return Vec::new();
+        };
+        contents
+            .lines()
+            .filter_map(|line| serde_json::from_str::<TelemetryEvent>(line).ok())
+            .collect()
     }
 
     /// Writes a crash through a temp file and a rename, and forgets the oldest beyond the cap.
@@ -160,7 +186,14 @@ impl Store {
     pub(crate) fn read_crashes(&self) -> Vec<CrashRecord> {
         let mut files = crash_files(&self.crashes_dir());
         files.reverse();
-        files.iter().filter_map(|p| std::fs::read_to_string(p).ok().and_then(|s| serde_json::from_str::<CrashRecord>(&s).ok())).collect()
+        files
+            .iter()
+            .filter_map(|p| {
+                std::fs::read_to_string(p)
+                    .ok()
+                    .and_then(|s| serde_json::from_str::<CrashRecord>(&s).ok())
+            })
+            .collect()
     }
 
     /// Deletes every event and crash. It really deletes: the user owns this data.
@@ -176,22 +209,36 @@ impl Store {
                 Err(e) => failed.push(format!("{}: {e}", file.display())),
             }
         }
-        if failed.is_empty() { Ok(()) } else { Err(format!("Could not delete: {}", failed.join("; "))) }
+        if failed.is_empty() {
+            Ok(())
+        } else {
+            Err(format!("Could not delete: {}", failed.join("; ")))
+        }
     }
 }
 
 /// The crash files, oldest first. Their names carry the time (`crash-<millis>.json`); they are ordered by that
 /// number, not by name, since "crash-10" sorts before "crash-9" as text.
 fn crash_files(dir: &Path) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
-    let mut files: Vec<PathBuf> = entries.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "json")).collect();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut files: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e == "json"))
+        .collect();
     files.sort_by_key(|p| (crash_time(p), p.clone()));
     files
 }
 
 /// The time in a crash file's name, or 0 for a name that has none.
 fn crash_time(path: &Path) -> u64 {
-    path.file_stem().and_then(|s| s.to_str()).and_then(|s| s.strip_prefix("crash-")).and_then(|n| n.parse().ok()).unwrap_or(0)
+    path.file_stem()
+        .and_then(|s| s.to_str())
+        .and_then(|s| s.strip_prefix("crash-"))
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(0)
 }
 
 fn prune_crashes(dir: &Path) {
@@ -210,19 +257,35 @@ mod tests {
     use super::*;
 
     fn temp_store() -> Store {
-        let dir = std::env::temp_dir().join(format!("vivianne-telemetry-{}-{}", std::process::id(), now_ms()));
+        let dir = std::env::temp_dir().join(format!(
+            "vivianne-telemetry-{}-{}",
+            std::process::id(),
+            now_ms()
+        ));
         let dir = dir.join(format!("{:?}", std::thread::current().id()).replace(['(', ')'], ""));
         Store::at(dir)
     }
 
     fn crash(ts: u64) -> CrashRecord {
-        CrashRecord { ts, message: "boom".into(), location: "a.rs:1:1".into(), backtrace: "trace".into(), app_version: "0.0.1".into(), os: "windows x86_64".into() }
+        CrashRecord {
+            ts,
+            message: "boom".into(),
+            location: "a.rs:1:1".into(),
+            backtrace: "trace".into(),
+            app_version: "0.0.1".into(),
+            os: "windows x86_64".into(),
+        }
     }
 
     #[test]
     fn an_event_is_one_line_with_clean_props_and_is_read_back() {
         let store = temp_store();
-        store.track("turn.complete", &json!({ "provider": "openai", "ms": 900, "note": "free text is not kept" })).unwrap();
+        store
+            .track(
+                "turn.complete",
+                &json!({ "provider": "openai", "ms": 900, "note": "free text is not kept" }),
+            )
+            .unwrap();
         let text = std::fs::read_to_string(store.events_path()).unwrap();
         assert_eq!(text.lines().count(), 1);
         let events = store.read_events();
@@ -240,7 +303,9 @@ mod tests {
                 let store = store.clone();
                 std::thread::spawn(move || {
                     for n in 0..60 {
-                        store.track("test.event", &json!({ "thread": t, "n": n })).unwrap();
+                        store
+                            .track("test.event", &json!({ "thread": t, "n": n }))
+                            .unwrap();
                     }
                 })
             })
@@ -250,13 +315,20 @@ mod tests {
         }
         let text = std::fs::read_to_string(store.events_path()).unwrap();
         assert_eq!(text.lines().count(), 480);
-        assert_eq!(store.read_events().len(), 480, "every line is a whole event");
+        assert_eq!(
+            store.read_events().len(),
+            480,
+            "every line is a whole event"
+        );
         let _ = std::fs::remove_dir_all(store.dir());
     }
 
     #[test]
     fn the_file_is_trimmed_only_once_it_is_well_past_its_size_and_keeps_the_newest() {
-        let limits = Limits { max_events: 10, trim_at_bytes: 4_000 };
+        let limits = Limits {
+            max_events: 10,
+            trim_at_bytes: 4_000,
+        };
         let store = temp_store().with_limits(limits);
         for n in 0..30 {
             store.track("test.event", &json!({ "n": n })).unwrap();
@@ -267,8 +339,16 @@ mod tests {
             store.track("test.event", &json!({ "n": n })).unwrap();
         }
         let events = store.read_events();
-        assert!(events.len() <= 10 + 60, "trimmed to the cap, then grew a little: {}", events.len());
-        assert_eq!(events.last().and_then(|e| e.props["n"].as_u64()), Some(119), "the newest event is kept");
+        assert!(
+            events.len() <= 10 + 60,
+            "trimmed to the cap, then grew a little: {}",
+            events.len()
+        );
+        assert_eq!(
+            events.last().and_then(|e| e.props["n"].as_u64()),
+            Some(119),
+            "the newest event is kept"
+        );
         assert!(events.len() < 120, "the oldest were dropped");
         assert!(!store.events_path().with_extension("tmp").exists());
         let _ = std::fs::remove_dir_all(store.dir());
@@ -283,7 +363,13 @@ mod tests {
         let crashes = store.read_crashes();
         assert_eq!(crashes.len(), MAX_CRASHES);
         assert_eq!(crashes[0].ts, MAX_CRASHES as u64 + 5);
-        assert!(std::fs::read_dir(store.crashes_dir()).unwrap().flatten().all(|e| e.path().extension().is_some_and(|x| x == "json")), "no temp file is left");
+        assert!(
+            std::fs::read_dir(store.crashes_dir())
+                .unwrap()
+                .flatten()
+                .all(|e| e.path().extension().is_some_and(|x| x == "json")),
+            "no temp file is left"
+        );
         let _ = std::fs::remove_dir_all(store.dir());
     }
 

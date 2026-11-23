@@ -20,8 +20,8 @@ use vivianne_ai::ai::env_api_keys::get_env_api_key;
 use vivianne_ai::ai::provider_registry::provider_spec;
 use vivianne_ai::host::{settings_blocking, stored_api_key};
 
-use crate::ai_provider::AiProvider;
 use crate::Provider;
+use crate::ai_provider::AiProvider;
 
 const DEFAULT_CHOICES: [&str; 4] = ["anthropic", "vercel", "openai", "google"];
 
@@ -48,10 +48,18 @@ pub fn provider_for(id: &str) -> Result<Arc<dyn Provider>, String> {
     if id == "openai"
         && let Ok(base) = std::env::var("OPENAI_BASE_URL")
     {
-        return Ok(Arc::new(AiProvider::new(LOCAL_PROVIDER, Some(base), key_for("openai"))));
+        return Ok(Arc::new(AiProvider::new(
+            LOCAL_PROVIDER,
+            Some(base),
+            key_for("openai"),
+        )));
     }
-    let key = key_for(id).ok_or_else(|| format!("no API key for `{id}`; save one in Vivianne or set its variable"))?;
-    let base = (id == "vercel").then(|| std::env::var("VIV_GATEWAY_URL").ok()).flatten();
+    let key = key_for(id).ok_or_else(|| {
+        format!("no API key for `{id}`; save one in Vivianne or set its variable")
+    })?;
+    let base = (id == "vercel")
+        .then(|| std::env::var("VIV_GATEWAY_URL").ok())
+        .flatten();
     Ok(Arc::new(AiProvider::new(id, base, Some(key))))
 }
 
@@ -59,7 +67,9 @@ pub fn provider_for(id: &str) -> Result<Arc<dyn Provider>, String> {
 pub fn selection() -> Result<Selection, String> {
     let wanted = std::env::var("VIV_PROVIDER").ok();
     if let Ok(model) = std::env::var("VIV_MODEL") {
-        let provider = wanted.or_else(first_provider_with_key).ok_or_else(missing_provider)?;
+        let provider = wanted
+            .or_else(first_provider_with_key)
+            .ok_or_else(missing_provider)?;
         return Ok(Selection { provider, model });
     }
     from_settings(&settings_blocking(), wanted.as_deref())
@@ -70,17 +80,27 @@ pub fn selection() -> Result<Selection, String> {
 /// `fallbackModels` list). Entries whose provider has no key are left out.
 #[must_use]
 pub fn fallbacks() -> Vec<Selection> {
-    fallbacks_from(&settings_blocking()).into_iter().filter(|s| is_usable(&s.provider)).collect()
+    fallbacks_from(&settings_blocking())
+        .into_iter()
+        .filter(|s| is_usable(&s.provider))
+        .collect()
 }
 
 /// Whether passing failures are retried (`autoRetryEnabled`, on unless the user turned it off).
 pub fn auto_retry() -> bool {
-    settings_blocking().get("autoRetryEnabled").and_then(Value::as_bool).unwrap_or(true)
+    settings_blocking()
+        .get("autoRetryEnabled")
+        .and_then(Value::as_bool)
+        .unwrap_or(true)
 }
 
 fn fallbacks_from(settings: &Value) -> Vec<Selection> {
     let single = settings.get("fallbackModel").into_iter();
-    let list = settings.get("fallbackModels").and_then(Value::as_array).into_iter().flatten();
+    let list = settings
+        .get("fallbackModels")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten();
     let mut chain: Vec<Selection> = Vec::new();
     for entry in single.chain(list) {
         if let Some(found) = pair(entry.get("provider"), entry.get("id"))
@@ -97,13 +117,22 @@ fn missing_provider() -> String {
 }
 
 fn first_provider_with_key() -> Option<String> {
-    DEFAULT_CHOICES.iter().find(|id| key_for(id).is_some()).map(|id| (*id).to_owned())
+    DEFAULT_CHOICES
+        .iter()
+        .find(|id| key_for(id).is_some())
+        .map(|id| (*id).to_owned())
 }
 
 /// The old app's last model, then its default model: the first whose provider is known and has a key.
 fn from_settings(settings: &Value, only: Option<&str>) -> Option<Selection> {
-    let last = pair(settings.pointer("/lastModel/provider"), settings.pointer("/lastModel/id"));
-    let default = pair(settings.get("defaultProvider"), settings.get("defaultModel"));
+    let last = pair(
+        settings.pointer("/lastModel/provider"),
+        settings.pointer("/lastModel/id"),
+    );
+    let default = pair(
+        settings.get("defaultProvider"),
+        settings.get("defaultModel"),
+    );
     [last, default]
         .into_iter()
         .flatten()
@@ -112,15 +141,23 @@ fn from_settings(settings: &Value, only: Option<&str>) -> Option<Selection> {
 }
 
 fn pair(provider: Option<&Value>, model: Option<&Value>) -> Option<Selection> {
-    let text = |v: Option<&Value>| v.and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_owned);
-    Some(Selection { provider: text(provider)?, model: text(model)? })
+    let text = |v: Option<&Value>| {
+        v.and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+    };
+    Some(Selection {
+        provider: text(provider)?,
+        model: text(model)?,
+    })
 }
 
 fn is_usable(provider: &str) -> bool {
     (provider == "vercel" || provider_spec(provider).is_some()) && key_for(provider).is_some()
 }
 
-fn key_for(provider: &str) -> Option<String> {
+/// The key for a provider: the one saved in Vivianne, else the usual variable. A remote client sends it to a server.
+pub fn key_for(provider: &str) -> Option<String> {
     stored_api_key(provider).or_else(|| match provider {
         "vercel" => std::env::var("AI_GATEWAY_API_KEY").ok(),
         other => get_env_api_key(other, None),
@@ -144,7 +181,10 @@ mod tests {
         let s = json!({"lastModel": {"id": "gpt-5-nano", "provider": "openai"}, "defaultProvider": "nvidia"});
         assert_eq!(
             pair(s.pointer("/lastModel/provider"), s.pointer("/lastModel/id")),
-            Some(Selection { provider: "openai".into(), model: "gpt-5-nano".into() })
+            Some(Selection {
+                provider: "openai".into(),
+                model: "gpt-5-nano".into()
+            })
         );
         assert_eq!(pair(s.get("defaultProvider"), s.get("defaultModel")), None);
         assert_eq!(pair(Some(&json!("")), Some(&json!("m"))), None);
@@ -156,8 +196,17 @@ mod tests {
             "fallbackModel": {"provider": "openai", "id": "a"},
             "fallbackModels": [{"provider": "openai", "id": "a"}, {"provider": "google", "id": "b"}, {"id": "no-provider"}, null]
         });
-        let got: Vec<_> = fallbacks_from(&s).into_iter().map(|f| (f.provider, f.model)).collect();
-        assert_eq!(got, [("openai".to_owned(), "a".to_owned()), ("google".to_owned(), "b".to_owned())]);
+        let got: Vec<_> = fallbacks_from(&s)
+            .into_iter()
+            .map(|f| (f.provider, f.model))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("openai".to_owned(), "a".to_owned()),
+                ("google".to_owned(), "b".to_owned())
+            ]
+        );
         assert!(fallbacks_from(&json!({})).is_empty());
     }
 

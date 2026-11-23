@@ -49,3 +49,4 @@ editing. Dependency versions match the original backend.
   (authorization code with PKCE), `mod.rs` keeps the connections, remembers them in `~/.viv/agent/mcp_servers.json`,
   and gives the toolbox their tools as `mcp__<server>__<tool>`. Those tools need approval in Ask mode and are
   withheld in Plan mode, like any tool not known to only look. Not ported: the built-in app connectors.
+- `results.rs`: a tool result over the limit (64 KiB by default) is kept in `~/.viv/agent/tool-results/` and the model gets a preview and a handle for `read_tool_result`.

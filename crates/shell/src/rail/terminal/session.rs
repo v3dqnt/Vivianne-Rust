@@ -77,7 +77,12 @@ impl Session {
     /// Starts the user's shell in `dir`. The signals arrive on the returned receiver.
     /// Starts the user's shell in `dir`, or `command` through it (a program and its arguments as one line, so
     /// `.cmd` shims and the PATH work as they do in a terminal; the shell stays open when it ends).
-    pub fn start(dir: &Path, columns: u16, lines: u16, command: Option<&str>) -> Result<(Self, UnboundedReceiver<Signal>), String> {
+    pub fn start(
+        dir: &Path,
+        columns: u16,
+        lines: u16,
+        command: Option<&str>,
+    ) -> Result<(Self, UnboundedReceiver<Signal>), String> {
         let size = Size { columns, lines };
         let (tx, rx) = unbounded();
         let options = Options {
@@ -87,9 +92,15 @@ impl Session {
             env: HashMap::new(),
             ..Options::default()
         };
-        let pty = tty::new(&options, window_size(size), 0).map_err(|e| format!("Could not start a shell: {e}"))?;
-        let term = Arc::new(FairMutex::new(Term::new(Config::default(), &size, Proxy(tx.clone()))));
-        let event_loop = EventLoop::new(term.clone(), Proxy(tx), pty, false, false).map_err(|e| format!("Could not read the shell: {e}"))?;
+        let pty = tty::new(&options, window_size(size), 0)
+            .map_err(|e| format!("Could not start a shell: {e}"))?;
+        let term = Arc::new(FairMutex::new(Term::new(
+            Config::default(),
+            &size,
+            Proxy(tx.clone()),
+        )));
+        let event_loop = EventLoop::new(term.clone(), Proxy(tx), pty, false, false)
+            .map_err(|e| format!("Could not read the shell: {e}"))?;
         let input = event_loop.channel();
         event_loop.spawn();
         Ok((Self { term, input, size }, rx))
@@ -101,7 +112,10 @@ impl Session {
 
     /// Follows the view's size; a no-op when nothing changed.
     pub fn resize(&mut self, columns: u16, lines: u16) {
-        let size = Size { columns: columns.max(2), lines: lines.max(1) };
+        let size = Size {
+            columns: columns.max(2),
+            lines: lines.max(1),
+        };
         if size == self.size {
             return;
         }
@@ -128,7 +142,10 @@ impl Session {
         let offset = i32::try_from(content.display_offset).unwrap_or(0);
         let mut grid = vec![vec![Cell::BLANK; columns]; lines];
         for indexed_cell in content.display_iter {
-            let (Ok(row), column) = (usize::try_from(indexed_cell.point.line.0 + offset), indexed_cell.point.column.0) else {
+            let (Ok(row), column) = (
+                usize::try_from(indexed_cell.point.line.0 + offset),
+                indexed_cell.point.column.0,
+            ) else {
                 continue;
             };
             if indexed_cell.flags.contains(Flags::WIDE_CHAR_SPACER) {
@@ -140,7 +157,10 @@ impl Session {
         }
         if content.display_offset == 0 {
             let at = content.cursor.point;
-            let slot = usize::try_from(at.line.0).ok().and_then(|row| grid.get_mut(row)).and_then(|line| line.get_mut(at.column.0));
+            let slot = usize::try_from(at.line.0)
+                .ok()
+                .and_then(|row| grid.get_mut(row))
+                .and_then(|line| line.get_mut(at.column.0));
             if let Some(slot) = slot {
                 *slot = inverted(*slot);
             }
@@ -156,17 +176,35 @@ impl Drop for Session {
 }
 
 fn window_size(size: Size) -> WindowSize {
-    WindowSize { num_lines: size.lines, num_cols: size.columns, cell_width: 7, cell_height: 16 }
+    WindowSize {
+        num_lines: size.lines,
+        num_cols: size.columns,
+        cell_width: 7,
+        cell_height: 16,
+    }
 }
 
 /// The shell to start: the user's own, running `command` first when there is one.
 fn shell_for(command: Option<&str>) -> Shell {
-    let Some(command) = command else { return default_shell() };
+    let Some(command) = command else {
+        return default_shell();
+    };
     if cfg!(windows) {
-        Shell::new("powershell.exe".to_owned(), vec!["-NoLogo".to_owned(), "-NoExit".to_owned(), "-Command".to_owned(), command.to_owned()])
+        Shell::new(
+            "powershell.exe".to_owned(),
+            vec![
+                "-NoLogo".to_owned(),
+                "-NoExit".to_owned(),
+                "-Command".to_owned(),
+                command.to_owned(),
+            ],
+        )
     } else {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned());
-        Shell::new(shell, vec!["-c".to_owned(), format!("{command}; exec \"$SHELL\"")])
+        Shell::new(
+            shell,
+            vec!["-c".to_owned(), format!("{command}; exec \"$SHELL\"")],
+        )
     }
 }
 
@@ -174,18 +212,27 @@ fn default_shell() -> Shell {
     if cfg!(windows) {
         Shell::new("powershell.exe".to_owned(), vec!["-NoLogo".to_owned()])
     } else {
-        Shell::new(std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()), vec![])
+        Shell::new(
+            std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
+            vec![],
+        )
     }
 }
 
-fn to_cell(cell: &alacritty_terminal::grid::Indexed<&alacritty_terminal::term::cell::Cell>) -> Cell {
+fn to_cell(
+    cell: &alacritty_terminal::grid::Indexed<&alacritty_terminal::term::cell::Cell>,
+) -> Cell {
     let flags = cell.flags;
     let (mut fg, mut bg) = (resolve(cell.fg, true), resolve(cell.bg, false));
     if flags.contains(Flags::INVERSE) {
         std::mem::swap(&mut fg, &mut bg);
     }
     Cell {
-        ch: if flags.contains(Flags::HIDDEN) { ' ' } else { cell.c },
+        ch: if flags.contains(Flags::HIDDEN) {
+            ' '
+        } else {
+            cell.c
+        },
         fg,
         bg: (bg != DEFAULT_BG).then_some(bg),
         bold: flags.contains(Flags::BOLD),
@@ -195,7 +242,11 @@ fn to_cell(cell: &alacritty_terminal::grid::Indexed<&alacritty_terminal::term::c
 
 /// The cursor is drawn by swapping the colours of the cell it sits on.
 fn inverted(cell: Cell) -> Cell {
-    Cell { fg: cell.bg.unwrap_or(DEFAULT_BG), bg: Some(cell.fg), ..cell }
+    Cell {
+        fg: cell.bg.unwrap_or(DEFAULT_BG),
+        bg: Some(cell.fg),
+        ..cell
+    }
 }
 
 fn resolve(color: Color, foreground: bool) -> Rgb {

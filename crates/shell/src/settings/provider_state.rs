@@ -5,7 +5,6 @@
 use std::collections::BTreeMap;
 
 use vivianne_ai::ai::auth::{PoolEntryInfo, RotationStrategy};
-use vivianne_ai::ai::chatgpt::ChatGptStatus;
 use vivianne_ai::custom_providers::{ApiFormat, CustomProvider};
 use vivianne_ai::inference::difficulty::Verdict;
 use vivianne_ai::inference::routing::Config as RoutingConfig;
@@ -93,19 +92,6 @@ pub struct AgentReport {
     pub reply: String,
 }
 
-/// Savings meter, as the routing panel shows it.
-#[derive(Debug, Clone, Default)]
-pub struct Savings {
-    pub requests: u32,
-    pub input: u64,
-    pub output: u64,
-    pub actual_usd: Option<f64>,
-    pub would_usd: Option<f64>,
-    pub saved_usd: Option<f64>,
-    pub quick_name: String,
-    pub smart_name: String,
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct ProviderState {
     pub pane: Pane,
@@ -115,7 +101,6 @@ pub struct ProviderState {
     /// Keys of the open provider (main first) and how they are taken in turn.
     pub pool: Vec<PoolEntryInfo>,
     pub strategy: RotationStrategy,
-    pub chatgpt: Option<ChatGptStatus>,
     pub custom: Vec<CustomProvider>,
     /// Custom providers that have a key saved.
     pub custom_keyed: Vec<String>,
@@ -131,7 +116,6 @@ pub struct ProviderState {
     pub routing: Option<RoutingConfig>,
     pub models: Vec<PickableModel>,
     pub verdict: Option<Verdict>,
-    pub savings: Option<Savings>,
     /// Text fields, by name.
     pub drafts: BTreeMap<String, String>,
     /// Something is being done (saving, signing in...), by name, so its button can say so.
@@ -173,19 +157,20 @@ impl ProviderState {
     /// Whether the provider has a key, in Vivianne or in the environment.
     #[must_use]
     pub fn connected(&self, provider: &str) -> bool {
-        matches!(self.sources.get(provider), Some(Some(KeySource::Saved | KeySource::Environment)))
-    }
-
-    #[must_use]
-    pub fn chatgpt_connected(&self) -> bool {
-        self.chatgpt.as_ref().is_some_and(|s| s.signed_in && s.sharing)
+        matches!(
+            self.sources.get(provider),
+            Some(Some(KeySource::Saved | KeySource::Environment))
+        )
     }
 }
 
 /// The name shown for a provider id.
 #[must_use]
 pub fn provider_name(id: &str) -> String {
-    CLOUD_PROVIDERS.iter().find(|(p, _)| *p == id).map_or_else(|| id.to_owned(), |(_, name)| (*name).to_owned())
+    CLOUD_PROVIDERS
+        .iter()
+        .find(|(p, _)| *p == id)
+        .map_or_else(|| id.to_owned(), |(_, name)| (*name).to_owned())
 }
 
 #[cfg(test)]
@@ -195,13 +180,19 @@ mod tests {
     #[test]
     fn the_catalog_matches_the_old_apps_provider_ids() {
         for (id, _) in CLOUD_PROVIDERS {
-            assert!(vivianne_ai::ai::provider_registry::provider_spec(id).is_some(), "{id} is not a known provider");
+            assert!(
+                vivianne_ai::ai::provider_registry::provider_spec(id).is_some(),
+                "{id} is not a known provider"
+            );
         }
     }
 
     #[test]
     fn busy_names_come_and_go_and_starting_clears_the_last_error() {
-        let mut state = ProviderState { error: Some("x".into()), ..ProviderState::default() };
+        let mut state = ProviderState {
+            error: Some("x".into()),
+            ..ProviderState::default()
+        };
         state.start("save");
         state.start("save");
         assert!(state.is_busy("save") && state.busy.len() == 1 && state.error.is_none());
@@ -213,7 +204,9 @@ mod tests {
     fn a_provider_is_connected_by_a_saved_or_environment_key_only() {
         let mut state = ProviderState::default();
         state.sources.insert("a".into(), Some(KeySource::Saved));
-        state.sources.insert("b".into(), Some(KeySource::Environment));
+        state
+            .sources
+            .insert("b".into(), Some(KeySource::Environment));
         state.sources.insert("c".into(), Some(KeySource::None));
         assert!(state.connected("a") && state.connected("b"));
         assert!(!state.connected("c") && !state.connected("d"));

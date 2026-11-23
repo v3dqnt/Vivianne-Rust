@@ -37,7 +37,9 @@ const MAX_MESSAGE_CHARS: usize = 500;
 const MAX_BACKTRACE_CHARS: usize = 20_000;
 
 fn version() -> &'static str {
-    VERSION.get().map_or(env!("CARGO_PKG_VERSION"), String::as_str)
+    VERSION
+        .get()
+        .map_or(env!("CARGO_PKG_VERSION"), String::as_str)
 }
 
 /// Records one event. Best-effort by design: telemetry must never fail a user action, so every error is
@@ -52,13 +54,17 @@ pub fn track(kind: &str, props: Value) {
 /// Every recorded event, oldest first.
 #[must_use]
 pub fn read_events() -> Vec<TelemetryEvent> {
-    Store::standard().map(|store| store.read_events()).unwrap_or_default()
+    Store::standard()
+        .map(|store| store.read_events())
+        .unwrap_or_default()
 }
 
 /// Every recorded crash, newest first.
 #[must_use]
 pub fn read_crashes() -> Vec<CrashRecord> {
-    Store::standard().map(|store| store.read_crashes()).unwrap_or_default()
+    Store::standard()
+        .map(|store| store.read_crashes())
+        .unwrap_or_default()
 }
 
 /// Deletes every event and crash on this computer.
@@ -89,7 +95,10 @@ fn summarise(events: &[TelemetryEvent], crashes: Vec<CrashRecord>) -> Summary {
     for event in events {
         *counts.entry(event.kind.as_str()).or_default() += 1;
     }
-    let mut kinds: Vec<(String, usize)> = counts.into_iter().map(|(kind, count)| (kind.to_owned(), count)).collect();
+    let mut kinds: Vec<(String, usize)> = counts
+        .into_iter()
+        .map(|(kind, count)| (kind.to_owned(), count))
+        .collect();
     kinds.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     Summary {
         event_count: events.len(),
@@ -115,8 +124,15 @@ pub fn install_panic_hook(app_version: &str) {
         let record = CrashRecord {
             ts: now_ms(),
             message: message.chars().take(MAX_MESSAGE_CHARS).collect(),
-            location: info.location().map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column())).unwrap_or_default(),
-            backtrace: std::backtrace::Backtrace::force_capture().to_string().chars().take(MAX_BACKTRACE_CHARS).collect(),
+            location: info
+                .location()
+                .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+                .unwrap_or_default(),
+            backtrace: std::backtrace::Backtrace::force_capture()
+                .to_string()
+                .chars()
+                .take(MAX_BACKTRACE_CHARS)
+                .collect(),
             app_version: version().to_owned(),
             os: format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
         };
@@ -142,16 +158,35 @@ mod tests {
     use super::*;
 
     fn event(ts: u64, kind: &str) -> TelemetryEvent {
-        TelemetryEvent { ts, kind: kind.to_owned(), props: Value::Null }
+        TelemetryEvent {
+            ts,
+            kind: kind.to_owned(),
+            props: Value::Null,
+        }
     }
 
     #[test]
     fn the_summary_counts_by_kind_most_frequent_first_with_the_first_and_last_time() {
-        let events = [event(10, "app.start"), event(20, "turn.complete"), event(30, "turn.complete"), event(40, "thread.new")];
+        let events = [
+            event(10, "app.start"),
+            event(20, "turn.complete"),
+            event(30, "turn.complete"),
+            event(40, "thread.new"),
+        ];
         let summary = summarise(&events, Vec::new());
         assert_eq!(summary.event_count, 4);
-        assert_eq!((summary.first_event_ts, summary.last_event_ts), (Some(10), Some(40)));
-        assert_eq!(summary.kinds, [("turn.complete".to_owned(), 2), ("app.start".to_owned(), 1), ("thread.new".to_owned(), 1)]);
+        assert_eq!(
+            (summary.first_event_ts, summary.last_event_ts),
+            (Some(10), Some(40))
+        );
+        assert_eq!(
+            summary.kinds,
+            [
+                ("turn.complete".to_owned(), 2),
+                ("app.start".to_owned(), 1),
+                ("thread.new".to_owned(), 1)
+            ]
+        );
     }
 
     #[test]

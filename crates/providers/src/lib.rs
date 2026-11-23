@@ -40,6 +40,20 @@ pub struct ChatRequest {
     pub messages: Vec<Message>,
     pub tools: Vec<ToolSpec>,
     pub thinking: Thinking,
+    /// Images to send with the user messages named by `ImagePart::message`: made at request time from stored
+    /// attachments, never kept in the conversation.
+    pub images: Vec<ImagePart>,
+}
+
+/// One picture for one message of a request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImagePart {
+    /// Index into `ChatRequest::messages`.
+    pub message: usize,
+    pub media_type: String,
+    pub base64: String,
+    /// What the model is told beside the picture: its stable id and its real size.
+    pub label: String,
 }
 
 /// What one model call used: tokens, and what they cost when that is known.

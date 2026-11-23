@@ -295,6 +295,14 @@ pub struct AppEntry {
     pub connected: bool,
     pub pending: bool,
     pub desc: String,
+    /// What the one pasted field is called (token apps only), and how to get it.
+    pub field: String,
+    pub help: String,
+    pub help_url: String,
+    /// The last thing that went wrong connecting it.
+    pub error: String,
+    /// The site its icon comes from.
+    pub domain: String,
 }
 
 pub const AUTH_OAUTH: u8 = 0;

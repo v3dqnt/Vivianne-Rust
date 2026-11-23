@@ -64,15 +64,41 @@ fn known_login_command(id: &str) -> Option<&'static str> {
 /// The sign-in methods in an agent's answer to `initialize`. v2 names each `methodId` and says what kind it
 /// is; v1 names them `id` and a missing kind means the agent runs it.
 fn methods_in(caps: &Value, v2: bool, harness: &Harness) -> Vec<AuthMethod> {
-    let listed = caps.get("authMethods").and_then(Value::as_array).cloned().unwrap_or_default();
+    let listed = caps
+        .get("authMethods")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     let mut methods: Vec<AuthMethod> = listed
         .iter()
         .filter_map(|m| {
-            let id = m.get(if v2 { "methodId" } else { "id" }).and_then(Value::as_str)?.to_owned();
-            let kind = if m.get("type").and_then(Value::as_str) == Some("terminal") { AuthKind::Terminal } else { AuthKind::Agent };
-            let text = |key: &str| m.get(key).and_then(Value::as_str).unwrap_or_default().to_owned();
+            let id = m
+                .get(if v2 { "methodId" } else { "id" })
+                .and_then(Value::as_str)?
+                .to_owned();
+            let kind = if m.get("type").and_then(Value::as_str) == Some("terminal") {
+                AuthKind::Terminal
+            } else {
+                AuthKind::Agent
+            };
+            let text = |key: &str| {
+                m.get(key)
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned()
+            };
             let command = (kind == AuthKind::Terminal).then(|| terminal_command(harness, m));
-            Some(AuthMethod { name: if text("name").is_empty() { id.clone() } else { text("name") }, description: text("description"), id, kind, command })
+            Some(AuthMethod {
+                name: if text("name").is_empty() {
+                    id.clone()
+                } else {
+                    text("name")
+                },
+                description: text("description"),
+                id,
+                kind,
+                command,
+            })
         })
         .collect();
     // An agent that wants a sign-in and names no way to do it: the way it is known to take.
@@ -92,22 +118,50 @@ fn methods_in(caps: &Value, v2: bool, harness: &Harness) -> Vec<AuthMethod> {
 
 /// What to run in a terminal for a `terminal` method: the agent's own command with the method's arguments.
 fn terminal_command(harness: &Harness, method: &Value) -> String {
-    let args: Vec<String> = method.get("args").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect()).unwrap_or_default();
+    let args: Vec<String> = method
+        .get("args")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_default();
     if args.is_empty() {
-        return known_login_command(&harness.id).map_or_else(|| format!("{} (sign in)", harness.name), str::to_owned);
+        return known_login_command(&harness.id)
+            .map_or_else(|| format!("{} (sign in)", harness.name), str::to_owned);
     }
-    let own = std::iter::once(harness.launcher.clone()).chain(harness.args_for_display()).chain(args);
+    let own = std::iter::once(harness.launcher.clone())
+        .chain(harness.args_for_display())
+        .chain(args);
     own.collect::<Vec<_>>().join(" ")
 }
 
 /// Opens a session on a connection. An agent that is plainly not signed in answers `auth_required` here; one
 /// that checks only when asked (Claude's adapter does) opens a session fine, so this alone proves nothing.
 async fn open_probe(conn: &Conn, harness: &Harness, cwd: &str) -> Result<String, AuthState> {
-    let opened = conn.request("session/new", json!({ "cwd": cwd, "mcpServers": [] }), Some(PROBE_TIMEOUT)).await;
+    let opened = conn
+        .request(
+            "session/new",
+            json!({ "cwd": cwd, "mcpServers": [] }),
+            Some(PROBE_TIMEOUT),
+        )
+        .await;
     match opened {
-        Ok(session) => session.get("sessionId").and_then(Value::as_str).map(str::to_owned).ok_or_else(|| AuthState::Failed(format!("{} opened a session without an id.", harness.name))),
-        Err(e) if e.is_auth_required() || looks_unauthenticated(&e.message) => Err(AuthState::NeedsSignIn(methods_in(&conn.caps(), conn.speaks_v2(), harness))),
-        Err(e) => Err(AuthState::Failed(explain_start_failure(harness, &e.to_string()))),
+        Ok(session) => session
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| {
+                AuthState::Failed(format!("{} opened a session without an id.", harness.name))
+            }),
+        Err(e) if e.is_auth_required() || looks_unauthenticated(&e.message) => Err(
+            AuthState::NeedsSignIn(methods_in(&conn.caps(), conn.speaks_v2(), harness)),
+        ),
+        Err(e) => Err(AuthState::Failed(explain_start_failure(
+            harness,
+            &e.to_string(),
+        ))),
     }
 }
 
@@ -119,7 +173,12 @@ fn says_sign_in(message: &str) -> bool {
 /// Finds out for certain whether the agent is signed in: opens a session, then asks it one tiny question,
 /// because some agents only check their credentials when they are asked something. A permission asked
 /// during the question is refused, and plan mode keeps it from changing anything.
-async fn verify(conn: &std::sync::Arc<Conn>, harness: &Harness, cwd: &str, depth: Depth) -> AuthState {
+async fn verify(
+    conn: &std::sync::Arc<Conn>,
+    harness: &Harness,
+    cwd: &str,
+    depth: Depth,
+) -> AuthState {
     let session = match open_probe(conn, harness, cwd).await {
         Ok(session) => session,
         Err(state) => return state,
@@ -130,7 +189,11 @@ async fn verify(conn: &std::sync::Arc<Conn>, harness: &Harness, cwd: &str, depth
         && let Some(state) = conn.auth_state_soon().await
     {
         close_session(conn, &session).await;
-        return if state == "authenticated" { AuthState::SignedIn } else { AuthState::NeedsSignIn(methods_in(&conn.caps(), conn.speaks_v2(), harness)) };
+        return if state == "authenticated" {
+            AuthState::SignedIn
+        } else {
+            AuthState::NeedsSignIn(methods_in(&conn.caps(), conn.speaks_v2(), harness))
+        };
     }
     let (events, mut seen) = mpsc::unbounded_channel();
     let drain = tokio::spawn(async move {
@@ -146,8 +209,17 @@ async fn verify(conn: &std::sync::Arc<Conn>, harness: &Harness, cwd: &str, depth
         tokio::time::sleep(ANSWER_TIMEOUT).await;
         limit.cancel();
     });
-    let prompt = [PromptPart::Text("Reply with the single word: ok".to_owned())];
-    let request = TurnRequest { prompt: &prompt, earlier: &[], plan_mode: true, bypass: false, mcp_servers: &[], own: None };
+    let prompt = [PromptPart::Text(
+        "Reply with the single word: ok".to_owned(),
+    )];
+    let request = TurnRequest {
+        prompt: &prompt,
+        earlier: &[],
+        plan_mode: true,
+        bypass: false,
+        mcp_servers: &[],
+        own: None,
+    };
     let thread = format!("{DELEGATE}auth-{}", harness.id);
     let end = turn::run(conn, harness, &session, &thread, &request, &events, &cancel).await;
     timer.abort();
@@ -156,16 +228,31 @@ async fn verify(conn: &std::sync::Arc<Conn>, harness: &Harness, cwd: &str, depth
     close_session(conn, &session).await;
     match end.outcome {
         Outcome::Finished => AuthState::SignedIn,
-        Outcome::Failed(message) if says_sign_in(&message) => AuthState::NeedsSignIn(methods_in(&conn.caps(), conn.speaks_v2(), harness)),
+        Outcome::Failed(message) if says_sign_in(&message) => {
+            AuthState::NeedsSignIn(methods_in(&conn.caps(), conn.speaks_v2(), harness))
+        }
         Outcome::Failed(message) => AuthState::Failed(message),
-        Outcome::Stopped => AuthState::Failed(format!("{} didn't answer in {} seconds.", harness.name, ANSWER_TIMEOUT.as_secs())),
+        Outcome::Stopped => AuthState::Failed(format!(
+            "{} didn't answer in {} seconds.",
+            harness.name,
+            ANSWER_TIMEOUT.as_secs()
+        )),
     }
 }
 
 /// The check is not a conversation: close its session where the agent can.
 async fn close_session(conn: &Conn, session: &str) {
-    if conn.cap("/capabilities/session", "/agentCapabilities/sessionCapabilities/close") {
-        let _ = conn.request("session/close", json!({ "sessionId": session }), Some(Duration::from_secs(10))).await;
+    if conn.cap(
+        "/capabilities/session",
+        "/agentCapabilities/sessionCapabilities/close",
+    ) {
+        let _ = conn
+            .request(
+                "session/close",
+                json!({ "sessionId": session }),
+                Some(Duration::from_secs(10)),
+            )
+            .await;
     }
 }
 
@@ -223,14 +310,26 @@ pub async fn sign_in(id: &str, method_id: &str) -> Result<AuthState, String> {
     let v2 = conn.speaks_v2();
     let known = methods_in(&conn.caps(), v2, &harness);
     let Some(method) = known.iter().find(|m| m.id == method_id) else {
-        return Err(format!("{} doesn't offer that way to sign in.", harness.name));
+        return Err(format!(
+            "{} doesn't offer that way to sign in.",
+            harness.name
+        ));
     };
     if method.kind == AuthKind::Terminal {
-        return Err(format!("That sign-in is run in a terminal: {}", method.command.clone().unwrap_or_default()));
+        return Err(format!(
+            "That sign-in is run in a terminal: {}",
+            method.command.clone().unwrap_or_default()
+        ));
     }
     let call = if v2 { "auth/login" } else { "authenticate" };
     trace(&harness.name, format!("signing in with method {method_id}"));
-    conn.request(call, json!({ "methodId": method_id }), Some(SIGN_IN_TIMEOUT)).await.map_err(|e: RpcError| explain_start_failure(&harness, &e.to_string()))?;
+    conn.request(
+        call,
+        json!({ "methodId": method_id }),
+        Some(SIGN_IN_TIMEOUT),
+    )
+    .await
+    .map_err(|e: RpcError| explain_start_failure(&harness, &e.to_string()))?;
     Ok(verify(&conn, &harness, &cwd, Depth::Thorough).await)
 }
 
@@ -250,11 +349,24 @@ mod tests {
             {"methodId": "term", "name": "Terminal", "type": "terminal"}
         ]});
         let methods = methods_in(&v2, true, &claude);
-        assert_eq!((methods[0].id.as_str(), &methods[0].kind, methods[0].command.as_deref()), ("browser", &AuthKind::Agent, None));
-        assert_eq!((&methods[1].kind, methods[1].command.as_deref()), (&AuthKind::Terminal, Some("claude")));
+        assert_eq!(
+            (
+                methods[0].id.as_str(),
+                &methods[0].kind,
+                methods[0].command.as_deref()
+            ),
+            ("browser", &AuthKind::Agent, None)
+        );
+        assert_eq!(
+            (&methods[1].kind, methods[1].command.as_deref()),
+            (&AuthKind::Terminal, Some("claude"))
+        );
         let v1 = json!({"authMethods": [{"id": "oauth", "name": "OAuth"}]});
         let methods = methods_in(&v1, false, &claude);
-        assert_eq!((methods[0].id.as_str(), &methods[0].kind), ("oauth", &AuthKind::Agent));
+        assert_eq!(
+            (methods[0].id.as_str(), &methods[0].kind),
+            ("oauth", &AuthKind::Agent)
+        );
     }
 
     #[test]
@@ -273,7 +385,13 @@ mod tests {
             let conn = conn.clone();
             async move { super::super::conn::handshake(&conn, &harness("claude-acp")).await }
         });
-        agent.hello_version(2, json!({}), json!([{"methodId": "browser", "name": "Browser", "type": "agent"}])).await;
+        agent
+            .hello_version(
+                2,
+                json!({}),
+                json!([{"methodId": "browser", "name": "Browser", "type": "agent"}]),
+            )
+            .await;
         assert!(ready.await.is_ok_and(|r| r.is_ok()));
         (conn, agent)
     }
@@ -287,9 +405,19 @@ mod tests {
         });
         let request = agent.recv().await;
         assert_eq!(request["method"], "session/new");
-        agent.refuse(&request["id"], -32000, "authentication required", Value::Null).await;
+        agent
+            .refuse(
+                &request["id"],
+                -32000,
+                "authentication required",
+                Value::Null,
+            )
+            .await;
         let state = asked.await.unwrap_or(AuthState::Failed(String::new()));
-        assert!(matches!(&state, AuthState::NeedsSignIn(m) if m.len() == 1 && m[0].id == "browser"), "{state:?}");
+        assert!(
+            matches!(&state, AuthState::NeedsSignIn(m) if m.len() == 1 && m[0].id == "browser"),
+            "{state:?}"
+        );
     }
 
     #[tokio::test]
@@ -303,7 +431,14 @@ mod tests {
         let open = agent.open("probe").await;
         assert_eq!(open["method"], "session/new");
         let prompt = agent.prompt().await;
-        agent.refuse(&prompt["id"], -32000, "Authentication required: OAuth session expired", Value::Null).await;
+        agent
+            .refuse(
+                &prompt["id"],
+                -32000,
+                "Authentication required: OAuth session expired",
+                Value::Null,
+            )
+            .await;
         let state = asked.await.unwrap_or(AuthState::Failed(String::new()));
         assert!(matches!(&state, AuthState::NeedsSignIn(_)), "{state:?}");
     }
@@ -317,11 +452,27 @@ mod tests {
         });
         agent.open("probe").await;
         let prompt = agent.prompt().await;
-        assert_eq!(prompt["params"]["prompt"][0]["text"], "Reply with the single word: ok");
-        agent.update("probe", json!({"sessionUpdate": "agent_message_chunk", "content": {"text": "ok"}})).await;
-        agent.update("probe", json!({"sessionUpdate": "state_update", "state": "idle"})).await;
+        assert_eq!(
+            prompt["params"]["prompt"][0]["text"],
+            "Reply with the single word: ok"
+        );
+        agent
+            .update(
+                "probe",
+                json!({"sessionUpdate": "agent_message_chunk", "content": {"text": "ok"}}),
+            )
+            .await;
+        agent
+            .update(
+                "probe",
+                json!({"sessionUpdate": "state_update", "state": "idle"}),
+            )
+            .await;
         agent.answer(&prompt["id"], json!({})).await;
-        assert_eq!(asked.await.unwrap_or(AuthState::Failed(String::new())), AuthState::SignedIn);
+        assert_eq!(
+            asked.await.unwrap_or(AuthState::Failed(String::new())),
+            AuthState::SignedIn
+        );
     }
 
     #[tokio::test]
@@ -340,14 +491,24 @@ mod tests {
             } else {
                 assert!(matches!(result, AuthState::NeedsSignIn(_)), "{result:?}");
             }
-            assert!(agent.next_within(150).await.is_none_or(|frame| frame["method"] != "session/prompt"), "no question was asked");
+            assert!(
+                agent
+                    .next_within(150)
+                    .await
+                    .is_none_or(|frame| frame["method"] != "session/prompt"),
+                "no question was asked"
+            );
         }
     }
 
     #[test]
     fn the_agents_own_sign_in_words_are_recognised() {
-        assert!(says_sign_in("Claude Agent needs you to sign in. Run `claude` once"));
-        assert!(says_sign_in("Authentication required: Failed to authenticate"));
+        assert!(says_sign_in(
+            "Claude Agent needs you to sign in. Run `claude` once"
+        ));
+        assert!(says_sign_in(
+            "Authentication required: Failed to authenticate"
+        ));
         assert!(!says_sign_in("rate limit reached"));
     }
 }

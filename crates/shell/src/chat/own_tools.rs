@@ -18,10 +18,22 @@ use vivianne_tools::mcp::{McpServerConfig, McpTransportConfig};
 /// The tools offered, with what each is for (the agent's instructions are written from this).
 const OFFERED: [(&str, &str); 5] = [
     ("recall", "search the user's memory from earlier sessions"),
-    ("remember", "save a lasting fact or correction to the user's memory"),
-    ("list_threads", "list the user's other conversations in this project"),
-    ("read_thread", "read another of the user's conversations in this project"),
-    ("lsp", "ask a language server: definitions, references, types, symbols, and the errors in a file (read-only)"),
+    (
+        "remember",
+        "save a lasting fact or correction to the user's memory",
+    ),
+    (
+        "list_threads",
+        "list the user's other conversations in this project",
+    ),
+    (
+        "read_thread",
+        "read another of the user's conversations in this project",
+    ),
+    (
+        "lsp",
+        "ask a language server: definitions, references, types, symbols, and the errors in a file (read-only)",
+    ),
 ];
 
 /// Longest answer a call may put into the agent's context.
@@ -32,7 +44,12 @@ pub fn for_turn(folder: &Path, plan_mode: bool) -> OwnTools {
     let root = folder.display().to_string();
     let mut toolbox = Toolbox::coding(folder);
     if let Some(backend) = crate::backend::get() {
-        vivianne_memory::agent::add_tools(&mut toolbox, &root, &backend.events, vivianne_ai::host::ModelRef::default());
+        vivianne_memory::agent::add_tools(
+            &mut toolbox,
+            &root,
+            &backend.events,
+            vivianne_ai::host::ModelRef::default(),
+        );
     }
     toolbox.add(vivianne_runtime::thread_tools::ListThreads::new(&root));
     toolbox.add(vivianne_runtime::thread_tools::ReadThread::new(&root));
@@ -41,7 +58,12 @@ pub fn for_turn(folder: &Path, plan_mode: bool) -> OwnTools {
         .into_iter()
         .filter_map(|d| {
             let (_, summary) = OFFERED.iter().find(|(name, _)| *name == d.name)?;
-            Some(OfferedTool { name: d.name, summary: (*summary).to_owned(), description: d.description, schema: d.parameters })
+            Some(OfferedTool {
+                name: d.name,
+                summary: (*summary).to_owned(),
+                description: d.description,
+                schema: d.parameters,
+            })
         })
         .collect();
     let toolbox = Arc::new(toolbox);
@@ -55,10 +77,20 @@ pub fn for_turn(folder: &Path, plan_mode: bool) -> OwnTools {
                 return ToolOutput::text(format!("`{name}` is not offered."), true);
             }
             if plan_mode && !Mode::Plan.allows(&name) {
-                return ToolOutput::text(format!("`{name}` is not available in plan mode: it would change something."), true);
+                return ToolOutput::text(
+                    format!("`{name}` is not available in plan mode: it would change something."),
+                    true,
+                );
             }
             match toolbox.execute(&name, &args).await {
-                Some(result) => ToolOutput::text(result.content.chars().take(MAX_ANSWER_CHARS).collect::<String>(), result.is_error),
+                Some(result) => ToolOutput::text(
+                    result
+                        .content
+                        .chars()
+                        .take(MAX_ANSWER_CHARS)
+                        .collect::<String>(),
+                    result.is_error,
+                ),
                 None => ToolOutput::text(format!("`{name}` is not available."), true),
             }
         }) as futures::future::BoxFuture<'static, ToolOutput>
@@ -79,9 +111,17 @@ pub fn specs_of(configs: &[McpServerConfig]) -> Vec<McpServerSpec> {
                 env: env.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
             }),
             McpTransportConfig::Http { url, headers } if c.auth.is_none() => {
-                Some(McpServerSpec::Http { name: c.name.clone(), url: url.clone(), headers: headers.iter().map(|(k, v)| (k.clone(), v.clone())).collect() })
+                Some(McpServerSpec::Http {
+                    name: c.name.clone(),
+                    url: url.clone(),
+                    headers: headers
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect(),
+                })
             }
-            McpTransportConfig::Http { .. } => None,
+            // Signed-in and built-in connectors are Vivianne's own: their secrets are not passed on.
+            McpTransportConfig::Http { .. } | McpTransportConfig::Native { .. } => None,
         })
         .collect()
 }
@@ -103,11 +143,23 @@ mod tests {
     async fn only_the_fixed_list_is_offered_and_plan_mode_refuses_what_would_change_something() {
         let own = for_turn(Path::new("."), true);
         let names: Vec<&str> = own.tools.iter().map(|t| t.name.as_str()).collect();
-        assert!(names.contains(&"list_threads") && names.contains(&"read_thread") && names.contains(&"lsp"), "{names:?}");
+        assert!(
+            names.contains(&"list_threads")
+                && names.contains(&"read_thread")
+                && names.contains(&"lsp"),
+            "{names:?}"
+        );
         for never in ["shell", "write", "edit", "read", "grep", "repo_clone"] {
-            assert!(!names.contains(&never), "{never} is not offered to another program");
+            assert!(
+                !names.contains(&never),
+                "{never} is not offered to another program"
+            );
         }
-        assert!(own.tools.iter().all(|t| t.schema["type"] == "object" && !t.summary.is_empty()));
+        assert!(
+            own.tools
+                .iter()
+                .all(|t| t.schema["type"] == "object" && !t.summary.is_empty())
+        );
         let refused = (own.call)("shell".into(), json!({ "command": "echo hi" })).await;
         assert!(refused.is_error, "{refused:?}");
         let allowed = (own.call)("list_threads".into(), json!({})).await;
@@ -121,12 +173,47 @@ mod tests {
     #[test]
     fn the_users_servers_go_along_except_one_signed_in_through_vivianne() {
         let configs = [
-            McpServerConfig { name: "mem".into(), transport: McpTransportConfig::Stdio { command: "npx".into(), args: vec!["-y".into(), "x".into()], env: HashMap::new() }, timeout_ms: None, auth: None },
-            McpServerConfig { name: "open".into(), transport: McpTransportConfig::Http { url: "https://a.test/mcp".into(), headers: HashMap::new() }, timeout_ms: None, auth: None },
-            McpServerConfig { name: "signed".into(), transport: McpTransportConfig::Http { url: "https://b.test/mcp".into(), headers: HashMap::new() }, timeout_ms: None, auth: Some("signed".into()) },
+            McpServerConfig {
+                name: "mem".into(),
+                transport: McpTransportConfig::Stdio {
+                    command: "npx".into(),
+                    args: vec!["-y".into(), "x".into()],
+                    env: HashMap::new(),
+                },
+                timeout_ms: None,
+                auth: None,
+                allowed_tools: None,
+            },
+            McpServerConfig {
+                name: "open".into(),
+                transport: McpTransportConfig::Http {
+                    url: "https://a.test/mcp".into(),
+                    headers: HashMap::new(),
+                },
+                timeout_ms: None,
+                auth: None,
+                allowed_tools: None,
+            },
+            McpServerConfig {
+                name: "signed".into(),
+                transport: McpTransportConfig::Http {
+                    url: "https://b.test/mcp".into(),
+                    headers: HashMap::new(),
+                },
+                timeout_ms: None,
+                auth: Some("signed".into()),
+                allowed_tools: None,
+            },
         ];
         let specs = specs_of(&configs);
-        let names: Vec<&str> = specs.iter().map(|s| match s { McpServerSpec::Stdio { name, .. } | McpServerSpec::Http { name, .. } => name.as_str() }).collect();
+        let names: Vec<&str> = specs
+            .iter()
+            .map(|s| match s {
+                McpServerSpec::Stdio { name, .. } | McpServerSpec::Http { name, .. } => {
+                    name.as_str()
+                }
+            })
+            .collect();
         assert_eq!(names, ["mem", "open"]);
     }
 }

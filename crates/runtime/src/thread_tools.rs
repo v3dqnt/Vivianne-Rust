@@ -27,23 +27,35 @@ pub struct ReadThread {
 impl ListThreads {
     #[must_use]
     pub fn new(workspace: &str) -> Self {
-        Self { workspace: workspace.to_owned() }
+        Self {
+            workspace: workspace.to_owned(),
+        }
     }
 }
 
 impl ReadThread {
     #[must_use]
     pub fn new(workspace: &str) -> Self {
-        Self { workspace: workspace.to_owned() }
+        Self {
+            workspace: workspace.to_owned(),
+        }
     }
 }
 
 fn ok(content: String) -> ToolResult {
-    ToolResult { content, is_error: false, details: None }
+    ToolResult {
+        content,
+        is_error: false,
+        details: None,
+    }
 }
 
 fn failed(content: impl Into<String>) -> ToolResult {
-    ToolResult { content: content.into(), is_error: true, details: None }
+    ToolResult {
+        content: content.into(),
+        is_error: true,
+        details: None,
+    }
 }
 
 #[async_trait]
@@ -65,7 +77,11 @@ impl Tool for ListThreads {
         if threads.is_empty() {
             return ok("There are no other saved conversations in this project.".to_owned());
         }
-        ok(threads.iter().map(|t| format!("- {} (id {})", t.title, t.id)).collect::<Vec<_>>().join("\n"))
+        ok(threads
+            .iter()
+            .map(|t| format!("- {} (id {})", t.title, t.id))
+            .collect::<Vec<_>>()
+            .join("\n"))
     }
 }
 
@@ -91,7 +107,9 @@ impl Tool for ReadThread {
         let id = args["id"].as_str().unwrap_or_default();
         // Only this project's conversations: an id from another project reads as if there were none.
         let Some(thread) = store::load(id).filter(|t| t.workspace == self.workspace) else {
-            return failed(format!("There is no saved conversation {id} in this project."));
+            return failed(format!(
+                "There is no saved conversation {id} in this project."
+            ));
         };
         let mut out = format!("# {}\n\n", thread.title);
         for message in &thread.history {
@@ -110,7 +128,14 @@ impl Tool for ReadThread {
         }
         // The newest part is what carries on from where it was left.
         let skip = out.chars().count().saturating_sub(MAX_READ_CHARS);
-        ok(if skip > 0 { format!("(the earlier part is left out)\n{}", out.chars().skip(skip).collect::<String>()) } else { out })
+        ok(if skip > 0 {
+            format!(
+                "(the earlier part is left out)\n{}",
+                out.chars().skip(skip).collect::<String>()
+            )
+        } else {
+            out
+        })
     }
 }
 
@@ -133,19 +158,39 @@ mod tests {
             model: "m".into(),
             mode: Mode::Ask,
             updated_at: store::now(),
-            history: vec![Message::new(Role::User, "the parser panics"), Message::assistant("Fixed it.", vec![])],
+            history: vec![
+                Message::new(Role::User, "the parser panics"),
+                Message::assistant("Fixed it.", vec![]),
+            ],
         };
         let elsewhere = uuid::Uuid::new_v4().to_string();
         store::save(&thread(&id, &workspace)).expect("saves");
         store::save(&thread(&elsewhere, "/another-project")).expect("saves");
 
         let listed = ListThreads::new(&workspace).execute(&json!({}), ".").await;
-        assert!(listed.content.contains(&id) && !listed.content.contains(&elsewhere), "{}", listed.content);
-        let read = ReadThread::new(&workspace).execute(&json!({ "id": id }), ".").await;
-        assert!(!read.is_error && read.content.contains("User: the parser panics") && read.content.contains("Assistant: Fixed it."));
-        let other = ReadThread::new(&workspace).execute(&json!({ "id": elsewhere }), ".").await;
-        assert!(other.is_error, "another project's conversation is not readable from here");
-        let escape = ReadThread::new(&workspace).execute(&json!({ "id": "../acp-sessions" }), ".").await;
+        assert!(
+            listed.content.contains(&id) && !listed.content.contains(&elsewhere),
+            "{}",
+            listed.content
+        );
+        let read = ReadThread::new(&workspace)
+            .execute(&json!({ "id": id }), ".")
+            .await;
+        assert!(
+            !read.is_error
+                && read.content.contains("User: the parser panics")
+                && read.content.contains("Assistant: Fixed it.")
+        );
+        let other = ReadThread::new(&workspace)
+            .execute(&json!({ "id": elsewhere }), ".")
+            .await;
+        assert!(
+            other.is_error,
+            "another project's conversation is not readable from here"
+        );
+        let escape = ReadThread::new(&workspace)
+            .execute(&json!({ "id": "../acp-sessions" }), ".")
+            .await;
         assert!(escape.is_error, "an id is never a path");
 
         let _ = store::delete(&id);

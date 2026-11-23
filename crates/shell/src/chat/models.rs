@@ -67,11 +67,21 @@ impl SearchableListItem for ModelChoice {
     /// Search by name, id or provider, so "nvidia kimi" and "gpt-5" both find what they should.
     fn matches(&self, query: &str) -> bool {
         let haystack = format!("{} {} {}", self.provider, self.id, self.name).to_lowercase();
-        query.to_lowercase().split_whitespace().all(|word| haystack.contains(word))
+        query
+            .to_lowercase()
+            .split_whitespace()
+            .all(|word| haystack.contains(word))
     }
 
     fn render(&self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-        row(&self.name, if self.is_agent() { "Coding agent" } else { &self.provider })
+        row(
+            &self.name,
+            if self.is_agent() {
+                "Coding agent"
+            } else {
+                &self.provider
+            },
+        )
     }
 }
 
@@ -83,7 +93,12 @@ fn row(name: &str, provider: &str) -> AnyElement {
         .justify_between()
         .gap_3()
         .child(div().truncate().child(name.to_owned()))
-        .child(div().text_xs().text_color(color(theme::MUTED)).child(provider.to_owned()))
+        .child(
+            div()
+                .text_xs()
+                .text_color(color(theme::MUTED))
+                .child(provider.to_owned()),
+        )
         .into_any_element()
 }
 
@@ -97,9 +112,14 @@ pub fn choices(models: &[DiscoveredModel], agents: &[(String, String)]) -> Vec<M
     let mut out: Vec<ModelChoice> = models
         .iter()
         .filter(|m| !m.is_image_model && !m.is_audio_model)
-        .map(|m| ModelChoice { context_window: m.context_window, ..ModelChoice::new(&m.provider, &m.id, &m.name) })
+        .map(|m| ModelChoice {
+            context_window: m.context_window,
+            ..ModelChoice::new(&m.provider, &m.id, &m.name)
+        })
         .collect();
-    out.sort_by(|a, b| (&a.provider, a.name.to_lowercase()).cmp(&(&b.provider, b.name.to_lowercase())));
+    out.sort_by(|a, b| {
+        (&a.provider, a.name.to_lowercase()).cmp(&(&b.provider, b.name.to_lowercase()))
+    });
     out.dedup();
     out.extend(agents.iter().map(|(id, name)| ModelChoice::agent(id, name)));
     out
@@ -126,14 +146,20 @@ mod tests {
             discovered("google", "imagen", true),
             discovered("google", "gemini", false),
         ];
-        let names: Vec<_> = choices(&found, &[]).iter().map(|c| c.value.clone()).collect();
+        let names: Vec<_> = choices(&found, &[])
+            .iter()
+            .map(|c| c.value.clone())
+            .collect();
         assert_eq!(names, ["google/gemini", "openai/gpt-5"]);
     }
 
     #[test]
     fn coding_agents_follow_the_models_and_are_told_apart() {
         let found = [discovered("openai", "gpt-5", false)];
-        let list = choices(&found, &[("claude-acp".to_owned(), "Claude Code".to_owned())]);
+        let list = choices(
+            &found,
+            &[("claude-acp".to_owned(), "Claude Code".to_owned())],
+        );
         assert_eq!(list.len(), 2);
         assert!(list[1].is_agent() && !list[0].is_agent());
         assert_eq!(list[1].value, "harness/claude-acp");
@@ -150,6 +176,9 @@ mod tests {
 
     #[test]
     fn the_picker_value_is_provider_slash_id() {
-        assert_eq!(ModelChoice::value_of("openai", "gpt-5-nano"), "openai/gpt-5-nano");
+        assert_eq!(
+            ModelChoice::value_of("openai", "gpt-5-nano"),
+            "openai/gpt-5-nano"
+        );
     }
 }

@@ -19,9 +19,15 @@ use vivianne_ai::ai::types::{CostBreakdown, Usage};
 
 use super::conn::{Conn, Incoming, RpcError, kill_tree, trace};
 use super::info::{apply_session_info, remember_context};
-use super::permission::{Disposition, call_id, cancelled_outcome, disposition, permission_ask, permission_outcome, tool_name};
+use super::permission::{
+    Disposition, call_id, cancelled_outcome, disposition, permission_ask, permission_outcome,
+    tool_name,
+};
 use super::registry::Harness;
-use super::session::{DELEGATE, Line, digest, explain_start_failure, forget_session, looks_unauthenticated, save_session, session_key};
+use super::session::{
+    DELEGATE, Line, digest, explain_start_failure, forget_session, looks_unauthenticated,
+    save_session, session_key,
+};
 use super::stderr;
 use crate::Spent;
 
@@ -36,12 +42,26 @@ const SETTLE_CHECK: Duration = Duration::from_millis(100);
 pub enum AcpEvent {
     Text(String),
     Thought(String),
-    ToolStart { id: String, name: String, args: Value },
-    ToolEnd { id: String, name: String, args: Value, output: String, is_error: bool },
+    ToolStart {
+        id: String,
+        name: String,
+        args: Value,
+    },
+    ToolEnd {
+        id: String,
+        name: String,
+        args: Value,
+        output: String,
+        is_error: bool,
+    },
     /// The agent's plan, as a checklist (`[x]` done, `[~]` doing, `[ ]` to do). Empty when the plan was removed.
     Plan(String),
     /// Something the agent wants the user to see that is not part of the work.
-    Notice { title: String, text: String, is_error: bool },
+    Notice {
+        title: String,
+        text: String,
+        is_error: bool,
+    },
     /// The agent wants to do something and asks first. It waits until this is answered.
     Permission(PermissionRequest),
     /// What the turn used, sent once as it ends, when the agent said. Whoever knows the thread records it.
@@ -129,9 +149,20 @@ fn tool_content(content: Option<&Value>) -> (String, Option<Diff>) {
                 }
             }
             Some("diff") => {
-                let path = block.get("path").and_then(Value::as_str).unwrap_or_default().to_owned();
-                let old = block.get("oldText").and_then(Value::as_str).map(str::to_owned);
-                let new = block.get("newText").and_then(Value::as_str).unwrap_or_default().to_owned();
+                let path = block
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned();
+                let old = block
+                    .get("oldText")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
+                let new = block
+                    .get("newText")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned();
                 text.push(format!("Edited {path}"));
                 diff.get_or_insert((path, old, new));
             }
@@ -152,7 +183,10 @@ fn plan_text(entries: &[Value]) -> String {
                 Some("in_progress") => "~",
                 _ => " ",
             };
-            format!("[{mark}] {}", e.get("content").and_then(Value::as_str).unwrap_or_default())
+            format!(
+                "[{mark}] {}",
+                e.get("content").and_then(Value::as_str).unwrap_or_default()
+            )
         })
         .collect::<Vec<_>>()
         .join("\n")
@@ -171,7 +205,11 @@ fn plan_change(kind: &str, u: &Value) -> Option<PlanChange> {
     match kind {
         "plan" => Some(PlanChange::Show {
             id: "legacy".to_owned(),
-            text: plan_text(u.get("entries").and_then(Value::as_array).map_or(&[][..], Vec::as_slice)),
+            text: plan_text(
+                u.get("entries")
+                    .and_then(Value::as_array)
+                    .map_or(&[][..], Vec::as_slice),
+            ),
         }),
         "plan_update" => {
             let plan = u.get("plan")?;
@@ -186,7 +224,10 @@ fn plan_change(kind: &str, u: &Value) -> Option<PlanChange> {
                 // A kind of plan this client has never heard of: nothing honest to draw.
                 _ => return None,
             };
-            Some(PlanChange::Show { id: id.to_owned(), text })
+            Some(PlanChange::Show {
+                id: id.to_owned(),
+                text,
+            })
         }
         "plan_removed" => {
             let id = u.get("planId")?.as_str()?.trim();
@@ -199,18 +240,33 @@ fn plan_change(kind: &str, u: &Value) -> Option<PlanChange> {
 /// The text of a content block, when it is text.
 fn block_text(block: Option<&Value>) -> Option<String> {
     let b = block?;
-    (b.get("type").and_then(Value::as_str) == Some("text")).then(|| b.get("text").and_then(Value::as_str).map(str::to_owned)).flatten()
+    (b.get("type").and_then(Value::as_str) == Some("text"))
+        .then(|| b.get("text").and_then(Value::as_str).map(str::to_owned))
+        .flatten()
 }
 
 fn blocks_text(blocks: &[Value]) -> String {
-    blocks.iter().filter_map(|b| block_text(Some(b))).collect::<Vec<_>>().join("\n")
+    blocks
+        .iter()
+        .filter_map(|b| block_text(Some(b)))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// What a `notice` says, bounded, or `None` when it has no title to show: (title, description, severity).
 fn notice(u: &Value) -> Option<(String, Option<String>, String)> {
-    let cut = |key: &str, max: usize| u.get(key).and_then(Value::as_str).map(|s| s.trim().chars().take(max).collect::<String>()).filter(|s| !s.is_empty());
+    let cut = |key: &str, max: usize| {
+        u.get(key)
+            .and_then(Value::as_str)
+            .map(|s| s.trim().chars().take(max).collect::<String>())
+            .filter(|s| !s.is_empty())
+    };
     let title = cut("title", 1024)?;
-    Some((title, cut("description", 4096), cut("severity", 64).unwrap_or_else(|| "info".to_owned())))
+    Some((
+        title,
+        cut("description", 4096),
+        cut("severity", 64).unwrap_or_else(|| "info".to_owned()),
+    ))
 }
 
 /// Updates this client knows about but has nothing to draw for yet. Anything else is worth a trace line, once,
@@ -218,7 +274,13 @@ fn notice(u: &Value) -> Option<(String, Option<String>, String)> {
 fn known_update(kind: &str) -> bool {
     matches!(
         kind,
-        "user_message_chunk" | "user_message" | "agent_message" | "agent_thought" | "tool_call_content_chunk" | "terminal_update" | "terminal_output_chunk"
+        "user_message_chunk"
+            | "user_message"
+            | "agent_message"
+            | "agent_thought"
+            | "tool_call_content_chunk"
+            | "terminal_update"
+            | "terminal_output_chunk"
     )
 }
 
@@ -267,14 +329,23 @@ impl Updates {
 
     /// The agent's word for the kind of a tool call it announced.
     fn kind_of(&self, id: &str) -> Option<String> {
-        self.calls.get(id).map(|c| c.kind.clone()).filter(|k| !k.is_empty())
+        self.calls
+            .get(id)
+            .map(|c| c.kind.clone())
+            .filter(|k| !k.is_empty())
     }
 
     fn apply(&mut self, conn: &Conn, update: &Value) -> Vec<AcpEvent> {
-        let kind = update.get("sessionUpdate").and_then(Value::as_str).unwrap_or_default();
+        let kind = update
+            .get("sessionUpdate")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         match kind {
             "agent_message_chunk" => text_chunk(update).map(AcpEvent::Text).into_iter().collect(),
-            "agent_thought_chunk" => text_chunk(update).map(AcpEvent::Thought).into_iter().collect(),
+            "agent_thought_chunk" => text_chunk(update)
+                .map(AcpEvent::Thought)
+                .into_iter()
+                .collect(),
             "state_update" => {
                 self.state(update);
                 Vec::new()
@@ -283,15 +354,32 @@ impl Updates {
             "plan" | "plan_update" | "plan_removed" => self.plan(kind, update),
             "compaction_update" | "compaction_summary_chunk" => self.compaction(kind, update),
             "notice" => notice(update)
-                .map(|(title, description, severity)| AcpEvent::Notice { text: description.unwrap_or_else(|| title.clone()), title, is_error: severity == "error" })
+                .map(|(title, description, severity)| AcpEvent::Notice {
+                    text: description.unwrap_or_else(|| title.clone()),
+                    title,
+                    is_error: severity == "error",
+                })
                 .into_iter()
                 .collect(),
-            "available_commands_update" | "current_mode_update" | "config_option_update" | "session_info_update" => {
-                apply_session_info(&mut conn.info.lock().unwrap_or_else(std::sync::PoisonError::into_inner), kind, update);
+            "available_commands_update"
+            | "current_mode_update"
+            | "config_option_update"
+            | "session_info_update" => {
+                apply_session_info(
+                    &mut conn
+                        .info
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner),
+                    kind,
+                    update,
+                );
                 Vec::new()
             }
             "usage_update" => {
-                if let (Some(used), Some(size)) = (update.get("used").and_then(Value::as_u64), update.get("size").and_then(Value::as_u64)) {
+                if let (Some(used), Some(size)) = (
+                    update.get("used").and_then(Value::as_u64),
+                    update.get("size").and_then(Value::as_u64),
+                ) {
                     remember_context(&self.thread, used, size);
                 }
                 if let Some(amount) = update.pointer("/cost/amount").and_then(Value::as_f64) {
@@ -301,7 +389,10 @@ impl Updates {
             }
             other => {
                 if !known_update(other) && self.unknown.insert(other.to_owned()) {
-                    trace(&self.who, format!("session update this client does not know: {other}"));
+                    trace(
+                        &self.who,
+                        format!("session update this client does not know: {other}"),
+                    );
                 }
                 Vec::new()
             }
@@ -313,22 +404,45 @@ impl Updates {
         if !self.follows_work {
             return;
         }
-        let Some(now) = u.get("state").and_then(Value::as_str) else { return };
-        if !matches!(now, "running" | "idle" | "requires_action") && self.work.as_deref() != Some(now) {
+        let Some(now) = u.get("state").and_then(Value::as_str) else {
+            return;
+        };
+        if !matches!(now, "running" | "idle" | "requires_action")
+            && self.work.as_deref() != Some(now)
+        {
             // A state this client doesn't know is never read as idle: it may mean anything, including more work.
-            trace(&self.who, format!("state update this client does not know: {now}"));
+            trace(
+                &self.who,
+                format!("state update this client does not know: {now}"),
+            );
         }
         self.work = Some(now.to_owned());
         if now == "idle" {
             // An idle may say why the work stopped, or say nothing: no reason is a turn that finished.
-            self.idle_reason = Some(u.get("stopReason").and_then(Value::as_str).unwrap_or("end_turn").to_owned());
+            self.idle_reason = Some(
+                u.get("stopReason")
+                    .and_then(Value::as_str)
+                    .unwrap_or("end_turn")
+                    .to_owned(),
+            );
             self.idle_error = u.get("error").filter(|e| e.is_object()).cloned();
         }
     }
 
     fn tool(&mut self, u: &Value) -> Vec<AcpEvent> {
-        let Some(id) = u.get("toolCallId").and_then(Value::as_str).map(str::to_owned) else { return Vec::new() };
-        let call = self.calls.entry(id.clone()).or_insert_with(|| Call { name: "tool", args: json!({}), started: false, kind: String::new() });
+        let Some(id) = u
+            .get("toolCallId")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+        else {
+            return Vec::new();
+        };
+        let call = self.calls.entry(id.clone()).or_insert_with(|| Call {
+            name: "tool",
+            args: json!({}),
+            started: false,
+            kind: String::new(),
+        });
         if let Some(kind) = u.get("kind").and_then(Value::as_str) {
             call.name = tool_name(kind);
             kind.clone_into(&mut call.kind);
@@ -337,20 +451,30 @@ impl Updates {
             call.args = raw.clone();
         }
         let name = call.name;
-        if let (Some(title), Some(args)) = (u.get("title").and_then(Value::as_str), call.args.as_object_mut()) {
+        if let (Some(title), Some(args)) = (
+            u.get("title").and_then(Value::as_str),
+            call.args.as_object_mut(),
+        ) {
             args.entry("title").or_insert_with(|| json!(title));
             // What the chat's tool rows read: a command, a path.
             if name == "bash" {
                 args.entry("command").or_insert_with(|| json!(title));
             }
         }
-        if let (Some(path), Some(args)) = (u.pointer("/locations/0/path").and_then(Value::as_str), call.args.as_object_mut()) {
+        if let (Some(path), Some(args)) = (
+            u.pointer("/locations/0/path").and_then(Value::as_str),
+            call.args.as_object_mut(),
+        ) {
             args.entry("path").or_insert_with(|| json!(path));
         }
         let mut events = Vec::new();
         if !call.started {
             call.started = true;
-            events.push(AcpEvent::ToolStart { id: id.clone(), name: name.to_owned(), args: call.args.clone() });
+            events.push(AcpEvent::ToolStart {
+                id: id.clone(),
+                name: name.to_owned(),
+                args: call.args.clone(),
+            });
         }
         let status = u.get("status").and_then(Value::as_str).unwrap_or_default();
         if status == "completed" || status == "failed" {
@@ -361,7 +485,12 @@ impl Updates {
 
     /// The end of a tool call, with a diff drawn as an edit (before and after).
     fn finish(&mut self, id: &str, u: &Value, is_error: bool) -> AcpEvent {
-        let call = self.calls.remove(id).unwrap_or(Call { name: "tool", args: json!({}), started: true, kind: String::new() });
+        let call = self.calls.remove(id).unwrap_or(Call {
+            name: "tool",
+            args: json!({}),
+            started: true,
+            kind: String::new(),
+        });
         let (body, diff) = tool_content(u.get("content"));
         let mut args = call.args;
         let name = if let Some((path, old, new)) = diff {
@@ -375,11 +504,26 @@ impl Updates {
             call.name
         };
         let output = if body.is_empty() {
-            u.get("rawOutput").map_or_else(|| if is_error { "Failed.".to_owned() } else { "Done.".to_owned() }, ToString::to_string)
+            u.get("rawOutput").map_or_else(
+                || {
+                    if is_error {
+                        "Failed.".to_owned()
+                    } else {
+                        "Done.".to_owned()
+                    }
+                },
+                ToString::to_string,
+            )
         } else {
             body
         };
-        AcpEvent::ToolEnd { id: id.to_owned(), name: name.to_owned(), args, output, is_error }
+        AcpEvent::ToolEnd {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            args,
+            output,
+            is_error,
+        }
     }
 
     fn plan(&mut self, kind: &str, u: &Value) -> Vec<AcpEvent> {
@@ -405,27 +549,46 @@ impl Updates {
 
     /// The agent compacting its own context: one row, open while it runs.
     fn compaction(&mut self, kind: &str, u: &Value) -> Vec<AcpEvent> {
-        let Some(compaction) = u.get("compactionId").and_then(Value::as_str) else { return Vec::new() };
+        let Some(compaction) = u.get("compactionId").and_then(Value::as_str) else {
+            return Vec::new();
+        };
         let id = format!("acp-compaction:{compaction}");
         let args = json!({ "title": "Compact context" });
         let mut events = Vec::new();
         if !self.compactions.contains_key(&id) {
             self.compactions.insert(id.clone(), String::new());
-            events.push(AcpEvent::ToolStart { id: id.clone(), name: "compact_context".to_owned(), args: args.clone() });
+            events.push(AcpEvent::ToolStart {
+                id: id.clone(),
+                name: "compact_context".to_owned(),
+                args: args.clone(),
+            });
         }
         if kind == "compaction_summary_chunk" {
-            if let (Some(text), Some(so_far)) = (block_text(u.get("content")), self.compactions.get_mut(&id)) {
+            if let (Some(text), Some(so_far)) =
+                (block_text(u.get("content")), self.compactions.get_mut(&id))
+            {
                 so_far.push_str(&text);
             }
             return events;
         }
-        let summary = u.get("summary").and_then(Value::as_array).map(|b| blocks_text(b)).unwrap_or_default();
-        match u.get("status").and_then(Value::as_str).unwrap_or("in_progress") {
+        let summary = u
+            .get("summary")
+            .and_then(Value::as_array)
+            .map(|b| blocks_text(b))
+            .unwrap_or_default();
+        match u
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("in_progress")
+        {
             done @ ("completed" | "failed" | "cancelled") => {
                 let streamed = self.compactions.remove(&id).unwrap_or_default();
                 let failed = done != "completed";
                 let output = if failed {
-                    u.get("error").and_then(Value::as_str).filter(|e| !e.is_empty()).map_or_else(|| format!("Compaction {done}."), str::to_owned)
+                    u.get("error")
+                        .and_then(Value::as_str)
+                        .filter(|e| !e.is_empty())
+                        .map_or_else(|| format!("Compaction {done}."), str::to_owned)
                 } else if !summary.is_empty() {
                     summary
                 } else if !streamed.is_empty() {
@@ -433,7 +596,13 @@ impl Updates {
                 } else {
                     "Done.".to_owned()
                 };
-                events.push(AcpEvent::ToolEnd { id, name: "compact_context".to_owned(), args, output, is_error: failed });
+                events.push(AcpEvent::ToolEnd {
+                    id,
+                    name: "compact_context".to_owned(),
+                    args,
+                    output,
+                    is_error: failed,
+                });
             }
             // Still going, or a state this client doesn't know: still going.
             _ => {
@@ -450,21 +619,35 @@ impl Updates {
         let mut events: Vec<AcpEvent> = self
             .compactions
             .drain()
-            .map(|(id, _)| AcpEvent::ToolEnd { id, name: "compact_context".to_owned(), args: json!({ "title": "Compact context" }), output: "Stopped.".to_owned(), is_error: true })
+            .map(|(id, _)| AcpEvent::ToolEnd {
+                id,
+                name: "compact_context".to_owned(),
+                args: json!({ "title": "Compact context" }),
+                output: "Stopped.".to_owned(),
+                is_error: true,
+            })
             .collect();
-        events.extend(self.calls.drain().filter(|(_, call)| call.started).map(|(id, call)| AcpEvent::ToolEnd {
-            id,
-            name: call.name.to_owned(),
-            args: call.args,
-            output: "Stopped.".to_owned(),
-            is_error: true,
-        }));
+        events.extend(
+            self.calls
+                .drain()
+                .filter(|(_, call)| call.started)
+                .map(|(id, call)| AcpEvent::ToolEnd {
+                    id,
+                    name: call.name.to_owned(),
+                    args: call.args,
+                    output: "Stopped.".to_owned(),
+                    is_error: true,
+                }),
+        );
         events
     }
 }
 
 fn text_chunk(update: &Value) -> Option<String> {
-    update.pointer("/content/text").and_then(Value::as_str).map(str::to_owned)
+    update
+        .pointer("/content/text")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
 }
 
 /// A v2 turn is over when the agent has taken the prompt (or the user has stopped it), nothing is waiting on
@@ -491,7 +674,12 @@ fn turn_usage(answer: &Value, cost: Option<f64>) -> Option<Usage> {
     if tokens.is_none() && cost.is_none() {
         return None;
     }
-    let n = |key: &str| tokens.and_then(|u| u.get(key)).and_then(Value::as_u64).map_or(0, |v| u32::try_from(v).unwrap_or(u32::MAX));
+    let n = |key: &str| {
+        tokens
+            .and_then(|u| u.get(key))
+            .and_then(Value::as_u64)
+            .map_or(0, |v| u32::try_from(v).unwrap_or(u32::MAX))
+    };
     let (input, output, total) = (n("inputTokens"), n("outputTokens"), n("totalTokens"));
     Some(Usage {
         input,
@@ -499,7 +687,10 @@ fn turn_usage(answer: &Value, cost: Option<f64>) -> Option<Usage> {
         cache_read: n("cachedReadTokens"),
         cache_write: n("cachedWriteTokens"),
         total_tokens: if total > 0 { total } else { input + output },
-        cost: cost.map(|total| CostBreakdown { total, ..CostBreakdown::default() }),
+        cost: cost.map(|total| CostBreakdown {
+            total,
+            ..CostBreakdown::default()
+        }),
     })
 }
 
@@ -513,20 +704,35 @@ async fn stop_turn(conn: &Arc<Conn>, session: &str, thread: &str, harness_id: &s
     let cancel = conn.clone();
     let id = session.to_owned();
     tokio::spawn(async move {
-        let _ = cancel.notify("session/cancel", json!({ "sessionId": id })).await;
+        let _ = cancel
+            .notify("session/cancel", json!({ "sessionId": id }))
+            .await;
     });
-    if !conn.cap("/capabilities/session", "/agentCapabilities/sessionCapabilities/close") {
+    if !conn.cap(
+        "/capabilities/session",
+        "/agentCapabilities/sessionCapabilities/close",
+    ) {
         return false;
     }
     // The session is gone from here on: a turn that starts before the close is answered must open a new one
     // rather than reuse it.
     *conn.session.lock().await = None;
     let close = conn.clone();
-    let (id, key, saved) = (session.to_owned(), session_key(thread, harness_id), !thread.starts_with(DELEGATE));
+    let (id, key, saved) = (
+        session.to_owned(),
+        session_key(thread, harness_id),
+        !thread.starts_with(DELEGATE),
+    );
     tokio::spawn(async move {
         // A close refused because the session is already gone is a close; one that hangs is abandoned, and the
         // kill fallback covers it.
-        let _ = close.request("session/close", json!({ "sessionId": id }), Some(STOP_CLOSE_TIMEOUT)).await;
+        let _ = close
+            .request(
+                "session/close",
+                json!({ "sessionId": id }),
+                Some(STOP_CLOSE_TIMEOUT),
+            )
+            .await;
         if saved {
             forget_session(&key, &id);
         }
@@ -553,13 +759,27 @@ async fn answer_permission(
     let outcome = match disposition(ask.kind.as_deref().unwrap_or("other"), plan_mode, bypass) {
         Disposition::Allow => permission_outcome(&ask.options, true),
         Disposition::Deny => {
-            trace(&who, format!("refused in plan mode: {}", ask.title.as_deref().unwrap_or("?")));
+            trace(
+                &who,
+                format!(
+                    "refused in plan mode: {}",
+                    ask.title.as_deref().unwrap_or("?")
+                ),
+            );
             permission_outcome(&ask.options, false)
         }
         Disposition::Ask => {
             let (reply, answer) = oneshot::channel();
             let why = ask.title.as_deref().map(|t| format!("{who} wants to: {t}"));
-            let request = PermissionRequest { tool: ToolInfo { id: ask.id.clone(), name: ask.name.clone(), args: ask.args.clone() }, why, reply };
+            let request = PermissionRequest {
+                tool: ToolInfo {
+                    id: ask.id.clone(),
+                    name: ask.name.clone(),
+                    args: ask.args.clone(),
+                },
+                why,
+                reply,
+            };
             if events.send(AcpEvent::Permission(request)).is_err() {
                 permission_outcome(&ask.options, false)
             } else {
@@ -581,7 +801,13 @@ fn build_prompt(conn: &Conn, harness: &Harness, request: &TurnRequest<'_>) -> Ve
     let mut prompt = Vec::new();
     // A message that starts with `/` is a command of the agent's own: nothing goes before it, or it would no
     // longer start the prompt.
-    let slash = request.prompt.iter().find_map(|p| if let PromptPart::Text(text) = p { Some(text.trim_start().starts_with('/')) } else { None }) == Some(true);
+    let slash = request.prompt.iter().find_map(|p| {
+        if let PromptPart::Text(text) = p {
+            Some(text.trim_start().starts_with('/'))
+        } else {
+            None
+        }
+    }) == Some(true);
     if !slash {
         let seen = conn.seen.load(Ordering::SeqCst);
         let missed = request.earlier.get(seen..).unwrap_or(request.earlier);
@@ -590,9 +816,15 @@ fn build_prompt(conn: &Conn, harness: &Harness, request: &TurnRequest<'_>) -> Ve
         }
         // Where it is running and what it has: said once, and again only when that changes. Only to a turn that
         // is for the user (one that carries Vivianne's tools), not to an internal check such as a sign-in probe.
-        let tools: &[super::own_tools::OfferedTool] = request.own.as_ref().map_or(&[], |own| &own.tools);
-        let told_now = if request.own.is_none() { None } else {
-            let mut last = conn.told.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let tools: &[super::own_tools::OfferedTool] =
+            request.own.as_ref().map_or(&[], |own| &own.tools);
+        let told_now = if request.own.is_none() {
+            None
+        } else {
+            let mut last = conn
+                .told
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let (send, now) = super::own_tools::next_instructions(&last, request.plan_mode, tools);
             *last = now;
             send
@@ -601,7 +833,11 @@ fn build_prompt(conn: &Conn, harness: &Harness, request: &TurnRequest<'_>) -> Ve
             prompt.push(json!({ "type": "text", "text": text }));
         }
     }
-    prompt.extend(prompt_json(request.prompt, conn.takes_images(), &harness.name));
+    prompt.extend(prompt_json(
+        request.prompt,
+        conn.takes_images(),
+        &harness.name,
+    ));
     prompt
 }
 
@@ -641,10 +877,19 @@ pub(super) async fn run(
         EndOwnTools(conn.clone())
     });
     let (tx, mut incoming) = mpsc::unbounded_channel();
-    *conn.sink.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(tx);
+    *conn
+        .sink
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(tx);
     let (prompt_conn, session_id) = (conn.clone(), session.to_owned());
     let mut done = PromptGuard(tokio::spawn(async move {
-        prompt_conn.request("session/prompt", json!({ "sessionId": session_id, "prompt": prompt }), None).await
+        prompt_conn
+            .request(
+                "session/prompt",
+                json!({ "sessionId": session_id, "prompt": prompt }),
+                None,
+            )
+            .await
     }));
 
     let follows_work = conn.speaks_v2();
@@ -661,7 +906,8 @@ pub(super) async fn run(
     let mut settle = tokio::time::interval(SETTLE_CHECK);
 
     let answer = loop {
-        let kill_at = stopped_at.map(|at| at + Duration::from_millis(conn.stop_kill_after.load(Ordering::SeqCst)));
+        let kill_at = stopped_at
+            .map(|at| at + Duration::from_millis(conn.stop_kill_after.load(Ordering::SeqCst)));
         tokio::select! {
             result = &mut done.0, if !answered => {
                 answered = true;
@@ -741,7 +987,10 @@ pub(super) async fn run(
             },
         }
     };
-    *conn.sink.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+    *conn
+        .sink
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
     for event in updates.stop_open() {
         let _ = events.send(event);
     }
@@ -763,18 +1012,36 @@ pub(super) async fn run(
 }
 
 /// What the end of the turn means: finished, stopped, or failed and why.
-async fn outcome_of(conn: &Arc<Conn>, harness: &Harness, answer: &Result<Value, RpcError>, updates: &Updates, stopped: bool) -> Outcome {
+async fn outcome_of(
+    conn: &Arc<Conn>,
+    harness: &Harness,
+    answer: &Result<Value, RpcError>,
+    updates: &Updates,
+    stopped: bool,
+) -> Outcome {
     match answer {
         Ok(result) => {
             // A v2 turn's reason comes from the idle state that ended it; a v1 turn's from the answer to
             // `session/prompt`.
-            let stop = updates.idle_reason.as_deref().or_else(|| result.get("stopReason").and_then(Value::as_str)).unwrap_or("end_turn");
+            let stop = updates
+                .idle_reason
+                .as_deref()
+                .or_else(|| result.get("stopReason").and_then(Value::as_str))
+                .unwrap_or("end_turn");
             match stop {
                 "refusal" => Outcome::Failed(format!("{} declined to continue.", harness.name)),
-                "max_tokens" | "max_turn_requests" => Outcome::Failed(format!("{} stopped: it hit its limit ({stop}).", harness.name)),
+                "max_tokens" | "max_turn_requests" => Outcome::Failed(format!(
+                    "{} stopped: it hit its limit ({stop}).",
+                    harness.name
+                )),
                 // After a Stop the turn is the user's, not a failure.
                 "error" if !stopped => {
-                    let why = updates.idle_error.as_ref().and_then(|e| e.get("message")).and_then(Value::as_str).unwrap_or_default();
+                    let why = updates
+                        .idle_error
+                        .as_ref()
+                        .and_then(|e| e.get("message"))
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
                     let said = if why.is_empty() {
                         format!("{} stopped: something went wrong.", harness.name)
                     } else if looks_unauthenticated(why) {
@@ -792,7 +1059,10 @@ async fn outcome_of(conn: &Arc<Conn>, harness: &Harness, answer: &Result<Value, 
             if stopped {
                 // A turn that fails after Stop was stopped, not broken: the process usually dies because Stop
                 // ended it, and saying so as an error would blame the user for their own Stop.
-                trace(&harness.name, format!("the stopped turn's answer failed: {e}"));
+                trace(
+                    &harness.name,
+                    format!("the stopped turn's answer failed: {e}"),
+                );
                 return Outcome::Stopped;
             }
             // A turn that fails because the agent isn't signed in says how to fix it.
@@ -820,17 +1090,33 @@ async fn with_stderr(conn: &Conn, mut said: String) -> String {
 
 /// This turn's share of the session's cost, and its tokens, as what the agent spent. `None` when it reported
 /// neither. The cost is `None` when the agent gave no figure: unknown, not zero.
-fn turn_spent(conn: &Conn, harness: &Harness, result: &Value, cost_now: Option<f64>) -> Option<Spent> {
+fn turn_spent(
+    conn: &Conn,
+    harness: &Harness,
+    result: &Value,
+    cost_now: Option<f64>,
+) -> Option<Spent> {
     let share = cost_now.map(|now| {
-        let mut last = conn.cost.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut last = conn
+            .cost
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let share = (now - *last).max(0.0);
         *last = now;
         share
     });
     let usage = turn_usage(result, share)?;
+    // The agent's own model is part of the usage key (`<agent>/<model>`), so what was used inside a coding agent
+    // can be told apart; an agent that has not said which model it uses is counted under its own name.
+    let model = super::info::current_model(
+        &conn
+            .info
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+    );
     Some(Spent {
         provider: super::PROVIDER.to_owned(),
-        model: harness.id.clone(),
+        model: model.map_or_else(|| harness.id.clone(), |m| format!("{}/{m}", harness.id)),
         input: u64::from(usage.input),
         output: u64::from(usage.output),
         cache_read: u64::from(usage.cache_read),
@@ -848,7 +1134,11 @@ mod tests {
 
     fn thread() -> String {
         static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-        format!("turn-test-{}-{}", std::process::id(), N.fetch_add(1, Ordering::SeqCst))
+        format!(
+            "turn-test-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::SeqCst)
+        )
     }
 
     /// A connection that has finished `initialize` as an agent of `version` with `caps`.
@@ -875,16 +1165,30 @@ mod tests {
         let (conn, thread, stop, who) = (conn.clone(), thread(), cancel.clone(), harness("a"));
         let prompt = vec![PromptPart::Text(text.to_owned())];
         let turn = tokio::spawn(async move {
-            let request = TurnRequest { prompt: &prompt, earlier: &[], plan_mode, bypass, mcp_servers: &[], own: None };
+            let request = TurnRequest {
+                prompt: &prompt,
+                earlier: &[],
+                plan_mode,
+                bypass,
+                mcp_servers: &[],
+                own: None,
+            };
             let end = run(&conn, &who, SESSION, &thread, &request, &tx, &stop).await;
             forget_session(&session_key(&thread, "a"), SESSION);
             end
         });
-        Started { turn, events, cancel }
+        Started {
+            turn,
+            events,
+            cancel,
+        }
     }
 
     async fn collect(mut started: Started) -> (TurnEnd, Vec<AcpEvent>) {
-        let end = started.turn.await.unwrap_or(TurnEnd { outcome: Outcome::Failed("task".into()), reply: String::new() });
+        let end = started.turn.await.unwrap_or(TurnEnd {
+            outcome: Outcome::Failed("task".into()),
+            reply: String::new(),
+        });
         let mut events = Vec::new();
         while let Ok(event) = started.events.try_recv() {
             events.push(event);
@@ -893,7 +1197,9 @@ mod tests {
     }
 
     async fn finish_v1(agent: &mut Peer, prompt: &Value, reason: &str) {
-        agent.answer(&prompt["id"], json!({ "stopReason": reason })).await;
+        agent
+            .answer(&prompt["id"], json!({ "stopReason": reason }))
+            .await;
     }
 
     #[tokio::test]
@@ -902,12 +1208,30 @@ mod tests {
         let started = start(&conn, "hi", false, false);
         let prompt = agent.prompt().await;
         assert_eq!(prompt["params"]["prompt"][0]["text"], "hi");
-        agent.update(SESSION, json!({"sessionUpdate": "agent_message_chunk", "content": {"text": "Hel"}})).await;
-        agent.update(SESSION, json!({"sessionUpdate": "agent_message_chunk", "content": {"text": "lo"}})).await;
+        agent
+            .update(
+                SESSION,
+                json!({"sessionUpdate": "agent_message_chunk", "content": {"text": "Hel"}}),
+            )
+            .await;
+        agent
+            .update(
+                SESSION,
+                json!({"sessionUpdate": "agent_message_chunk", "content": {"text": "lo"}}),
+            )
+            .await;
         finish_v1(&mut agent, &prompt, "end_turn").await;
         let (end, events) = collect(started).await;
-        assert_eq!(end, TurnEnd { outcome: Outcome::Finished, reply: "Hello".into() });
-        assert!(matches!(&events[..], [AcpEvent::Text(a), AcpEvent::Text(b)] if a == "Hel" && b == "lo"));
+        assert_eq!(
+            end,
+            TurnEnd {
+                outcome: Outcome::Finished,
+                reply: "Hello".into()
+            }
+        );
+        assert!(
+            matches!(&events[..], [AcpEvent::Text(a), AcpEvent::Text(b)] if a == "Hel" && b == "lo")
+        );
     }
 
     #[tokio::test]
@@ -916,11 +1240,29 @@ mod tests {
         let started = start(&conn, "go", false, false);
         let prompt = agent.prompt().await;
         agent.answer(&prompt["id"], json!({})).await;
-        agent.update(SESSION, json!({"sessionUpdate": "state_update", "state": "running"})).await;
-        agent.update(SESSION, json!({"sessionUpdate": "agent_message_chunk", "content": {"text": "working"}})).await;
+        agent
+            .update(
+                SESSION,
+                json!({"sessionUpdate": "state_update", "state": "running"}),
+            )
+            .await;
+        agent
+            .update(
+                SESSION,
+                json!({"sessionUpdate": "agent_message_chunk", "content": {"text": "working"}}),
+            )
+            .await;
         tokio::time::sleep(Duration::from_millis(150)).await;
-        assert!(!started.turn.is_finished(), "taking the prompt is not the end of the turn");
-        agent.update(SESSION, json!({"sessionUpdate": "state_update", "state": "idle"})).await;
+        assert!(
+            !started.turn.is_finished(),
+            "taking the prompt is not the end of the turn"
+        );
+        agent
+            .update(
+                SESSION,
+                json!({"sessionUpdate": "state_update", "state": "idle"}),
+            )
+            .await;
         let (end, events) = collect(started).await;
         assert_eq!(end.outcome, Outcome::Finished);
         assert!(matches!(&events[..], [AcpEvent::Text(t)] if t == "working"));
@@ -947,9 +1289,15 @@ mod tests {
         agent.update(SESSION, json!({"sessionUpdate": "tool_call", "toolCallId": "t2", "kind": "edit", "status": "completed", "content": [{"type": "diff", "path": "a.rs", "oldText": "x", "newText": "y"}]})).await;
         finish_v1(&mut agent, &prompt, "end_turn").await;
         let (_, events) = collect(started).await;
-        assert!(matches!(&events[0], AcpEvent::ToolStart { name, args, .. } if name == "bash" && args["command"] == "cargo test"));
-        assert!(matches!(&events[1], AcpEvent::ToolEnd { output, is_error: false, .. } if output == "ok"));
-        assert!(matches!(&events[3], AcpEvent::ToolEnd { name, args, .. } if name == "edit" && args["old_string"] == "x" && args["new_string"] == "y"));
+        assert!(
+            matches!(&events[0], AcpEvent::ToolStart { name, args, .. } if name == "bash" && args["command"] == "cargo test")
+        );
+        assert!(
+            matches!(&events[1], AcpEvent::ToolEnd { output, is_error: false, .. } if output == "ok")
+        );
+        assert!(
+            matches!(&events[3], AcpEvent::ToolEnd { name, args, .. } if name == "edit" && args["old_string"] == "x" && args["new_string"] == "y")
+        );
     }
 
     #[tokio::test]
@@ -959,11 +1307,28 @@ mod tests {
         let prompt = agent.prompt().await;
         agent.answer(&prompt["id"], json!({})).await;
         agent.update(SESSION, json!({"sessionUpdate": "plan_update", "plan": {"planId": "p1", "type": "items", "entries": [{"content": "Read", "status": "completed"}]}})).await;
-        agent.update(SESSION, json!({"sessionUpdate": "plan_removed", "planId": "other"})).await;
-        agent.update(SESSION, json!({"sessionUpdate": "plan_removed", "planId": "p1"})).await;
-        agent.update(SESSION, json!({"sessionUpdate": "state_update", "state": "idle"})).await;
+        agent
+            .update(
+                SESSION,
+                json!({"sessionUpdate": "plan_removed", "planId": "other"}),
+            )
+            .await;
+        agent
+            .update(
+                SESSION,
+                json!({"sessionUpdate": "plan_removed", "planId": "p1"}),
+            )
+            .await;
+        agent
+            .update(
+                SESSION,
+                json!({"sessionUpdate": "state_update", "state": "idle"}),
+            )
+            .await;
         let (_, events) = collect(started).await;
-        assert!(matches!(&events[..], [AcpEvent::Plan(a), AcpEvent::Plan(b)] if a == "[x] Read" && b.is_empty()));
+        assert!(
+            matches!(&events[..], [AcpEvent::Plan(a), AcpEvent::Plan(b)] if a == "[x] Read" && b.is_empty())
+        );
     }
 
     #[tokio::test]
@@ -973,11 +1338,22 @@ mod tests {
         let prompt = agent.prompt().await;
         let options = json!([{"kind": "allow_always", "optionId": "always"}, {"kind": "allow_once", "optionId": "once"}, {"kind": "reject_once", "optionId": "no"}]);
         agent.send(json!({"jsonrpc": "2.0", "id": 50, "method": "session/request_permission", "params": {"toolCall": {"toolCallId": "t", "kind": "edit", "title": "Edit a.rs"}, "options": options}})).await;
-        let Some(AcpEvent::Permission(request)) = started.events.recv().await else { panic!("no request") };
-        assert_eq!((request.tool.name.as_str(), request.why.as_deref()), ("edit", Some("Mock wants to: Edit a.rs")));
+        let Some(AcpEvent::Permission(request)) = started.events.recv().await else {
+            panic!("no request")
+        };
+        assert_eq!(
+            (request.tool.name.as_str(), request.why.as_deref()),
+            ("edit", Some("Mock wants to: Edit a.rs"))
+        );
         request.answer(true);
         let answer = agent.recv().await;
-        assert_eq!((answer["id"].as_u64(), answer["result"]["outcome"]["optionId"].as_str()), (Some(50), Some("once")));
+        assert_eq!(
+            (
+                answer["id"].as_u64(),
+                answer["result"]["outcome"]["optionId"].as_str()
+            ),
+            (Some(50), Some("once"))
+        );
         finish_v1(&mut agent, &prompt, "end_turn").await;
         assert_eq!(collect(started).await.0.outcome, Outcome::Finished);
     }
@@ -989,7 +1365,9 @@ mod tests {
         let prompt = agent.prompt().await;
         let options = json!([{"kind": "allow_once", "optionId": "once"}, {"kind": "reject_once", "optionId": "no"}]);
         agent.send(json!({"jsonrpc": "2.0", "id": 51, "method": "session/request_permission", "params": {"toolCall": {"toolCallId": "t", "kind": "execute"}, "options": options}})).await;
-        let Some(AcpEvent::Permission(request)) = started.events.recv().await else { panic!("no request") };
+        let Some(AcpEvent::Permission(request)) = started.events.recv().await else {
+            panic!("no request")
+        };
         request.answer(false);
         assert_eq!(agent.recv().await["result"]["outcome"]["optionId"], "no");
         finish_v1(&mut agent, &prompt, "end_turn").await;
@@ -1008,7 +1386,10 @@ mod tests {
         assert_eq!(agent.recv().await["result"]["outcome"]["optionId"], "no");
         finish_v1(&mut agent, &prompt, "end_turn").await;
         let (_, events) = collect(started).await;
-        assert!(events.iter().all(|e| !matches!(e, AcpEvent::Permission(_))), "the user was never asked");
+        assert!(
+            events.iter().all(|e| !matches!(e, AcpEvent::Permission(_))),
+            "the user was never asked"
+        );
     }
 
     #[tokio::test]
@@ -1029,7 +1410,9 @@ mod tests {
         let mut started = start(&conn, "write", false, false);
         let prompt = agent.prompt().await;
         agent.send(json!({"jsonrpc": "2.0", "id": 70, "method": "session/request_permission", "params": {"toolCall": {"toolCallId": "t", "kind": "edit"}, "options": []}})).await;
-        let Some(AcpEvent::Permission(_waiting)) = started.events.recv().await else { panic!("no request") };
+        let Some(AcpEvent::Permission(_waiting)) = started.events.recv().await else {
+            panic!("no request")
+        };
         started.cancel.cancel();
         let mut seen = Vec::new();
         for _ in 0..3 {
@@ -1037,8 +1420,15 @@ mod tests {
                 seen.push(frame);
             }
         }
-        assert!(seen.iter().any(|f| f["method"] == "session/cancel"), "{seen:?}");
-        assert!(seen.iter().any(|f| f["id"] == 70 && f["result"]["outcome"]["outcome"] == "cancelled"), "{seen:?}");
+        assert!(
+            seen.iter().any(|f| f["method"] == "session/cancel"),
+            "{seen:?}"
+        );
+        assert!(
+            seen.iter()
+                .any(|f| f["id"] == 70 && f["result"]["outcome"]["outcome"] == "cancelled"),
+            "{seen:?}"
+        );
         finish_v1(&mut agent, &prompt, "cancelled").await;
         assert_eq!(collect(started).await.0.outcome, Outcome::Stopped);
     }
@@ -1053,7 +1443,9 @@ mod tests {
         started.cancel.cancel();
         let mut methods = Vec::new();
         while methods.len() < 2 {
-            let Some(frame) = agent.next_within(1000).await else { break };
+            let Some(frame) = agent.next_within(1000).await else {
+                break;
+            };
             if let Some(method) = frame["method"].as_str() {
                 methods.push(method.to_owned());
                 if method == "session/close" {
@@ -1061,10 +1453,17 @@ mod tests {
                 }
             }
         }
-        assert!(methods.contains(&"session/cancel".to_owned()) && methods.contains(&"session/close".to_owned()), "{methods:?}");
+        assert!(
+            methods.contains(&"session/cancel".to_owned())
+                && methods.contains(&"session/close".to_owned()),
+            "{methods:?}"
+        );
         agent.update(SESSION, json!({"sessionUpdate": "state_update", "state": "idle", "stopReason": "cancelled"})).await;
         assert_eq!(collect(started).await.0.outcome, Outcome::Stopped);
-        assert!(conn.session.lock().await.is_none(), "a closed session is not reused");
+        assert!(
+            conn.session.lock().await.is_none(),
+            "a closed session is not reused"
+        );
     }
 
     #[tokio::test]
@@ -1076,7 +1475,10 @@ mod tests {
         started.cancel.cancel();
         let (end, _) = collect(started).await;
         assert_eq!(end.outcome, Outcome::Stopped);
-        assert!(!conn.is_alive(), "the agent is treated as gone, so the next turn starts a new one");
+        assert!(
+            !conn.is_alive(),
+            "the agent is treated as gone, so the next turn starts a new one"
+        );
     }
 
     #[tokio::test]
@@ -1097,42 +1499,84 @@ mod tests {
         let _prompt = agent.prompt().await;
         drop(agent);
         let (end, _) = collect(started).await;
-        let Outcome::Failed(why) = end.outcome else { panic!("not a failure") };
-        assert!(why.contains("the agent exited") && why.contains("cannot open the project"), "{why}");
+        let Outcome::Failed(why) = end.outcome else {
+            panic!("not a failure")
+        };
+        assert!(
+            why.contains("the agent exited") && why.contains("cannot open the project"),
+            "{why}"
+        );
     }
 
     #[tokio::test]
     async fn the_conversation_before_the_agent_joined_is_handed_over_once() {
         let (conn, mut agent) = ready(1, json!({})).await;
         let (tx, _events) = mpsc::unbounded_channel();
-        let earlier = [Line { who: "User", text: "what is 2+2".into() }, Line { who: "Assistant", text: "4".into() }];
+        let earlier = [
+            Line {
+                who: "User",
+                text: "what is 2+2".into(),
+            },
+            Line {
+                who: "Assistant",
+                text: "4".into(),
+            },
+        ];
         let (turn_conn, who, stop) = (conn.clone(), harness("a"), CancellationToken::new());
         let turn = tokio::spawn(async move {
             let prompt = [PromptPart::Text("and 3+3?".into())];
-            let request = TurnRequest { prompt: &prompt, earlier: &earlier, plan_mode: false, bypass: false, mcp_servers: &[], own: None };
+            let request = TurnRequest {
+                prompt: &prompt,
+                earlier: &earlier,
+                plan_mode: false,
+                bypass: false,
+                mcp_servers: &[],
+                own: None,
+            };
             let thread = thread();
             let end = run(&turn_conn, &who, SESSION, &thread, &request, &tx, &stop).await;
             forget_session(&session_key(&thread, "a"), SESSION);
             end
         });
         let prompt = agent.prompt().await;
-        let parts = prompt["params"]["prompt"].as_array().cloned().unwrap_or_default();
-        assert!(parts[0]["text"].as_str().is_some_and(|t| t.contains("User: what is 2+2") && t.contains("Assistant: 4")));
+        let parts = prompt["params"]["prompt"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            parts[0]["text"]
+                .as_str()
+                .is_some_and(|t| t.contains("User: what is 2+2") && t.contains("Assistant: 4"))
+        );
         assert_eq!(parts[1]["text"], "and 3+3?");
         finish_v1(&mut agent, &prompt, "end_turn").await;
         let _ = turn.await;
-        assert_eq!(conn.seen.load(Ordering::SeqCst), 3, "what it has seen now includes this exchange");
+        assert_eq!(
+            conn.seen.load(Ordering::SeqCst),
+            3,
+            "what it has seen now includes this exchange"
+        );
     }
 
     #[tokio::test]
     async fn a_slash_command_goes_first_with_nothing_before_it() {
         let (conn, mut agent) = ready(1, json!({})).await;
-        let earlier = [Line { who: "User", text: "hi".into() }];
+        let earlier = [Line {
+            who: "User",
+            text: "hi".into(),
+        }];
         let (tx, _events) = mpsc::unbounded_channel();
         let (turn_conn, who, stop) = (conn.clone(), harness("a"), CancellationToken::new());
         let turn = tokio::spawn(async move {
             let prompt = [PromptPart::Text("/review".into())];
-            let request = TurnRequest { prompt: &prompt, earlier: &earlier, plan_mode: false, bypass: false, mcp_servers: &[], own: None };
+            let request = TurnRequest {
+                prompt: &prompt,
+                earlier: &earlier,
+                plan_mode: false,
+                bypass: false,
+                mcp_servers: &[],
+                own: None,
+            };
             let thread = thread();
             let end = run(&turn_conn, &who, SESSION, &thread, &request, &tx, &stop).await;
             forget_session(&session_key(&thread, "a"), SESSION);
@@ -1151,14 +1595,24 @@ mod tests {
         assert!(!turn_settled(Some("idle"), true, 1), "a dialog is open");
         assert!(!turn_settled(Some("running"), true, 0));
         assert!(!turn_settled(None, true, 0));
-        assert!(!turn_settled(Some("something new"), true, 0), "an unknown state is never idle");
+        assert!(
+            !turn_settled(Some("something new"), true, 0),
+            "an unknown state is never idle"
+        );
     }
 
     #[test]
     fn a_turns_usage_counts_tokens_and_the_cost_it_added() {
         assert!(turn_usage(&json!({}), None).is_none());
-        let usage = turn_usage(&json!({"usage": {"inputTokens": 10, "outputTokens": 5}}), Some(0.25));
-        assert!(usage.as_ref().is_some_and(|u| u.input == 10 && u.output == 5 && u.total_tokens == 15));
+        let usage = turn_usage(
+            &json!({"usage": {"inputTokens": 10, "outputTokens": 5}}),
+            Some(0.25),
+        );
+        assert!(
+            usage
+                .as_ref()
+                .is_some_and(|u| u.input == 10 && u.output == 5 && u.total_tokens == 15)
+        );
         assert_eq!(usage.and_then(|u| u.cost).map(|c| c.total), Some(0.25));
     }
 }

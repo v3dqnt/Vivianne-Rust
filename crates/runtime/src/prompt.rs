@@ -40,7 +40,10 @@ pub fn coding_system_prompt(cwd: &Path) -> String {
     } else {
         "The shell tool runs a POSIX shell."
     };
-    format!("{DIRECTIVE}\n\n## Environment\nWorking folder: {}\n{shell}", cwd.display())
+    format!(
+        "{DIRECTIVE}\n\n## Environment\nWorking folder: {}\n{shell}",
+        cwd.display()
+    )
 }
 
 #[cfg(test)]
@@ -51,7 +54,14 @@ mod tests {
     fn it_names_the_folder_and_only_tools_this_app_has() {
         let prompt = coding_system_prompt(Path::new("/work/app"));
         assert!(prompt.contains("/work/app"));
-        for gone in ["todo_write", "submit_plan", "subagent", "dip:", "web_fetch", "vault"] {
+        for gone in [
+            "todo_write",
+            "submit_plan",
+            "subagent",
+            "dip:",
+            "web_fetch",
+            "vault",
+        ] {
             assert!(!prompt.contains(gone), "{gone}");
         }
     }

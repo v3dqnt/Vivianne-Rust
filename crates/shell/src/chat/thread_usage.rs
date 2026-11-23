@@ -13,7 +13,10 @@ pub fn line(usage: &DayUsage) -> Option<String> {
         (true, true) => format!("{}+ (some calls unpriced)", money(usage.cost)),
         (true, false) => "cost unknown".to_owned(),
     };
-    Some(format!("this thread: {} tokens, {cost}", tokens(usage.tokens())))
+    Some(format!(
+        "this thread: {} tokens, {cost}",
+        tokens(usage.tokens())
+    ))
 }
 
 fn tokens(n: u64) -> String {
@@ -27,7 +30,11 @@ fn tokens(n: u64) -> String {
 }
 
 fn money(c: f64) -> String {
-    if c < 0.1 { format!("${c:.3}") } else { format!("${c:.2}") }
+    if c < 0.1 {
+        format!("${c:.3}")
+    } else {
+        format!("${c:.2}")
+    }
 }
 
 #[cfg(test)]
@@ -35,7 +42,14 @@ mod tests {
     use super::*;
 
     fn usage(cost: f64, unknown: bool, requests: u32) -> DayUsage {
-        DayUsage { input: 12_000, output: 400, cost, requests, has_unknown_cost: unknown, ..DayUsage::default() }
+        DayUsage {
+            input: 12_000,
+            output: 400,
+            cost,
+            requests,
+            has_unknown_cost: unknown,
+            ..DayUsage::default()
+        }
     }
 
     #[test]
@@ -45,8 +59,14 @@ mod tests {
 
     #[test]
     fn a_known_cost_is_shown_and_an_unknown_one_says_so_never_zero() {
-        assert_eq!(line(&usage(0.034, false, 1)).as_deref(), Some("this thread: 12.4K tokens, $0.034"));
-        assert_eq!(line(&usage(0.0, true, 1)).as_deref(), Some("this thread: 12.4K tokens, cost unknown"));
+        assert_eq!(
+            line(&usage(0.034, false, 1)).as_deref(),
+            Some("this thread: 12.4K tokens, $0.034")
+        );
+        assert_eq!(
+            line(&usage(0.0, true, 1)).as_deref(),
+            Some("this thread: 12.4K tokens, cost unknown")
+        );
         assert!(line(&usage(0.5, true, 2)).is_some_and(|l| l.contains("$0.50+")));
     }
 }

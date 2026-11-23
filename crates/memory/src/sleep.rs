@@ -25,9 +25,9 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 
-use super::{now_ms, MemoryEntry};
 use super::graph::{Edge, EdgeKind};
 use super::store::{self as store, USER_ROOT};
+use super::{MemoryEntry, now_ms};
 
 /// How long every agent must have been quiet before a pass starts.
 const IDLE_BEFORE_SLEEP_MS: u64 = 10 * 60 * 1000;
@@ -90,12 +90,18 @@ pub fn mark_dirty(root: &str) {
 
 fn take_dirty() -> Vec<String> {
     let mut g = DIRTY.lock().unwrap_or_else(|e| e.into_inner());
-    g.take().map(|s| s.into_iter().collect()).unwrap_or_default()
+    g.take()
+        .map(|s| s.into_iter().collect())
+        .unwrap_or_default()
 }
 
 /// One pass over `root`'s store. `model` writes the episodes; without one
 /// that step waits for a pass that has it.
-pub async fn run(app: &vivianne_ai::events::Events, root: &str, model: Option<&vivianne_ai::host::ModelRef>) -> SleepReport {
+pub async fn run(
+    app: &vivianne_ai::events::Events,
+    root: &str,
+    model: Option<&vivianne_ai::host::ModelRef>,
+) -> SleepReport {
     let mut report = SleepReport::default();
     if !store::memory_dir(root).join("memory.db").exists() {
         return report;
@@ -105,17 +111,34 @@ pub async fn run(app: &vivianne_ai::events::Events, root: &str, model: Option<&v
     if let Some(model) = model {
         report.episodes = write_episodes(app, root, model, &auth).await;
         report.observations = super::observations::consolidate(app, root, model, &auth).await;
-        report.pages = super::pages::refresh(app, root, model, &auth, &super::state_snapshot(root).await.pages).await;
+        report.pages = super::pages::refresh(
+            app,
+            root,
+            model,
+            &auth,
+            &super::state_snapshot(root).await.pages,
+        )
+        .await;
     }
     report.merged = dedupe(root).await;
     report.archived = archive_unused(root).await;
     let mut state = super::state_snapshot(root).await;
     state.last_sleep_at = Some(now_ms());
     let _ = super::save_state(root, &state).await;
-    if report.reembedded + report.episodes + report.merged + report.archived + report.observations + report.pages > 0 {
+    if report.reembedded
+        + report.episodes
+        + report.merged
+        + report.archived
+        + report.observations
+        + report.pages
+        > 0
+    {
         log::info!(
             "[memory_sleep] {root}: {} re-embedded, {} episodes, {} merged, {} archived",
-            report.reembedded, report.episodes, report.merged, report.archived
+            report.reembedded,
+            report.episodes,
+            report.merged,
+            report.archived
         );
     }
     report
@@ -140,18 +163,26 @@ async fn reembed(root: &str, auth: &std::sync::Arc<vivianne_ai::ai::auth::AuthSt
     let model = vivianne_ai::ai::embedding::embedding_model();
     let mut done = 0;
     while done < MAX_REEMBED_PER_PASS {
-        let Ok(batch) = store::needing_embedding(root, model, 64).await else { break };
+        let Ok(batch) = store::needing_embedding(root, model, 64).await else {
+            break;
+        };
         if batch.is_empty() {
             break;
         }
         let texts: Vec<String> = batch.iter().map(|e| e.text.clone()).collect();
-        let Ok(Some(vectors)) = vivianne_ai::ai::embedding::embed_texts(auth, &texts).await else { break };
+        let Ok(Some(vectors)) = vivianne_ai::ai::embedding::embed_texts(auth, &texts).await else {
+            break;
+        };
         if vectors.len() != batch.len() {
             break;
         }
         let mut wrote = 0;
         for (e, v) in batch.iter().zip(vectors) {
-            if !v.is_empty() && store::update_embedding(root, &e.id, &v, model).await.is_ok() {
+            if !v.is_empty()
+                && store::update_embedding(root, &e.id, &v, model)
+                    .await
+                    .is_ok()
+            {
                 wrote += 1;
             }
         }
@@ -196,7 +227,9 @@ async fn write_episodes(
 ) -> usize {
     let mut state = super::state_snapshot(root).await;
     let after = state.last_episode_at.unwrap_or(0);
-    let Ok(notes) = store::entries_since(root, "auto", after, 2_000).await else { return 0 };
+    let Ok(notes) = store::entries_since(root, "auto", after, 2_000).await else {
+        return 0;
+    };
     let now = now_ms();
     let mut written = 0;
     for burst in bursts(&notes, EPISODE_GAP_MS) {
@@ -209,16 +242,33 @@ async fn write_episodes(
         if burst.len() >= 2 {
             let shown: Vec<&MemoryEntry> = if burst.len() > MAX_NOTES_PER_EPISODE {
                 let half = MAX_NOTES_PER_EPISODE / 2;
-                burst[..half].iter().chain(&burst[burst.len() - half..]).collect()
+                burst[..half]
+                    .iter()
+                    .chain(&burst[burst.len() - half..])
+                    .collect()
             } else {
                 burst.iter().collect()
             };
-            let prompt = shown.iter().enumerate().map(|(i, e)| format!("{}. {}", i + 1, e.text)).collect::<Vec<_>>().join("\n");
-            let Ok(reply) = vivianne_ai::ai::completion::complete_background(app, model, EPISODE_SYSTEM_PROMPT, &prompt).await else {
+            let prompt = shown
+                .iter()
+                .enumerate()
+                .map(|(i, e)| format!("{}. {}", i + 1, e.text))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let Ok(reply) = vivianne_ai::ai::completion::complete_background(
+                app,
+                model,
+                EPISODE_SYSTEM_PROMPT,
+                &prompt,
+            )
+            .await
+            else {
                 // Try again next pass, from this burst.
                 break;
             };
-            let Some(text) = episode_text(&reply, burst[0].created_at, end) else { break };
+            let Some(text) = episode_text(&reply, burst[0].created_at, end) else {
+                break;
+            };
             let entry = MemoryEntry {
                 id: uuid::Uuid::new_v4().to_string(),
                 key: format!("episode_{}", burst[0].created_at),
@@ -236,10 +286,25 @@ async fn write_episodes(
                 break;
             }
             for note in burst {
-                let _ = store::insert_edge(root, &Edge { source: entry.id.clone(), target: note.id.clone(), kind: EdgeKind::DerivedFrom, created_at: now }).await;
+                let _ = store::insert_edge(
+                    root,
+                    &Edge {
+                        source: entry.id.clone(),
+                        target: note.id.clone(),
+                        kind: EdgeKind::DerivedFrom,
+                        created_at: now,
+                    },
+                )
+                .await;
             }
             if let Ok(Some(v)) = vivianne_ai::ai::embedding::embed_text(auth, &entry.text).await {
-                let _ = store::update_embedding(root, &entry.id, &v, vivianne_ai::ai::embedding::embedding_model()).await;
+                let _ = store::update_embedding(
+                    root,
+                    &entry.id,
+                    &v,
+                    vivianne_ai::ai::embedding::embedding_model(),
+                )
+                .await;
             }
             written += 1;
         }
@@ -263,10 +328,21 @@ pub(crate) fn episode_text(reply: &str, start_ms: u64, end_ms: u64) -> Option<St
     let list = |k: &str| -> Vec<String> {
         v.get(k)
             .and_then(|x| x.as_array())
-            .map(|a| a.iter().filter_map(|s| s.as_str()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|s| s.as_str())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            })
             .unwrap_or_default()
     };
-    let title = v.get("title").and_then(|t| t.as_str()).map(str::trim).filter(|t| !t.is_empty()).unwrap_or("Work session");
+    let title = v
+        .get("title")
+        .and_then(|t| t.as_str())
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .unwrap_or("Work session");
     let mut text = format!("{title} ({}): {summary}", date_range(start_ms, end_ms));
     let decisions = list("decisions");
     if !decisions.is_empty() {
@@ -276,7 +352,12 @@ pub(crate) fn episode_text(reply: &str, start_ms: u64, end_ms: u64) -> Option<St
     if !files.is_empty() {
         text.push_str(&format!("\nTouched: {}", files.join(", ")));
     }
-    if let Some(o) = v.get("outcome").and_then(|o| o.as_str()).map(str::trim).filter(|o| !o.is_empty() && *o != "unclear") {
+    if let Some(o) = v
+        .get("outcome")
+        .and_then(|o| o.as_str())
+        .map(str::trim)
+        .filter(|o| !o.is_empty() && *o != "unclear")
+    {
         text.push_str(&format!("\nOutcome: {o}"));
     }
     Some(text)
@@ -302,7 +383,10 @@ fn date_range(start_ms: u64, end_ms: u64) -> String {
 }
 
 /// Pairs of live facts that say the same thing: (kept, closed) by id.
-pub(crate) fn duplicates(facts: &[(MemoryEntry, Vec<f32>)], threshold: f32) -> Vec<(String, String)> {
+pub(crate) fn duplicates(
+    facts: &[(MemoryEntry, Vec<f32>)],
+    threshold: f32,
+) -> Vec<(String, String)> {
     let mut closed: HashSet<usize> = HashSet::new();
     let mut out = Vec::new();
     for i in 0..facts.len() {
@@ -310,7 +394,10 @@ pub(crate) fn duplicates(facts: &[(MemoryEntry, Vec<f32>)], threshold: f32) -> V
             continue;
         }
         for j in (i + 1)..facts.len() {
-            if closed.contains(&j) || facts[i].0.kind != facts[j].0.kind || facts[i].1.len() != facts[j].1.len() {
+            if closed.contains(&j)
+                || facts[i].0.kind != facts[j].0.kind
+                || facts[i].1.len() != facts[j].1.len()
+            {
                 continue;
             }
             let sim: f32 = facts[i].1.iter().zip(&facts[j].1).map(|(a, b)| a * b).sum();
@@ -319,7 +406,11 @@ pub(crate) fn duplicates(facts: &[(MemoryEntry, Vec<f32>)], threshold: f32) -> V
             }
             // Keep the one most recently confirmed (written or recalled).
             let seen = |e: &MemoryEntry| e.created_at.max(e.last_accessed_at);
-            let (keep, drop) = if seen(&facts[j].0) >= seen(&facts[i].0) { (j, i) } else { (i, j) };
+            let (keep, drop) = if seen(&facts[j].0) >= seen(&facts[i].0) {
+                (j, i)
+            } else {
+                (i, j)
+            };
             closed.insert(drop);
             out.push((facts[keep].0.id.clone(), facts[drop].0.id.clone()));
             if drop == i {
@@ -332,7 +423,9 @@ pub(crate) fn duplicates(facts: &[(MemoryEntry, Vec<f32>)], threshold: f32) -> V
 
 async fn dedupe(root: &str) -> usize {
     let model = vivianne_ai::ai::embedding::embedding_model();
-    let Ok(live) = store::live_entries(root, model).await else { return 0 };
+    let Ok(live) = store::live_entries(root, model).await else {
+        return 0;
+    };
     let mut facts: Vec<(MemoryEntry, Vec<f32>)> = live
         .into_iter()
         // Session notes are raw material, not facts to fold.
@@ -346,7 +439,16 @@ async fn dedupe(root: &str) -> usize {
     let mut merged = 0;
     for (keep, drop) in duplicates(&facts, DUPLICATE_SIMILARITY) {
         if store::invalidate_entry(root, &drop, now).await.is_ok() {
-            let _ = store::insert_edge(root, &Edge { source: keep.clone(), target: drop, kind: EdgeKind::Supersedes, created_at: now }).await;
+            let _ = store::insert_edge(
+                root,
+                &Edge {
+                    source: keep.clone(),
+                    target: drop,
+                    kind: EdgeKind::Supersedes,
+                    created_at: now,
+                },
+            )
+            .await;
             let _ = store::touch_entry(root, &keep).await;
             merged += 1;
         }
@@ -371,12 +473,21 @@ pub(crate) fn should_archive(e: &MemoryEntry, now: u64) -> bool {
         return false;
     }
     let half_life = super::category_half_life_days(&e.kind);
-    let conf = super::effective_confidence_at(e.confidence, e.created_at, e.last_accessed_at, e.access_count, half_life, now);
+    let conf = super::effective_confidence_at(
+        e.confidence,
+        e.created_at,
+        e.last_accessed_at,
+        e.access_count,
+        half_life,
+        now,
+    );
     conf < ARCHIVE_CONFIDENCE
 }
 
 async fn archive_unused(root: &str) -> usize {
-    let Ok(live) = store::live_entries(root, "").await else { return 0 };
+    let Ok(live) = store::live_entries(root, "").await else {
+        return 0;
+    };
     let now = now_ms();
     let mut archived = 0;
     for (e, _) in live {
@@ -406,7 +517,11 @@ impl Working {
 
 impl Drop for Working {
     fn drop(&mut self) {
-        let _ = WORKING.fetch_update(std::sync::atomic::Ordering::SeqCst, std::sync::atomic::Ordering::SeqCst, |n| Some(n.saturating_sub(1)));
+        let _ = WORKING.fetch_update(
+            std::sync::atomic::Ordering::SeqCst,
+            std::sync::atomic::Ordering::SeqCst,
+            |n| Some(n.saturating_sub(1)),
+        );
         LAST_STOP_MS.store(now_ms(), std::sync::atomic::Ordering::SeqCst);
     }
 }
@@ -433,7 +548,9 @@ pub fn start(app: vivianne_ai::events::Events, projects: Vec<String>) {
             mark_dirty(USER_ROOT);
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(120)).await;
-                let Some(quiet) = quiet_for_ms() else { continue };
+                let Some(quiet) = quiet_for_ms() else {
+                    continue;
+                };
                 if quiet.min(now_ms().saturating_sub(started)) < IDLE_BEFORE_SLEEP_MS {
                     continue;
                 }
@@ -459,13 +576,19 @@ pub fn start(app: vivianne_ai::events::Events, projects: Vec<String>) {
 pub fn reembed_everywhere(app: vivianne_ai::events::Events, projects: Vec<String>) {
     tokio::spawn(async move {
         let auth = vivianne_ai::ai::auth::wait_for_state(&app).await;
-        let mut roots: Vec<String> = projects.into_iter().filter(|p| !p.trim().is_empty()).collect();
+        let mut roots: Vec<String> = projects
+            .into_iter()
+            .filter(|p| !p.trim().is_empty())
+            .collect();
         roots.push(USER_ROOT.to_string());
         for root in roots {
             if store::memory_dir(&root).join("memory.db").exists() {
                 let n = reembed(&root, &auth).await;
                 if n > 0 {
-                    log::info!("[memory_sleep] {root}: re-embedded {n} with {}", vivianne_ai::ai::embedding::embedding_model());
+                    log::info!(
+                        "[memory_sleep] {root}: re-embedded {n} with {}",
+                        vivianne_ai::ai::embedding::embedding_model()
+                    );
                 }
             }
         }
@@ -501,9 +624,18 @@ mod tests {
     #[test]
     fn notes_split_into_bursts_at_long_gaps() {
         let m = 60_000;
-        let notes = [note("a", "auto", 0), note("b", "auto", 5 * m), note("c", "auto", 50 * m), note("d", "auto", 52 * m), note("e", "auto", 200 * m)];
+        let notes = [
+            note("a", "auto", 0),
+            note("b", "auto", 5 * m),
+            note("c", "auto", 50 * m),
+            note("d", "auto", 52 * m),
+            note("e", "auto", 200 * m),
+        ];
         let b = bursts(&notes, EPISODE_GAP_MS);
-        let ids: Vec<Vec<&str>> = b.iter().map(|s| s.iter().map(|e| e.id.as_str()).collect()).collect();
+        let ids: Vec<Vec<&str>> = b
+            .iter()
+            .map(|s| s.iter().map(|e| e.id.as_str()).collect())
+            .collect();
         assert_eq!(ids, vec![vec!["a", "b"], vec!["c", "d"], vec!["e"]]);
         assert!(bursts(&[], EPISODE_GAP_MS).is_empty());
     }
@@ -529,9 +661,15 @@ mod tests {
             (note("old", "fact", 1), v(0.01)),
             (newer, v(0.0)),
             (note("other-kind", "persona", 3), v(0.0)),
-            (note("different", "fact", 4), normalised(vec![0.0, 1.0, 0.0])),
+            (
+                note("different", "fact", 4),
+                normalised(vec![0.0, 1.0, 0.0]),
+            ),
         ];
-        assert_eq!(duplicates(&facts, 0.97), vec![("newer".to_string(), "old".to_string())]);
+        assert_eq!(
+            duplicates(&facts, 0.97),
+            vec![("newer".to_string(), "old".to_string())]
+        );
     }
 
     #[test]
@@ -539,8 +677,14 @@ mod tests {
         let day = 86_400_000u64;
         let now = 1_000 * day;
         assert!(should_archive(&note("stale", "auto", now - 400 * day), now));
-        assert!(!should_archive(&note("recent", "auto", now - 30 * day), now));
-        assert!(!should_archive(&note("rule", "instruction", now - 900 * day), now));
+        assert!(!should_archive(
+            &note("recent", "auto", now - 30 * day),
+            now
+        ));
+        assert!(!should_archive(
+            &note("rule", "instruction", now - 900 * day),
+            now
+        ));
         let mut used = note("used", "auto", now - 400 * day);
         used.last_accessed_at = now - 10 * day;
         assert!(!should_archive(&used, now));

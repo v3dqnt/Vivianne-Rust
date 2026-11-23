@@ -21,7 +21,11 @@ pub struct RetryPolicy {
 
 impl Default for RetryPolicy {
     fn default() -> Self {
-        Self { max_attempts: 4, backoff: Backoff::default(), budget: Duration::from_secs(90) }
+        Self {
+            max_attempts: 4,
+            backoff: Backoff::default(),
+            budget: Duration::from_secs(90),
+        }
     }
 }
 
@@ -29,13 +33,19 @@ impl RetryPolicy {
     /// One call and no retries.
     #[must_use]
     pub fn once() -> Self {
-        Self { max_attempts: 1, ..Self::default() }
+        Self {
+            max_attempts: 1,
+            ..Self::default()
+        }
     }
 
     /// This policy with at most `max_attempts` calls.
     #[must_use]
     pub fn capped(self, max_attempts: u32) -> Self {
-        Self { max_attempts: max_attempts.clamp(1, self.max_attempts.max(1)), ..self }
+        Self {
+            max_attempts: max_attempts.clamp(1, self.max_attempts.max(1)),
+            ..self
+        }
     }
 }
 
@@ -84,7 +94,12 @@ where
         if !failure.is_transient() || attempt >= policy.max_attempts || out_of_time {
             return Err(Stopped::Failed(failure));
         }
-        on_retry(&Retrying { attempt, max_attempts: policy.max_attempts, delay, reason: &failure });
+        on_retry(&Retrying {
+            attempt,
+            max_attempts: policy.max_attempts,
+            delay,
+            reason: &failure,
+        });
         tokio::select! {
             () = cancel.cancelled() => return Err(Stopped::Cancelled),
             () = tokio::time::sleep(delay) => {}
@@ -102,7 +117,13 @@ mod tests {
     const RATE_LIMIT: &str = "429 Too Many Requests: rate limit exceeded";
 
     fn steady() -> RetryPolicy {
-        RetryPolicy { backoff: Backoff { jitter: 0.0, ..Backoff::default() }, ..RetryPolicy::default() }
+        RetryPolicy {
+            backoff: Backoff {
+                jitter: 0.0,
+                ..Backoff::default()
+            },
+            ..RetryPolicy::default()
+        }
     }
 
     #[tokio::test(start_paused = true)]
@@ -120,21 +141,35 @@ mod tests {
             |_| {
                 calls.set(calls.get() + 1);
                 let n = calls.get();
-                async move { if n < 3 { Err(Failure::from_message(RATE_LIMIT)) } else { Ok(n) } }
+                async move {
+                    if n < 3 {
+                        Err(Failure::from_message(RATE_LIMIT))
+                    } else {
+                        Ok(n)
+                    }
+                }
             },
         )
         .await;
         assert_eq!(result, Ok(3));
-        assert_eq!(waits.take(), [Duration::from_secs(1), Duration::from_secs(2)]);
+        assert_eq!(
+            waits.take(),
+            [Duration::from_secs(1), Duration::from_secs(2)]
+        );
     }
 
     #[tokio::test(start_paused = true)]
     async fn a_failure_that_will_not_pass_is_given_up_on_at_once() {
         let calls = Cell::new(0);
-        let result: Result<(), Stopped> = retry(&steady(), &CancellationToken::new(), |_| {}, |_| {
-            calls.set(calls.get() + 1);
-            async { Err(Failure::from_message("400 invalid request")) }
-        })
+        let result: Result<(), Stopped> = retry(
+            &steady(),
+            &CancellationToken::new(),
+            |_| {},
+            |_| {
+                calls.set(calls.get() + 1);
+                async { Err(Failure::from_message("400 invalid request")) }
+            },
+        )
         .await;
         assert!(matches!(result, Err(Stopped::Failed(_))));
         assert_eq!(calls.get(), 1);
@@ -143,10 +178,15 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn the_attempts_run_out() {
         let calls = Cell::new(0);
-        let result: Result<(), Stopped> = retry(&steady().capped(3), &CancellationToken::new(), |_| {}, |_| {
-            calls.set(calls.get() + 1);
-            async { Err(Failure::from_message(RATE_LIMIT)) }
-        })
+        let result: Result<(), Stopped> = retry(
+            &steady().capped(3),
+            &CancellationToken::new(),
+            |_| {},
+            |_| {
+                calls.set(calls.get() + 1);
+                async { Err(Failure::from_message(RATE_LIMIT)) }
+            },
+        )
         .await;
         assert!(matches!(result, Err(Stopped::Failed(_))));
         assert_eq!(calls.get(), 3);
@@ -154,12 +194,20 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn a_wait_that_would_pass_the_budget_is_not_started() {
-        let policy = RetryPolicy { budget: Duration::from_secs(2), ..steady() };
+        let policy = RetryPolicy {
+            budget: Duration::from_secs(2),
+            ..steady()
+        };
         let calls = Cell::new(0);
-        let result: Result<(), Stopped> = retry(&policy, &CancellationToken::new(), |_| {}, |_| {
-            calls.set(calls.get() + 1);
-            async { Err(Failure::from_message(RATE_LIMIT)) }
-        })
+        let result: Result<(), Stopped> = retry(
+            &policy,
+            &CancellationToken::new(),
+            |_| {},
+            |_| {
+                calls.set(calls.get() + 1);
+                async { Err(Failure::from_message(RATE_LIMIT)) }
+            },
+        )
         .await;
         // 1 s wait fits, the following 2 s wait would end past 2 s.
         assert!(matches!(result, Err(Stopped::Failed(_))));
@@ -175,10 +223,18 @@ mod tests {
             stopper.cancel();
         });
         let before = Instant::now();
-        let result: Result<(), Stopped> =
-            retry(&steady(), &cancel, |_| {}, |_| async { Err(Failure::from_message(RATE_LIMIT)) }).await;
+        let result: Result<(), Stopped> = retry(
+            &steady(),
+            &cancel,
+            |_| {},
+            |_| async { Err(Failure::from_message(RATE_LIMIT)) },
+        )
+        .await;
         stop_soon.await.unwrap_or_default();
         assert_eq!(result, Err(Stopped::Cancelled));
-        assert!(before.elapsed() < Duration::from_secs(1), "did not sit out the 1 s wait");
+        assert!(
+            before.elapsed() < Duration::from_secs(1),
+            "did not sit out the 1 s wait"
+        );
     }
 }

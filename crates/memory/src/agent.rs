@@ -17,7 +17,11 @@ use vivianne_tools::{Tool, ToolResult, Toolbox};
 use crate::budget;
 
 fn text_result(content: String) -> ToolResult {
-    ToolResult { is_error: content.starts_with("Error: "), content, details: None }
+    ToolResult {
+        is_error: content.starts_with("Error: "),
+        content,
+        details: None,
+    }
 }
 
 fn schema_remember() -> Value {
@@ -96,10 +100,12 @@ impl Tool for Remember {
         let text = args["text"].as_str().unwrap_or_default();
         let key = args["key"].as_str().map(String::from);
         let auth = self.0.auth().await;
-        text_result(match crate::remember(&self.0.root, text, key, Some(auth)).await {
-            Ok(entry) => format!("Remembered: {}", entry.text),
-            Err(e) => format!("Error: {e}"),
-        })
+        text_result(
+            match crate::remember(&self.0.root, text, key, Some(auth)).await {
+                Ok(entry) => format!("Remembered: {}", entry.text),
+                Err(e) => format!("Error: {e}"),
+            },
+        )
     }
 }
 
@@ -117,9 +123,18 @@ impl Tool for Recall {
         let query = args["query"].as_str().unwrap_or_default();
         let auth = self.0.auth().await;
         let as_of = args["as_of"].as_str().and_then(crate::parse_as_of);
-        let depth = args["depth"].as_str().and_then(budget::Depth::parse).unwrap_or_default();
-        let max_tokens = budget::clamp_tokens(args["max_tokens"].as_u64().and_then(|n| usize::try_from(n).ok()), depth);
-        let hits = crate::recall_with(&self.0.root, true, query, as_of, Some(&auth), None, depth).await;
+        let depth = args["depth"]
+            .as_str()
+            .and_then(budget::Depth::parse)
+            .unwrap_or_default();
+        let max_tokens = budget::clamp_tokens(
+            args["max_tokens"]
+                .as_u64()
+                .and_then(|n| usize::try_from(n).ok()),
+            depth,
+        );
+        let hits =
+            crate::recall_with(&self.0.root, true, query, as_of, Some(&auth), None, depth).await;
         if hits.is_empty() {
             return text_result("No matching memories found.".to_owned());
         }
@@ -129,8 +144,16 @@ impl Tool for Recall {
             .iter()
             .map(|h| {
                 let scope = if h.user_wide { ", about you" } else { "" };
-                let id = if matches!(h.kind.as_str(), "observation" | "page") { format!(" (id {})", h.id.get(..8).unwrap_or(&h.id)) } else { String::new() };
-                format!("- [{}{scope}] {}{id}", crate::evolve::provenance_label(&h.kind), h.text)
+                let id = if matches!(h.kind.as_str(), "observation" | "page") {
+                    format!(" (id {})", h.id.get(..8).unwrap_or(&h.id))
+                } else {
+                    String::new()
+                };
+                format!(
+                    "- [{}{scope}] {}{id}",
+                    crate::evolve::provenance_label(&h.kind),
+                    h.text
+                )
             })
             .collect();
         let (shown, left) = budget::pack(&lines, max_tokens);
@@ -157,16 +180,24 @@ impl Tool for Reflect {
         if question.is_empty() {
             return text_result("Error: question must not be empty".to_owned());
         }
-        text_result(match crate::reflect::answer(&self.0.events, &self.0.root, &self.0.model, question).await {
-            Ok(answer) => answer,
-            Err(e) => format!("Error: {e}"),
-        })
+        text_result(
+            match crate::reflect::answer(&self.0.events, &self.0.root, &self.0.model, question)
+                .await
+            {
+                Ok(answer) => answer,
+                Err(e) => format!("Error: {e}"),
+            },
+        )
     }
 }
 
 /// Gives the toolbox the memory tools for the project at `root`. `model` is the one `reflect` thinks with.
 pub fn add_tools(toolbox: &mut Toolbox, root: &str, events: &Events, model: ModelRef) {
-    let context = Context { root: root.to_owned(), events: events.clone(), model };
+    let context = Context {
+        root: root.to_owned(),
+        events: events.clone(),
+        model,
+    };
     toolbox.add(Remember(context.clone()));
     toolbox.add(Recall(context.clone()));
     toolbox.add(Reflect(context));
@@ -216,7 +247,10 @@ pub fn turn_summary(new_messages: &[Message]) -> Option<String> {
         parts.push(format!("Ran: {}", commands.join("; ")));
     }
     if !final_text.trim().is_empty() {
-        parts.push(format!("Result: {}", final_text.trim().chars().take(400).collect::<String>()));
+        parts.push(format!(
+            "Result: {}",
+            final_text.trim().chars().take(400).collect::<String>()
+        ));
     }
     (!parts.is_empty()).then(|| parts.join(". "))
 }
@@ -224,10 +258,15 @@ pub fn turn_summary(new_messages: &[Message]) -> Option<String> {
 /// When a run ends: note what it did, and start turning the notes into lasting facts once enough have built up.
 /// Does nothing while memory is off for the project.
 pub async fn after_run(root: &str, events: &Events, model: &ModelRef, new_messages: &[Message]) {
-    let Some(summary) = turn_summary(new_messages) else { return };
+    let Some(summary) = turn_summary(new_messages) else {
+        return;
+    };
     let auth = vivianne_ai::ai::auth::wait_for_state(events).await;
     crate::note_model(root, model).await;
-    if crate::auto_capture(root, &summary, Some(auth)).await.is_ok() {
+    if crate::auto_capture(root, &summary, Some(auth))
+        .await
+        .is_ok()
+    {
         maybe_extract(events, root, model).await;
     }
 }
@@ -238,7 +277,9 @@ async fn maybe_extract(events: &Events, root: &str, model: &ModelRef) {
         return;
     }
     let after = state.last_extraction_at.unwrap_or(0);
-    let Ok(count) = crate::store::count_since(root, "auto", after).await else { return };
+    let Ok(count) = crate::store::count_since(root, "auto", after).await else {
+        return;
+    };
     if count < i64::try_from(crate::EXTRACTION_BATCH_SIZE).unwrap_or(i64::MAX) {
         return;
     }
@@ -259,20 +300,36 @@ mod tests {
     use super::*;
 
     fn call(name: &str, args: Value) -> ToolCall {
-        ToolCall { id: "c".into(), name: name.into(), args }
+        ToolCall {
+            id: "c".into(),
+            name: name.into(),
+            args,
+        }
     }
 
     #[test]
     fn a_run_that_only_answered_leaves_no_note_and_one_that_worked_names_what_it_touched() {
-        let asked = vec![Message::new(Role::User, "what is this?"), Message::assistant("a parser", vec![])];
+        let asked = vec![
+            Message::new(Role::User, "what is this?"),
+            Message::assistant("a parser", vec![]),
+        ];
         assert_eq!(turn_summary(&asked), None);
         let worked = vec![
-            Message::assistant("", vec![call("edit", json!({"path": "a.rs"})), call("shell", json!({"command": "cargo test"}))]),
+            Message::assistant(
+                "",
+                vec![
+                    call("edit", json!({"path": "a.rs"})),
+                    call("shell", json!({"command": "cargo test"})),
+                ],
+            ),
             Message::tool_result("c", "ok"),
             Message::assistant("Fixed the parser.", vec![]),
         ];
         let note = turn_summary(&worked).expect("it did real work");
-        assert_eq!(note, "Touched: a.rs. Ran: cargo test. Result: Fixed the parser.");
+        assert_eq!(
+            note,
+            "Touched: a.rs. Ran: cargo test. Result: Fixed the parser."
+        );
     }
 
     #[test]

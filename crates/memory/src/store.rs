@@ -14,7 +14,7 @@
 //! step with `memories` by triggers. Past `VEC_INDEX_MIN_ROWS` vectors, recall
 //! asks it for the nearest neighbours instead of scanning every row.
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -59,7 +59,9 @@ fn register_vec_extension() {
     ONCE.call_once(|| unsafe {
         // Every connection opened after this has `vec0` and the `vec_*`
         // functions, like a built-in.
-        let init = std::mem::transmute::<*const (), ExtensionInit>(sqlite_vec::sqlite3_vec_init as *const ());
+        let init = std::mem::transmute::<*const (), ExtensionInit>(
+            sqlite_vec::sqlite3_vec_init as *const (),
+        );
         rusqlite::ffi::sqlite3_auto_extension(Some(init));
     });
 }
@@ -89,9 +91,14 @@ fn ensure_column(conn: &Connection, column_name: &str, columndef: &str) -> Resul
 /// Execute `f` with a cached (or freshly opened) SQLite connection for
 /// `root`. The connection is kept alive between calls, so schema init,
 /// page cache warmth, and WAL state survive across operations.
-pub(crate) fn with_conn<T>(root: &str, f: impl FnOnce(&Connection) -> Result<T, String>) -> Result<T, String> {
+pub(crate) fn with_conn<T>(
+    root: &str,
+    f: impl FnOnce(&Connection) -> Result<T, String>,
+) -> Result<T, String> {
     let cache = DB_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut guard = cache.lock().map_err(|_| "DB cache lock poisoned".to_string())?;
+    let mut guard = cache
+        .lock()
+        .map_err(|_| "DB cache lock poisoned".to_string())?;
 
     if let Some(conn) = guard.get(root).filter(|c| c.is_autocommit()) {
         return f(conn);
@@ -133,8 +140,17 @@ const SCHEMA_VERSION: i64 = 2;
 /// Before the first open by a build that changes the schema, keep a consistent copy of an existing store next to it
 /// (`memory.db.before-v2`). The changes are only additions, so nothing is expected to go wrong; this is for the day one does. Never fails the open.
 fn backup_before_upgrade(conn: &Connection, dir: &std::path::Path) {
-    let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap_or(0);
-    let has_data: bool = conn.query_row("SELECT COUNT(*) FROM sqlite_master WHERE name = 'memories'", [], |r| r.get::<_, i64>(0)).unwrap_or(0) > 0;
+    let version: i64 = conn
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .unwrap_or(0);
+    let has_data: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE name = 'memories'",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap_or(0)
+        > 0;
     if version >= SCHEMA_VERSION || !has_data {
         return;
     }
@@ -152,10 +168,12 @@ fn open_and_init_uncached(root: &str) -> Result<Connection, String> {
     let dir = memory_dir(root);
     std::fs::create_dir_all(&dir).map_err(|e| format!("failed to create memory dir: {e}"))?;
     register_vec_extension();
-    let conn = Connection::open(db_path(root)).map_err(|e| format!("failed to open memory db: {e}"))?;
+    let conn =
+        Connection::open(db_path(root)).map_err(|e| format!("failed to open memory db: {e}"))?;
     // INSERT OR REPLACE deletes the old row; without this its delete
     // triggers never fire and the FTS and vector indexes keep stale rows.
-    conn.execute_batch("PRAGMA recursive_triggers = ON;").map_err(|e| format!("failed to set pragmas: {e}"))?;
+    conn.execute_batch("PRAGMA recursive_triggers = ON;")
+        .map_err(|e| format!("failed to set pragmas: {e}"))?;
     backup_before_upgrade(&conn, &dir);
     conn.execute_batch(
         "
@@ -238,9 +256,13 @@ fn open_and_init_uncached(root: &str) -> Result<Connection, String> {
 
     // v1: replaced rows used to leave stale keyword-index entries behind
     // (see the pragma above); rebuild it from the table once.
-    let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap_or(0);
+    let version: i64 = conn
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .unwrap_or(0);
     if version < 1 {
-        let _ = conn.execute_batch("INSERT INTO memories_fts(memories_fts) VALUES('rebuild'); PRAGMA user_version = 1;");
+        let _ = conn.execute_batch(
+            "INSERT INTO memories_fts(memories_fts) VALUES('rebuild'); PRAGMA user_version = 1;",
+        );
     }
     if version < SCHEMA_VERSION {
         let _ = conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION};"));
@@ -261,11 +283,15 @@ fn vec_index_name(model: &str) -> String {
 
 /// The dimension of `model`'s vector index, if it has one.
 fn vec_index_dim(conn: &Connection, model: &str) -> Option<usize> {
-    conn.query_row("SELECT dim FROM memory_vec_indexes WHERE model = ?1", params![model], |r| r.get::<_, i64>(0))
-        .optional()
-        .ok()
-        .flatten()
-        .map(|d| d as usize)
+    conn.query_row(
+        "SELECT dim FROM memory_vec_indexes WHERE model = ?1",
+        params![model],
+        |r| r.get::<_, i64>(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+    .map(|d| d as usize)
 }
 
 /// Make sure `model` has a vector index of `dim`: created on first use with
@@ -283,7 +309,8 @@ fn ensure_vec_index(conn: &Connection, model: &str, dim: usize) -> Result<(), St
     let name = vec_index_name(model);
     let m = model.replace('\'', "''");
     let bytes = dim * 4;
-    let only_this_model = format!("new.embedding_model = '{m}' AND length(new.embedding) = {bytes}");
+    let only_this_model =
+        format!("new.embedding_model = '{m}' AND length(new.embedding) = {bytes}");
     conn.execute_batch(&format!(
         "BEGIN;
          CREATE VIRTUAL TABLE IF NOT EXISTS {name} USING vec0(embedding float[{dim}] distance_metric=cosine);
@@ -312,12 +339,21 @@ fn ensure_vec_index(conn: &Connection, model: &str, dim: usize) -> Result<(), St
 /// first, with cosine similarity. `None` when the index can't answer (none
 /// yet, too small to be worth it, or too few live hits within its `k` cap),
 /// so the caller scans instead.
-fn knn(conn: &Connection, model: &str, query: &[f32], limit: usize, valid: &str, min_rows: i64) -> Option<Vec<(MemoryEntry, f32)>> {
+fn knn(
+    conn: &Connection,
+    model: &str,
+    query: &[f32],
+    limit: usize,
+    valid: &str,
+    min_rows: i64,
+) -> Option<Vec<(MemoryEntry, f32)>> {
     if vec_index_dim(conn, model)? != query.len() {
         return None;
     }
     let name = vec_index_name(model);
-    let total: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM {name}"), [], |r| r.get(0)).ok()?;
+    let total: i64 = conn
+        .query_row(&format!("SELECT COUNT(*) FROM {name}"), [], |r| r.get(0))
+        .ok()?;
     if total < min_rows || total == 0 {
         return None;
     }
@@ -338,7 +374,10 @@ fn knn(conn: &Connection, model: &str, query: &[f32], limit: usize, valid: &str,
             .ok()?;
         let hits: Vec<(MemoryEntry, f32)> = stmt
             .query_map(params![blob, k_eff, model, limit as i64], |row| {
-                Ok((row_to_entry(row)?, 1.0 - row.get::<_, f64>("distance")? as f32))
+                Ok((
+                    row_to_entry(row)?,
+                    1.0 - row.get::<_, f64>("distance")? as f32,
+                ))
             })
             .ok()?
             .filter_map(|r| r.ok())
@@ -365,7 +404,9 @@ fn migrate_from_jsonl(conn: &Connection, root: &str) -> Result<(), String> {
         return Ok(());
     }
     let path = entries_jsonl_path(root);
-    let Ok(content) = std::fs::read_to_string(&path) else { return Ok(()) };
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        return Ok(());
+    };
     let entries: Vec<MemoryEntry> = content
         .lines()
         .filter_map(|line| serde_json::from_str::<MemoryEntry>(line).ok())
@@ -387,7 +428,11 @@ fn migrate_from_jsonl(conn: &Connection, root: &str) -> Result<(), String> {
 /// The SQL condition for "true at `as_of`" (or true now, for `None`), on the
 /// `memories` table aliased as `alias`.
 fn valid_clause(alias: &str, as_of: Option<u64>) -> String {
-    let a = if alias.is_empty() { String::new() } else { format!("{alias}.") };
+    let a = if alias.is_empty() {
+        String::new()
+    } else {
+        format!("{alias}.")
+    };
     match as_of {
         None => format!("{a}invalid_at IS NULL AND {a}archived_at IS NULL"),
         Some(t) => format!(
@@ -407,19 +452,22 @@ fn row_to_entry(row: &rusqlite::Row) -> rusqlite::Result<MemoryEntry> {
         confidence: row.get::<_, f64>("confidence").unwrap_or(1.0) as f32,
         access_count: row.get::<_, i64>("access_count").unwrap_or(0) as u32,
         last_accessed_at: row.get::<_, i64>("last_accessed_at").unwrap_or(0) as u64,
-        embedding_model: row.get::<_, Option<String>>("embedding_model").unwrap_or(None),
+        embedding_model: row
+            .get::<_, Option<String>>("embedding_model")
+            .unwrap_or(None),
         user_wide: false,
     })
 }
 
 /// Words too common to say what a query is about.
 const STOPWORDS: &[&str] = &[
-    "a", "about", "after", "again", "all", "am", "an", "and", "any", "are", "as", "at", "be", "been", "before", "being",
-    "but", "by", "can", "could", "did", "do", "does", "doing", "for", "from", "had", "has", "have", "having", "he", "her",
-    "here", "him", "his", "how", "i", "if", "in", "into", "is", "it", "its", "just", "me", "my", "of", "on", "or", "our",
-    "she", "should", "so", "some", "than", "that", "the", "their", "them", "then", "there", "these", "they", "this",
-    "those", "to", "too", "up", "us", "very", "was", "we", "were", "what", "when", "where", "which", "while", "who",
-    "whom", "why", "will", "with", "would", "you", "your",
+    "a", "about", "after", "again", "all", "am", "an", "and", "any", "are", "as", "at", "be",
+    "been", "before", "being", "but", "by", "can", "could", "did", "do", "does", "doing", "for",
+    "from", "had", "has", "have", "having", "he", "her", "here", "him", "his", "how", "i", "if",
+    "in", "into", "is", "it", "its", "just", "me", "my", "of", "on", "or", "our", "she", "should",
+    "so", "some", "than", "that", "the", "their", "them", "then", "there", "these", "they", "this",
+    "those", "to", "too", "up", "us", "very", "was", "we", "were", "what", "when", "where",
+    "which", "while", "who", "whom", "why", "will", "with", "would", "you", "your",
 ];
 
 /// Build an FTS5 MATCH query from free text: strip punctuation per word,
@@ -432,7 +480,12 @@ fn build_fts_query(text: &str) -> Option<String> {
     let mut seen = std::collections::HashSet::new();
     let words: Vec<String> = text
         .split_whitespace()
-        .map(|w| w.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase())
+        .map(|w| {
+            w.chars()
+                .filter(|c| c.is_alphanumeric())
+                .collect::<String>()
+                .to_lowercase()
+        })
         .filter(|w| !w.is_empty() && !STOPWORDS.contains(&w.as_str()) && seen.insert(w.clone()))
         .map(|w| format!("\"{w}\""))
         .collect();
@@ -491,7 +544,11 @@ pub async fn insert_entry(root: &str, entry: &MemoryEntry) -> Result<(), String>
 
 /// Same as `insert_entry` but also sets `scene_name` — used by L1 extraction,
 /// which assigns a scene per fact in the same LLM call (see `agent::memory`).
-pub async fn insert_entry_with_scene(root: &str, entry: &MemoryEntry, scene_name: Option<&str>) -> Result<(), String> {
+pub async fn insert_entry_with_scene(
+    root: &str,
+    entry: &MemoryEntry,
+    scene_name: Option<&str>,
+) -> Result<(), String> {
     let root = root.to_string();
     let entry = entry.clone();
     let scene_name = scene_name.map(|s| s.to_string());
@@ -534,7 +591,12 @@ pub async fn count_since(root: &str, kind: &str, after_ms: u64) -> Result<i64, S
 
 /// Rows of a given `kind` created after `after_ms`, oldest first, capped at
 /// `limit` — the batch L1 extraction pulls from.
-pub async fn entries_since(root: &str, kind: &str, after_ms: u64, limit: usize) -> Result<Vec<MemoryEntry>, String> {
+pub async fn entries_since(
+    root: &str,
+    kind: &str,
+    after_ms: u64,
+    limit: usize,
+) -> Result<Vec<MemoryEntry>, String> {
     let root = root.to_string();
     let kind = kind.to_string();
     tokio::task::spawn_blocking(move || {
@@ -554,7 +616,11 @@ pub async fn entries_since(root: &str, kind: &str, after_ms: u64, limit: usize) 
 
 /// Most-recent entries of a given `kind`, capped at `limit` — persona
 /// synthesis pulls its source facts this way (most recent first).
-pub async fn recent_by_kind(root: &str, kind: &str, limit: usize) -> Result<Vec<MemoryEntry>, String> {
+pub async fn recent_by_kind(
+    root: &str,
+    kind: &str,
+    limit: usize,
+) -> Result<Vec<MemoryEntry>, String> {
     let root = root.to_string();
     let kind = kind.to_string();
     tokio::task::spawn_blocking(move || {
@@ -587,9 +653,12 @@ pub async fn scene_summary(root: &str, limit: usize) -> Result<Vec<(String, i64)
                 )
                 .map_err(|e| format!("failed to prepare query: {e}"))?;
             let rows = stmt
-                .query_map(params![limit as i64], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))
+                .query_map(params![limit as i64], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+                })
                 .map_err(|e| format!("failed to query scenes: {e}"))?;
-            rows.collect::<Result<Vec<_>, _>>().map_err(|e| format!("failed to read scenes: {e}"))
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(|e| format!("failed to read scenes: {e}"))
         })
     })
     .await
@@ -621,12 +690,15 @@ pub async fn list_live(root: &str, limit: usize) -> Result<Vec<MemoryEntry>, Str
     tokio::task::spawn_blocking(move || {
         with_conn(&root, |conn| {
             let mut stmt = conn
-                .prepare(&format!("SELECT * FROM memories WHERE {LIVE} ORDER BY created_at DESC LIMIT ?1"))
+                .prepare(&format!(
+                    "SELECT * FROM memories WHERE {LIVE} ORDER BY created_at DESC LIMIT ?1"
+                ))
                 .map_err(|e| format!("failed to prepare query: {e}"))?;
             let rows = stmt
                 .query_map(params![limit as i64], row_to_entry)
                 .map_err(|e| format!("failed to query memories: {e}"))?;
-            rows.collect::<Result<Vec<_>, _>>().map_err(|e| format!("failed to read memories: {e}"))
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(|e| format!("failed to read memories: {e}"))
         })
     })
     .await
@@ -653,14 +725,25 @@ pub async fn all_entries(root: &str) -> Result<Vec<MemoryEntry>, String> {
 /// BM25 lexical search via FTS5, best match first. Returns an empty vec
 /// (not an error) when the query has no usable tokens or nothing matches —
 /// callers fall back to other strategies rather than surfacing a failure.
-pub async fn search_fts(root: &str, query_text: &str, limit: usize) -> Result<Vec<MemoryEntry>, String> {
+pub async fn search_fts(
+    root: &str,
+    query_text: &str,
+    limit: usize,
+) -> Result<Vec<MemoryEntry>, String> {
     search_fts_at(root, query_text, limit, None).await
 }
 
 /// `search_fts` over the facts that were true at `as_of` (ms since epoch),
 /// or that are true now for `None`.
-pub async fn search_fts_at(root: &str, query_text: &str, limit: usize, as_of: Option<u64>) -> Result<Vec<MemoryEntry>, String> {
-    let Some(fts_query) = build_fts_query(query_text) else { return Ok(Vec::new()) };
+pub async fn search_fts_at(
+    root: &str,
+    query_text: &str,
+    limit: usize,
+    as_of: Option<u64>,
+) -> Result<Vec<MemoryEntry>, String> {
+    let Some(fts_query) = build_fts_query(query_text) else {
+        return Ok(Vec::new());
+    };
     let root = root.to_string();
     let valid = valid_clause("m", as_of);
     tokio::task::spawn_blocking(move || {
@@ -694,18 +777,35 @@ pub async fn search_fts_at(root: &str, query_text: &str, limit: usize, as_of: Op
 /// `EMBEDDING_MODEL` — legacy vectors from a different model are still
 /// reachable via BM25 lexical fallback (no apples-to-oranges cosine
 /// comparison across vector spaces).
-pub async fn search_vector(root: &str, query_embedding: &[f32], limit: usize) -> Result<Vec<MemoryEntry>, String> {
-    Ok(search_vector_scored(root, query_embedding, limit).await?.into_iter().map(|(e, _)| e).collect())
+pub async fn search_vector(
+    root: &str,
+    query_embedding: &[f32],
+    limit: usize,
+) -> Result<Vec<MemoryEntry>, String> {
+    Ok(search_vector_scored(root, query_embedding, limit)
+        .await?
+        .into_iter()
+        .map(|(e, _)| e)
+        .collect())
 }
 
 /// `search_vector` with each hit's cosine similarity, for the write-side
 /// novelty gate (`evolve`), which routes on the score itself.
-pub async fn search_vector_scored(root: &str, query_embedding: &[f32], limit: usize) -> Result<Vec<(MemoryEntry, f32)>, String> {
+pub async fn search_vector_scored(
+    root: &str,
+    query_embedding: &[f32],
+    limit: usize,
+) -> Result<Vec<(MemoryEntry, f32)>, String> {
     search_vector_scored_at(root, query_embedding, limit, None).await
 }
 
 /// `search_vector_scored` over the facts true at `as_of` (now, for `None`).
-pub async fn search_vector_scored_at(root: &str, query_embedding: &[f32], limit: usize, as_of: Option<u64>) -> Result<Vec<(MemoryEntry, f32)>, String> {
+pub async fn search_vector_scored_at(
+    root: &str,
+    query_embedding: &[f32],
+    limit: usize,
+    as_of: Option<u64>,
+) -> Result<Vec<(MemoryEntry, f32)>, String> {
     let root = root.to_string();
     let query_embedding = query_embedding.to_vec();
     let current_model = vivianne_ai::ai::embedding::embedding_model().to_string();
@@ -713,7 +813,14 @@ pub async fn search_vector_scored_at(root: &str, query_embedding: &[f32], limit:
     let valid_m = valid_clause("m", as_of);
     tokio::task::spawn_blocking(move || {
         with_conn(&root, |conn| {
-            if let Some(hits) = knn(conn, &current_model, &query_embedding, limit, &valid_m, VEC_INDEX_MIN_ROWS) {
+            if let Some(hits) = knn(
+                conn,
+                &current_model,
+                &query_embedding,
+                limit,
+                &valid_m,
+                VEC_INDEX_MIN_ROWS,
+            ) {
                 return Ok(hits);
             }
             let mut stmt = conn
@@ -740,7 +847,11 @@ pub async fn search_vector_scored_at(root: &str, query_embedding: &[f32], limit:
                 })
                 .collect();
             scored.sort_by(|a, b| b.0.total_cmp(&a.0));
-            Ok(scored.into_iter().take(limit).map(|(s, e)| (e, s)).collect())
+            Ok(scored
+                .into_iter()
+                .take(limit)
+                .map(|(s, e)| (e, s))
+                .collect())
         })
     })
     .await
@@ -812,7 +923,10 @@ pub async fn update_entry_text(root: &str, id: &str, text: &str) -> Result<(), S
     let root = root.to_string();
     let id = id.to_string();
     let text = text.to_string();
-    let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
     tokio::task::spawn_blocking(move || {
         with_conn(&root, |conn| {
             conn.execute(
@@ -852,8 +966,12 @@ pub async fn delete_entry(root: &str, id: &str) -> Result<(), String> {
     let id = id.to_string();
     tokio::task::spawn_blocking(move || {
         with_conn(&root, |conn| {
-            conn.execute("DELETE FROM memories WHERE id = ?1", params![id]).map_err(|e| format!("failed to delete memory: {e}"))?;
-            let _ = conn.execute("DELETE FROM memory_edges WHERE source = ?1 OR target = ?1", params![id]);
+            conn.execute("DELETE FROM memories WHERE id = ?1", params![id])
+                .map_err(|e| format!("failed to delete memory: {e}"))?;
+            let _ = conn.execute(
+                "DELETE FROM memory_edges WHERE source = ?1 OR target = ?1",
+                params![id],
+            );
             Ok(())
         })
     })
@@ -865,13 +983,25 @@ pub async fn delete_entry(root: &str, id: &str) -> Result<(), String> {
 pub async fn entry_count(root: &str) -> Result<i64, String> {
     let root = root.to_string();
     tokio::task::spawn_blocking(move || {
-        with_conn(&root, |conn| conn.query_row(&format!("SELECT COUNT(*) FROM memories WHERE {LIVE}"), [], |r| r.get(0)).map_err(|e| e.to_string()))
+        with_conn(&root, |conn| {
+            conn.query_row(
+                &format!("SELECT COUNT(*) FROM memories WHERE {LIVE}"),
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())
+        })
     })
     .await
     .map_err(|e| format!("count task panicked: {e}"))?
 }
 
-pub async fn update_embedding(root: &str, id: &str, embedding: &[f32], model: &str) -> Result<(), String> {
+pub async fn update_embedding(
+    root: &str,
+    id: &str,
+    embedding: &[f32],
+    model: &str,
+) -> Result<(), String> {
     let root = root.to_string();
     let id = id.to_string();
     let model = model.to_string();
@@ -925,7 +1055,9 @@ fn row_to_edge_kind(kind_name: &str, kind_json: &str) -> EdgeKind {
     // Fallback: infer from kind_name if JSON is missing (legacy entries)
     match kind_name {
         "HasTag" => EdgeKind::HasTag { tag: String::new() },
-        "InCluster" => EdgeKind::InCluster { cluster_id: String::new() },
+        "InCluster" => EdgeKind::InCluster {
+            cluster_id: String::new(),
+        },
         "Supersedes" => EdgeKind::Supersedes,
         "Contradicts" => EdgeKind::Contradicts,
         "DerivedFrom" => EdgeKind::DerivedFrom,
@@ -944,7 +1076,13 @@ pub async fn insert_edge(root: &str, edge: &Edge) -> Result<(), String> {
             conn.execute(
                 "INSERT OR IGNORE INTO memory_edges (source, target, kind, kind_json, created_at)
                  VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![edge.source, edge.target, kind_name, kind_json, edge.created_at as i64],
+                params![
+                    edge.source,
+                    edge.target,
+                    kind_name,
+                    kind_json,
+                    edge.created_at as i64
+                ],
             )
             .map_err(|e| format!("failed to insert edge: {e}"))?;
             Ok(())
@@ -960,8 +1098,11 @@ pub async fn delete_outgoing_edges(root: &str, entry_id: &str) -> Result<usize, 
     let entry_id = entry_id.to_string();
     tokio::task::spawn_blocking(move || {
         with_conn(&root, |conn| {
-            conn.execute("DELETE FROM memory_edges WHERE source = ?1", params![entry_id])
-                .map_err(|e| format!("failed to delete edges: {e}"))
+            conn.execute(
+                "DELETE FROM memory_edges WHERE source = ?1",
+                params![entry_id],
+            )
+            .map_err(|e| format!("failed to delete edges: {e}"))
         })
     })
     .await
@@ -989,8 +1130,10 @@ pub async fn edges_touching(root: &str, ids: &[String]) -> Result<Vec<Edge>, Str
             let mut stmt = conn
                 .prepare(&sql)
                 .map_err(|e| format!("failed to prepare edge query: {e}"))?;
-            let params: Vec<&dyn rusqlite::types::ToSql> =
-                ids.iter().map(|s| s as &dyn rusqlite::types::ToSql).collect();
+            let params: Vec<&dyn rusqlite::types::ToSql> = ids
+                .iter()
+                .map(|s| s as &dyn rusqlite::types::ToSql)
+                .collect();
             let rows = stmt
                 .query_map(params.as_slice(), |row| {
                     let source: String = row.get(0)?;
@@ -999,10 +1142,16 @@ pub async fn edges_touching(root: &str, ids: &[String]) -> Result<Vec<Edge>, Str
                     let kind_json: Option<String> = row.get(3)?;
                     let created_at: i64 = row.get(4)?;
                     let kind = row_to_edge_kind(&kind_name, kind_json.as_deref().unwrap_or(""));
-                    Ok(Edge { source, target, kind, created_at: created_at as u64 })
+                    Ok(Edge {
+                        source,
+                        target,
+                        kind,
+                        created_at: created_at as u64,
+                    })
                 })
                 .map_err(|e| format!("failed to query edges: {e}"))?;
-            rows.collect::<Result<Vec<_>, _>>().map_err(|e| format!("failed to read edges: {e}"))
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(|e| format!("failed to read edges: {e}"))
         })
     })
     .await
@@ -1038,7 +1187,11 @@ pub async fn edges_for_entry(root: &str, entry_id: &str) -> Result<Vec<Edge>, St
 }
 
 /// Load entries with a given scene_name, newest first, capped at `limit`.
-pub async fn entries_with_scene(root: &str, scene_name: &str, limit: usize) -> Result<Vec<MemoryEntry>, String> {
+pub async fn entries_with_scene(
+    root: &str,
+    scene_name: &str,
+    limit: usize,
+) -> Result<Vec<MemoryEntry>, String> {
     let root = root.to_string();
     let scene_name = scene_name.to_string();
     tokio::task::spawn_blocking(move || {
@@ -1061,7 +1214,12 @@ pub async fn entries_with_scene(root: &str, scene_name: &str, limit: usize) -> R
 }
 
 /// Live entries whose time (when it happened, else when it was learned) falls in `[start, end)`, newest first.
-pub async fn entries_in_window(root: &str, start: u64, end: u64, limit: usize) -> Result<Vec<MemoryEntry>, String> {
+pub async fn entries_in_window(
+    root: &str,
+    start: u64,
+    end: u64,
+    limit: usize,
+) -> Result<Vec<MemoryEntry>, String> {
     let root = root.to_string();
     tokio::task::spawn_blocking(move || {
         with_conn(&root, |conn| {
@@ -1081,7 +1239,10 @@ pub async fn entries_in_window(root: &str, start: u64, end: u64, limit: usize) -
 }
 
 /// When each of these entries happened (or was learned), by id.
-pub async fn times_of(root: &str, ids: &[String]) -> Result<std::collections::HashMap<String, u64>, String> {
+pub async fn times_of(
+    root: &str,
+    ids: &[String],
+) -> Result<std::collections::HashMap<String, u64>, String> {
     if ids.is_empty() {
         return Ok(Default::default());
     }
@@ -1090,11 +1251,24 @@ pub async fn times_of(root: &str, ids: &[String]) -> Result<std::collections::Ha
     tokio::task::spawn_blocking(move || {
         with_conn(&root, |conn| {
             let placeholders: Vec<String> = (0..ids.len()).map(|i| format!("?{}", i + 1)).collect();
-            let sql = format!("SELECT id, COALESCE(occurred_at, created_at) FROM memories WHERE id IN ({})", placeholders.join(", "));
-            let mut stmt = conn.prepare(&sql).map_err(|e| format!("failed to prepare query: {e}"))?;
-            let params: Vec<&dyn rusqlite::types::ToSql> = ids.iter().map(|s| s as &dyn rusqlite::types::ToSql).collect();
-            let rows = stmt.query_map(params.as_slice(), |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u64))).map_err(|e| format!("failed to query times: {e}"))?;
-            rows.collect::<Result<_, _>>().map_err(|e| format!("failed to read times: {e}"))
+            let sql = format!(
+                "SELECT id, COALESCE(occurred_at, created_at) FROM memories WHERE id IN ({})",
+                placeholders.join(", ")
+            );
+            let mut stmt = conn
+                .prepare(&sql)
+                .map_err(|e| format!("failed to prepare query: {e}"))?;
+            let params: Vec<&dyn rusqlite::types::ToSql> = ids
+                .iter()
+                .map(|s| s as &dyn rusqlite::types::ToSql)
+                .collect();
+            let rows = stmt
+                .query_map(params.as_slice(), |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u64))
+                })
+                .map_err(|e| format!("failed to query times: {e}"))?;
+            rows.collect::<Result<_, _>>()
+                .map_err(|e| format!("failed to read times: {e}"))
         })
     })
     .await
@@ -1150,7 +1324,10 @@ pub async fn archive_entry(root: &str, id: &str, at: u64) -> Result<(), String> 
 
 /// Every live fact, with its vector when it has one from `model` — the
 /// sleep-time pass's view of the store.
-pub async fn live_entries(root: &str, model: &str) -> Result<Vec<(MemoryEntry, Option<Vec<f32>>)>, String> {
+pub async fn live_entries(
+    root: &str,
+    model: &str,
+) -> Result<Vec<(MemoryEntry, Option<Vec<f32>>)>, String> {
     let root = root.to_string();
     let model = model.to_string();
     tokio::task::spawn_blocking(move || {
@@ -1177,7 +1354,11 @@ pub async fn live_entries(root: &str, model: &str) -> Result<Vec<(MemoryEntry, O
 
 /// Live facts with no vector from `model` (never embedded, or embedded by a
 /// model since replaced), oldest first.
-pub async fn needing_embedding(root: &str, model: &str, limit: usize) -> Result<Vec<MemoryEntry>, String> {
+pub async fn needing_embedding(
+    root: &str,
+    model: &str,
+    limit: usize,
+) -> Result<Vec<MemoryEntry>, String> {
     let root = root.to_string();
     let model = model.to_string();
     tokio::task::spawn_blocking(move || {
@@ -1204,8 +1385,12 @@ pub async fn embedded_count(root: &str) -> Result<i64, String> {
     let root = root.to_string();
     tokio::task::spawn_blocking(move || {
         with_conn(&root, |conn| {
-            conn.query_row("SELECT COUNT(*) FROM memories WHERE embedding IS NOT NULL", [], |r| r.get(0))
-                .map_err(|e| format!("failed to count embedded memories: {e}"))
+            conn.query_row(
+                "SELECT COUNT(*) FROM memories WHERE embedding IS NOT NULL",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|e| format!("failed to count embedded memories: {e}"))
         })
     })
     .await
@@ -1231,7 +1416,10 @@ mod tests {
     /// and recall as of before the correction finds the old.
     #[tokio::test]
     async fn a_closed_fact_drops_out_of_now_but_not_out_of_then() {
-        let dir = std::env::temp_dir().join(format!("vivianne_memstore_bitemporal_{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!(
+            "vivianne_memstore_bitemporal_{}",
+            uuid::Uuid::new_v4()
+        ));
         let root = dir.to_string_lossy().to_string();
         let fact = |id: &str, text: &str, at: u64| MemoryEntry {
             id: id.into(),
@@ -1246,13 +1434,30 @@ mod tests {
             embedding_model: None,
             user_wide: false,
         };
-        insert_entry(&root, &fact("old", "The user's editor is Sublime Text", 1_000)).await.unwrap();
-        insert_entry(&root, &fact("new", "The user's editor is Neovim", 5_000)).await.unwrap();
+        insert_entry(
+            &root,
+            &fact("old", "The user's editor is Sublime Text", 1_000),
+        )
+        .await
+        .unwrap();
+        insert_entry(&root, &fact("new", "The user's editor is Neovim", 5_000))
+            .await
+            .unwrap();
         invalidate_entry(&root, "old", 5_000).await.unwrap();
 
-        let now: Vec<String> = search_fts(&root, "editor", 10).await.unwrap().into_iter().map(|e| e.id).collect();
+        let now: Vec<String> = search_fts(&root, "editor", 10)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
         assert_eq!(now, vec!["new".to_string()]);
-        let then: Vec<String> = search_fts_at(&root, "editor", 10, Some(3_000)).await.unwrap().into_iter().map(|e| e.id).collect();
+        let then: Vec<String> = search_fts_at(&root, "editor", 10, Some(3_000))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
         assert_eq!(then, vec!["old".to_string()]);
         assert_eq!(entry_count(&root).await.unwrap(), 1);
         let _ = std::fs::remove_dir_all(&dir);
@@ -1261,7 +1466,8 @@ mod tests {
     /// An existing store is copied aside once, before the first open by a build that changes the layout; a new or current one is not.
     #[test]
     fn an_old_store_is_backed_up_once_before_the_upgrade() {
-        let dir = std::env::temp_dir().join(format!("vivianne_memstore_backup_{}", uuid::Uuid::new_v4()));
+        let dir =
+            std::env::temp_dir().join(format!("vivianne_memstore_backup_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let target = dir.join(format!("memory.db.before-v{SCHEMA_VERSION}"));
         // Nothing stored yet: nothing to keep.
@@ -1274,15 +1480,28 @@ mod tests {
         backup_before_upgrade(&old, &dir);
         assert!(target.exists(), "a copy is made");
         let copy = Connection::open(&target).unwrap();
-        assert_eq!(copy.query_row("SELECT text FROM memories WHERE id = 'a'", [], |r| r.get::<_, String>(0)).unwrap(), "kept");
+        assert_eq!(
+            copy.query_row("SELECT text FROM memories WHERE id = 'a'", [], |r| r
+                .get::<_, String>(0))
+                .unwrap(),
+            "kept"
+        );
         drop(copy);
         // Done once: a later change to the live store does not overwrite the copy.
-        old.execute("UPDATE memories SET text = 'changed'", []).unwrap();
+        old.execute("UPDATE memories SET text = 'changed'", [])
+            .unwrap();
         backup_before_upgrade(&old, &dir);
-        assert_eq!(Connection::open(&target).unwrap().query_row("SELECT text FROM memories", [], |r| r.get::<_, String>(0)).unwrap(), "kept");
+        assert_eq!(
+            Connection::open(&target)
+                .unwrap()
+                .query_row("SELECT text FROM memories", [], |r| r.get::<_, String>(0))
+                .unwrap(),
+            "kept"
+        );
         // Already current: no copy.
         std::fs::remove_file(&target).unwrap();
-        old.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION};")).unwrap();
+        old.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION};"))
+            .unwrap();
         backup_before_upgrade(&old, &dir);
         assert!(!target.exists());
         let _ = std::fs::remove_dir_all(&dir);
@@ -1291,28 +1510,71 @@ mod tests {
     /// A fact is placed in time by when it happened when that is known, and by when it was learned otherwise.
     #[tokio::test]
     async fn a_time_window_uses_when_it_happened_before_when_it_was_learned() {
-        let dir = std::env::temp_dir().join(format!("vivianne_memstore_window_{}", uuid::Uuid::new_v4()));
+        let dir =
+            std::env::temp_dir().join(format!("vivianne_memstore_window_{}", uuid::Uuid::new_v4()));
         let root = dir.to_string_lossy().to_string();
         let fact = |id: &str, at: u64| MemoryEntry {
-            id: id.into(), key: id.into(), text: format!("fact {id}"), kind: "episodic".into(), session_id: None, created_at: at,
-            confidence: 1.0, access_count: 0, last_accessed_at: 0, embedding_model: None, user_wide: false,
+            id: id.into(),
+            key: id.into(),
+            text: format!("fact {id}"),
+            kind: "episodic".into(),
+            session_id: None,
+            created_at: at,
+            confidence: 1.0,
+            access_count: 0,
+            last_accessed_at: 0,
+            embedding_model: None,
+            user_wide: false,
         };
-        insert_entry(&root, &fact("learned_inside", 5_000)).await.unwrap();
-        insert_entry(&root, &fact("learned_outside", 50_000)).await.unwrap();
+        insert_entry(&root, &fact("learned_inside", 5_000))
+            .await
+            .unwrap();
+        insert_entry(&root, &fact("learned_outside", 50_000))
+            .await
+            .unwrap();
         // Learned long after the window, but it happened inside it.
-        insert_entry(&root, &fact("happened_inside", 90_000)).await.unwrap();
+        insert_entry(&root, &fact("happened_inside", 90_000))
+            .await
+            .unwrap();
         // Learned inside the window, but it happened long before.
-        insert_entry(&root, &fact("happened_outside", 6_000)).await.unwrap();
+        insert_entry(&root, &fact("happened_outside", 6_000))
+            .await
+            .unwrap();
         with_conn(&root, |c| {
-            c.execute("UPDATE memories SET occurred_at = 4000 WHERE id = 'happened_inside'", []).map_err(|e| e.to_string())?;
-            c.execute("UPDATE memories SET occurred_at = 100 WHERE id = 'happened_outside'", []).map_err(|e| e.to_string())?;
+            c.execute(
+                "UPDATE memories SET occurred_at = 4000 WHERE id = 'happened_inside'",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+            c.execute(
+                "UPDATE memories SET occurred_at = 100 WHERE id = 'happened_outside'",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
             Ok(())
         })
         .unwrap();
-        let ids: Vec<String> = entries_in_window(&root, 1_000, 10_000, 10).await.unwrap().into_iter().map(|e| e.id).collect();
-        assert_eq!(ids, vec!["learned_inside".to_string(), "happened_inside".to_string()], "newest first by the time it counts as");
-        let times = times_of(&root, &["happened_inside".to_string(), "learned_outside".to_string()]).await.unwrap();
-        assert_eq!((times["happened_inside"], times["learned_outside"]), (4_000, 50_000));
+        let ids: Vec<String> = entries_in_window(&root, 1_000, 10_000, 10)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
+        assert_eq!(
+            ids,
+            vec!["learned_inside".to_string(), "happened_inside".to_string()],
+            "newest first by the time it counts as"
+        );
+        let times = times_of(
+            &root,
+            &["happened_inside".to_string(), "learned_outside".to_string()],
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            (times["happened_inside"], times["learned_outside"]),
+            (4_000, 50_000)
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1320,7 +1582,8 @@ mod tests {
     /// correcting one memory touches that one only.
     #[tokio::test]
     async fn the_list_shows_live_memories_and_edits_touch_one() {
-        let dir = std::env::temp_dir().join(format!("vivianne_memstore_list_{}", uuid::Uuid::new_v4()));
+        let dir =
+            std::env::temp_dir().join(format!("vivianne_memstore_list_{}", uuid::Uuid::new_v4()));
         let root = dir.to_string_lossy().to_string();
         let fact = |id: &str, text: &str, at: u64| MemoryEntry {
             id: id.into(),
@@ -1335,15 +1598,32 @@ mod tests {
             embedding_model: None,
             user_wide: false,
         };
-        insert_entry(&root, &fact("a", "likes tea", 1_000)).await.unwrap();
-        insert_entry(&root, &fact("b", "uses Windows", 2_000)).await.unwrap();
-        insert_entry(&root, &fact("c", "used to use Linux", 500)).await.unwrap();
+        insert_entry(&root, &fact("a", "likes tea", 1_000))
+            .await
+            .unwrap();
+        insert_entry(&root, &fact("b", "uses Windows", 2_000))
+            .await
+            .unwrap();
+        insert_entry(&root, &fact("c", "used to use Linux", 500))
+            .await
+            .unwrap();
         invalidate_entry(&root, "c", 900).await.unwrap();
 
-        let ids: Vec<String> = list_live(&root, 50).await.unwrap().into_iter().map(|e| e.id).collect();
-        assert_eq!(ids, vec!["b", "a"], "newest first, and a closed fact is not listed");
+        let ids: Vec<String> = list_live(&root, 50)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
+        assert_eq!(
+            ids,
+            vec!["b", "a"],
+            "newest first, and a closed fact is not listed"
+        );
 
-        update_entry_text(&root, "a", "likes green tea").await.unwrap();
+        update_entry_text(&root, "a", "likes green tea")
+            .await
+            .unwrap();
         delete_entry(&root, "b").await.unwrap();
         let left = list_live(&root, 50).await.unwrap();
         assert_eq!(left.len(), 1);
@@ -1353,8 +1633,14 @@ mod tests {
 
     #[test]
     fn fts_query_ors_meaningful_tokens() {
-        assert_eq!(build_fts_query("Tesla, electric!! car?").as_deref(), Some("\"tesla\" OR \"electric\" OR \"car\""));
-        assert_eq!(build_fts_query("What is the name of my car? my CAR").as_deref(), Some("\"name\" OR \"car\""));
+        assert_eq!(
+            build_fts_query("Tesla, electric!! car?").as_deref(),
+            Some("\"tesla\" OR \"electric\" OR \"car\"")
+        );
+        assert_eq!(
+            build_fts_query("What is the name of my car? my CAR").as_deref(),
+            Some("\"name\" OR \"car\"")
+        );
         assert_eq!(build_fts_query("what is it"), None);
     }
 
@@ -1362,7 +1648,10 @@ mod tests {
     /// one that shares only a common word.
     #[tokio::test]
     async fn a_plain_question_finds_its_memory() {
-        let dir = std::env::temp_dir().join(format!("vivianne_memstore_question_{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!(
+            "vivianne_memstore_question_{}",
+            uuid::Uuid::new_v4()
+        ));
         let root = dir.to_string_lossy().to_string();
         let mut a = test_entry("a", "fact", 1);
         a.text = "I adopted a beagle called Max last spring".into();
@@ -1370,7 +1659,9 @@ mod tests {
         b.text = "The spring release ships on Friday".into();
         insert_entry(&root, &a).await.unwrap();
         insert_entry(&root, &b).await.unwrap();
-        let hits = search_fts(&root, "What breed is the dog I adopted, Max?", 5).await.unwrap();
+        let hits = search_fts(&root, "What breed is the dog I adopted, Max?", 5)
+            .await
+            .unwrap();
         assert_eq!(hits.first().map(|e| e.id.as_str()), Some("a"));
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1404,7 +1695,8 @@ mod tests {
     /// above an unrelated entry.
     #[tokio::test]
     async fn fts5_is_available_and_ranks_relevant_entry_first() {
-        let dir = std::env::temp_dir().join(format!("vivianne_memstore_test_{}", uuid::Uuid::new_v4()));
+        let dir =
+            std::env::temp_dir().join(format!("vivianne_memstore_test_{}", uuid::Uuid::new_v4()));
         let root = dir.to_string_lossy().to_string();
 
         let tesla = MemoryEntry {
@@ -1412,7 +1704,8 @@ mod tests {
             key: "car".into(),
             text: "The user drives a Tesla Model 3".into(),
             kind: "fact".into(),
-            session_id: None,                    created_at: 1,
+            session_id: None,
+            created_at: 1,
             confidence: 1.0,
             access_count: 0,
             last_accessed_at: 0,
@@ -1435,7 +1728,9 @@ mod tests {
         insert_entry(&root, &tesla).await.expect("insert tesla");
         insert_entry(&root, &weather).await.expect("insert weather");
 
-        let results = search_fts(&root, "Tesla", 5).await.expect("fts5 search should not error");
+        let results = search_fts(&root, "Tesla", 5)
+            .await
+            .expect("fts5 search should not error");
         assert_eq!(results.first().map(|e| e.id.as_str()), Some("e1"));
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -1446,7 +1741,10 @@ mod tests {
     /// existing users doesn't silently lose their remembered facts.
     #[tokio::test]
     async fn migrates_existing_jsonl_entries_into_sqlite_on_first_open() {
-        let dir = std::env::temp_dir().join(format!("vivianne_memstore_migrate_{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!(
+            "vivianne_memstore_migrate_{}",
+            uuid::Uuid::new_v4()
+        ));
         let mem_dir = memory_dir(&dir.to_string_lossy());
         std::fs::create_dir_all(&mem_dir).unwrap();
         let entry = MemoryEntry {
@@ -1454,17 +1752,24 @@ mod tests {
             key: "legacy".into(),
             text: "Migrated from the old JSONL store".into(),
             kind: "fact".into(),
-            session_id: None,                    created_at: 42,
+            session_id: None,
+            created_at: 42,
             confidence: 1.0,
             access_count: 0,
             last_accessed_at: 0,
             embedding_model: None,
             user_wide: false,
         };
-        std::fs::write(mem_dir.join("entries.jsonl"), format!("{}\n", serde_json::to_string(&entry).unwrap())).unwrap();
+        std::fs::write(
+            mem_dir.join("entries.jsonl"),
+            format!("{}\n", serde_json::to_string(&entry).unwrap()),
+        )
+        .unwrap();
 
         let root = dir.to_string_lossy().to_string();
-        let all = all_entries(&root).await.expect("all_entries should trigger migration on open");
+        let all = all_entries(&root)
+            .await
+            .expect("all_entries should trigger migration on open");
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].id, "legacy1");
 
@@ -1472,25 +1777,49 @@ mod tests {
     }
 
     fn test_entry(id: &str, kind: &str, created_at: u64) -> MemoryEntry {
-        MemoryEntry { id: id.into(), key: id.into(), text: format!("entry {id}"), kind: kind.into(), session_id: None, created_at, confidence: 1.0, access_count: 0, last_accessed_at: 0, embedding_model: None, user_wide: false }
+        MemoryEntry {
+            id: id.into(),
+            key: id.into(),
+            text: format!("entry {id}"),
+            kind: kind.into(),
+            session_id: None,
+            created_at,
+            confidence: 1.0,
+            access_count: 0,
+            last_accessed_at: 0,
+            embedding_model: None,
+            user_wide: false,
+        }
     }
 
     #[tokio::test]
     async fn count_since_and_entries_since_filter_by_kind_and_time() {
-        let dir = std::env::temp_dir().join(format!("vivianne_memstore_since_{}", uuid::Uuid::new_v4()));
+        let dir =
+            std::env::temp_dir().join(format!("vivianne_memstore_since_{}", uuid::Uuid::new_v4()));
         let root = dir.to_string_lossy().to_string();
 
-        insert_entry(&root, &test_entry("a1", "auto", 10)).await.unwrap();
-        insert_entry(&root, &test_entry("a2", "auto", 20)).await.unwrap();
-        insert_entry(&root, &test_entry("a3", "auto", 30)).await.unwrap();
-        insert_entry(&root, &test_entry("f1", "fact", 25)).await.unwrap();
+        insert_entry(&root, &test_entry("a1", "auto", 10))
+            .await
+            .unwrap();
+        insert_entry(&root, &test_entry("a2", "auto", 20))
+            .await
+            .unwrap();
+        insert_entry(&root, &test_entry("a3", "auto", 30))
+            .await
+            .unwrap();
+        insert_entry(&root, &test_entry("f1", "fact", 25))
+            .await
+            .unwrap();
 
         assert_eq!(count_since(&root, "auto", 15).await.unwrap(), 2);
         assert_eq!(count_since(&root, "auto", 0).await.unwrap(), 3);
         assert_eq!(count_since(&root, "fact", 0).await.unwrap(), 1);
 
         let since = entries_since(&root, "auto", 15, 10).await.unwrap();
-        assert_eq!(since.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(), vec!["a2", "a3"]);
+        assert_eq!(
+            since.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(),
+            vec!["a2", "a3"]
+        );
 
         let capped = entries_since(&root, "auto", 0, 1).await.unwrap();
         assert_eq!(capped.len(), 1);
@@ -1501,28 +1830,55 @@ mod tests {
 
     #[tokio::test]
     async fn recent_by_kind_orders_newest_first_and_respects_limit() {
-        let dir = std::env::temp_dir().join(format!("vivianne_memstore_recent_{}", uuid::Uuid::new_v4()));
+        let dir =
+            std::env::temp_dir().join(format!("vivianne_memstore_recent_{}", uuid::Uuid::new_v4()));
         let root = dir.to_string_lossy().to_string();
 
-        insert_entry(&root, &test_entry("p1", "persona", 10)).await.unwrap();
-        insert_entry(&root, &test_entry("p2", "persona", 30)).await.unwrap();
-        insert_entry(&root, &test_entry("p3", "persona", 20)).await.unwrap();
+        insert_entry(&root, &test_entry("p1", "persona", 10))
+            .await
+            .unwrap();
+        insert_entry(&root, &test_entry("p2", "persona", 30))
+            .await
+            .unwrap();
+        insert_entry(&root, &test_entry("p3", "persona", 20))
+            .await
+            .unwrap();
 
         let recent = recent_by_kind(&root, "persona", 2).await.unwrap();
-        assert_eq!(recent.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(), vec!["p2", "p3"]);
+        assert_eq!(
+            recent.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(),
+            vec!["p2", "p3"]
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
     async fn scene_summary_groups_and_counts_tagged_entries() {
-        let dir = std::env::temp_dir().join(format!("vivianne_memstore_scenes_{}", uuid::Uuid::new_v4()));
+        let dir =
+            std::env::temp_dir().join(format!("vivianne_memstore_scenes_{}", uuid::Uuid::new_v4()));
         let root = dir.to_string_lossy().to_string();
 
-        insert_entry_with_scene(&root, &test_entry("e1", "episodic", 10), Some("trip planning")).await.unwrap();
-        insert_entry_with_scene(&root, &test_entry("e2", "episodic", 20), Some("trip planning")).await.unwrap();
-        insert_entry_with_scene(&root, &test_entry("e3", "episodic", 30), Some("debugging")).await.unwrap();
-        insert_entry(&root, &test_entry("e4", "episodic", 40)).await.unwrap(); // no scene
+        insert_entry_with_scene(
+            &root,
+            &test_entry("e1", "episodic", 10),
+            Some("trip planning"),
+        )
+        .await
+        .unwrap();
+        insert_entry_with_scene(
+            &root,
+            &test_entry("e2", "episodic", 20),
+            Some("trip planning"),
+        )
+        .await
+        .unwrap();
+        insert_entry_with_scene(&root, &test_entry("e3", "episodic", 30), Some("debugging"))
+            .await
+            .unwrap();
+        insert_entry(&root, &test_entry("e4", "episodic", 40))
+            .await
+            .unwrap(); // no scene
 
         let scenes = scene_summary(&root, 10).await.unwrap();
         assert_eq!(scenes.len(), 2);
@@ -1553,23 +1909,36 @@ mod tests {
     /// a replaced vector moves, another model's vectors never mix in.
     #[tokio::test]
     async fn vector_index_matches_the_scan() {
-        let dir = std::env::temp_dir().join(format!("vivianne_memstore_vec_{}", uuid::Uuid::new_v4()));
+        let dir =
+            std::env::temp_dir().join(format!("vivianne_memstore_vec_{}", uuid::Uuid::new_v4()));
         let root = dir.to_string_lossy().to_string();
         let model = "test-model";
         let dim = 16;
         for i in 0..60u64 {
             let id = format!("v{i}");
-            insert_entry(&root, &test_entry(&id, "fact", i)).await.unwrap();
-            update_embedding(&root, &id, &unit_vector(i, dim), model).await.unwrap();
+            insert_entry(&root, &test_entry(&id, "fact", i))
+                .await
+                .unwrap();
+            update_embedding(&root, &id, &unit_vector(i, dim), model)
+                .await
+                .unwrap();
         }
         // Another model's vectors (of another size) don't touch this index.
-        insert_entry(&root, &test_entry("other", "fact", 99)).await.unwrap();
-        update_embedding(&root, "other", &unit_vector(7, 8), "other-model").await.unwrap();
+        insert_entry(&root, &test_entry("other", "fact", 99))
+            .await
+            .unwrap();
+        update_embedding(&root, "other", &unit_vector(7, 8), "other-model")
+            .await
+            .unwrap();
         // Edits after the index exists: one closed, one re-embedded, one
         // replaced wholesale (INSERT OR REPLACE keeps the vector).
         invalidate_entry(&root, "v3", 1).await.unwrap();
-        update_embedding(&root, "v5", &unit_vector(1000, dim), model).await.unwrap();
-        insert_entry(&root, &test_entry("v9", "fact", 9)).await.unwrap();
+        update_embedding(&root, "v5", &unit_vector(1000, dim), model)
+            .await
+            .unwrap();
+        insert_entry(&root, &test_entry("v9", "fact", 9))
+            .await
+            .unwrap();
 
         let r = root.clone();
         let (indexed, scanned) = tokio::task::spawn_blocking(move || {
@@ -1594,14 +1963,26 @@ mod tests {
         .unwrap()
         .unwrap();
         for (a, b) in indexed.iter().zip(&scanned) {
-            assert_eq!(a.iter().map(|x| &x.0).collect::<Vec<_>>(), b.iter().map(|x| &x.0).collect::<Vec<_>>());
+            assert_eq!(
+                a.iter().map(|x| &x.0).collect::<Vec<_>>(),
+                b.iter().map(|x| &x.0).collect::<Vec<_>>()
+            );
             for (x, y) in a.iter().zip(b) {
                 assert!((x.1 - y.1).abs() < 1e-4, "{x:?} vs {y:?}");
             }
         }
-        assert!(!indexed[0].iter().any(|(id, _)| id == "v3"), "a closed fact is not recalled");
-        assert_eq!(indexed[1][0].0, "v5", "a re-embedded fact is found by its new vector");
-        assert!(indexed.iter().flatten().any(|(id, _)| id == "v9"), "a replaced row keeps its vector");
+        assert!(
+            !indexed[0].iter().any(|(id, _)| id == "v3"),
+            "a closed fact is not recalled"
+        );
+        assert_eq!(
+            indexed[1][0].0, "v5",
+            "a re-embedded fact is found by its new vector"
+        );
+        assert!(
+            indexed.iter().flatten().any(|(id, _)| id == "v9"),
+            "a replaced row keeps its vector"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1609,14 +1990,23 @@ mod tests {
     /// Archived facts leave recall but stay answerable "as of" earlier.
     #[tokio::test]
     async fn an_archived_fact_is_out_of_recall_but_on_record() {
-        let dir = std::env::temp_dir().join(format!("vivianne_memstore_archive_{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!(
+            "vivianne_memstore_archive_{}",
+            uuid::Uuid::new_v4()
+        ));
         let root = dir.to_string_lossy().to_string();
         let mut e = test_entry("a", "fact", 1_000);
         e.text = "The staging server is called pluto".into();
         insert_entry(&root, &e).await.unwrap();
         archive_entry(&root, "a", 2_000).await.unwrap();
         assert!(search_fts(&root, "pluto", 5).await.unwrap().is_empty());
-        assert_eq!(search_fts_at(&root, "pluto", 5, Some(1_500)).await.unwrap().len(), 1);
+        assert_eq!(
+            search_fts_at(&root, "pluto", 5, Some(1_500))
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
         assert_eq!(entry_count(&root).await.unwrap(), 0);
         let _ = std::fs::remove_dir_all(&dir);
     }

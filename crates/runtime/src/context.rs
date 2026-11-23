@@ -17,9 +17,13 @@ pub fn estimate_tokens(text: &str) -> u32 {
 /// Context tokens for one message: its text, and for an assistant message the name and arguments of its calls.
 #[must_use]
 pub fn message_tokens(message: &Message) -> u32 {
-    message.tool_calls.iter().fold(estimate_tokens(&message.text), |sum, call| {
-        sum.saturating_add(estimate_tokens(&call.name)).saturating_add(estimate_tokens(&call.args.to_string()))
-    })
+    message
+        .tool_calls
+        .iter()
+        .fold(estimate_tokens(&message.text), |sum, call| {
+            sum.saturating_add(estimate_tokens(&call.name))
+                .saturating_add(estimate_tokens(&call.args.to_string()))
+        })
 }
 
 /// The window's fill, by what is in it.
@@ -40,16 +44,26 @@ pub struct Breakdown {
 impl Breakdown {
     #[must_use]
     pub fn total(&self) -> u32 {
-        self.system.saturating_add(self.tools).saturating_add(self.user).saturating_add(self.assistant).saturating_add(self.tool_results)
+        self.system
+            .saturating_add(self.tools)
+            .saturating_add(self.user)
+            .saturating_add(self.assistant)
+            .saturating_add(self.tool_results)
     }
 
     /// The parts that have anything in them, in the order a user reads them: (label, tokens).
     #[must_use]
     pub fn rows(&self) -> Vec<(&'static str, u32)> {
-        [("System prompt", self.system), ("Tool definitions", self.tools), ("You", self.user), ("Assistant", self.assistant), ("Tool results", self.tool_results)]
-            .into_iter()
-            .filter(|(_, tokens)| *tokens > 0)
-            .collect()
+        [
+            ("System prompt", self.system),
+            ("Tool definitions", self.tools),
+            ("You", self.user),
+            ("Assistant", self.assistant),
+            ("Tool results", self.tool_results),
+        ]
+        .into_iter()
+        .filter(|(_, tokens)| *tokens > 0)
+        .collect()
     }
 }
 
@@ -59,7 +73,10 @@ impl Breakdown {
 pub fn breakdown(system: &str, tools: &[Value], history: &[Message]) -> Breakdown {
     let mut parts = Breakdown {
         system: estimate_tokens(system),
-        tools: tools.iter().map(|t| estimate_tokens(&t.to_string())).fold(0, u32::saturating_add),
+        tools: tools
+            .iter()
+            .map(|t| estimate_tokens(&t.to_string()))
+            .fold(0, u32::saturating_add),
         ..Breakdown::default()
     };
     for message in history {
@@ -93,7 +110,11 @@ mod tests {
 
     #[test]
     fn each_part_is_counted_in_its_own_slot_and_the_parts_add_up() {
-        let call = ToolCall { id: "c".into(), name: "read".into(), args: json!({"path": "a.rs"}) };
+        let call = ToolCall {
+            id: "c".into(),
+            name: "read".into(),
+            args: json!({"path": "a.rs"}),
+        };
         let history = vec![
             Message::new(Role::User, "abcdefgh"),
             Message::assistant("abcd", vec![call.clone()]),
@@ -103,14 +124,24 @@ mod tests {
         let parts = breakdown("abcdefgh", &tools, &history);
         assert_eq!((parts.system, parts.user, parts.tool_results), (2, 2, 3));
         // The call's name and arguments count as what the assistant said.
-        assert_eq!(parts.assistant, 1 + estimate_tokens("read") + estimate_tokens(&call.args.to_string()));
+        assert_eq!(
+            parts.assistant,
+            1 + estimate_tokens("read") + estimate_tokens(&call.args.to_string())
+        );
         assert_eq!(parts.tools, estimate_tokens(&tools[0].to_string()));
-        assert_eq!(parts.total(), parts.system + parts.tools + parts.user + parts.assistant + parts.tool_results);
+        assert_eq!(
+            parts.total(),
+            parts.system + parts.tools + parts.user + parts.assistant + parts.tool_results
+        );
     }
 
     #[test]
     fn rows_leave_out_what_is_empty() {
-        let parts = Breakdown { user: 5, tool_results: 2, ..Breakdown::default() };
+        let parts = Breakdown {
+            user: 5,
+            tool_results: 2,
+            ..Breakdown::default()
+        };
         assert_eq!(parts.rows(), vec![("You", 5), ("Tool results", 2)]);
     }
 }

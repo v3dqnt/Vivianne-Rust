@@ -13,3 +13,5 @@ The project rail beside a chat, with Overview, Files, Preview and Terminal tabs.
 - `files.rs`: the tree and the file reader/classifier. No UI types, so it is unit tested.
 - `git.rs`: branch, last commit and `git status`, parsed. No UI types.
 - `terminal/`: the shell view. See its README.
+- `file_icons.rs`: the icon and colour of each file and folder in the Files tab, by extension or name.
+- `debug.rs`: the Debug tab: frames per second and frame times of the whole window against the 120 Hz budget, a switch to redraw continuously, and the in-memory log.

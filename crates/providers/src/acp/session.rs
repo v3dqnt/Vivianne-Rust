@@ -44,11 +44,16 @@ static SESSIONS_WRITE: Mutex<()> = Mutex::new(());
 /// Each thread's session with each agent, and how much of the thread it had seen: read after a restart to
 /// reopen it.
 pub(super) fn saved_sessions() -> HashMap<String, (String, usize)> {
-    std::fs::read_to_string(sessions_path()).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
+    std::fs::read_to_string(sessions_path())
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
 }
 
 pub(super) fn save_session(key: &str, session: &str, seen: usize) {
-    let _guard = SESSIONS_WRITE.lock().unwrap_or_else(PoisonError::into_inner);
+    let _guard = SESSIONS_WRITE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
     let mut all = saved_sessions();
     all.insert(key.to_owned(), (session.to_owned(), seen));
     let _ = write_json_atomic(&sessions_path(), &all);
@@ -57,7 +62,9 @@ pub(super) fn save_session(key: &str, session: &str, seen: usize) {
 /// Forgets a saved session the agent has closed, so the next turn starts a new one. Only when the entry still
 /// names it: a turn that already saved a newer session must keep that one.
 pub(super) fn forget_session(key: &str, session: &str) {
-    let _guard = SESSIONS_WRITE.lock().unwrap_or_else(PoisonError::into_inner);
+    let _guard = SESSIONS_WRITE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
     let mut all = saved_sessions();
     if all.get(key).is_none_or(|(saved, _)| saved != session) {
         return;
@@ -71,7 +78,11 @@ pub(super) fn forget_session(key: &str, session: &str) {
 /// What the agent's session hasn't seen of the thread, as one block of text put before the user's message: the
 /// newest `DIGEST_CHARS` of what was said. Tool calls are left out; what they changed is on disk for it to read.
 pub(super) fn digest(missed: &[Line]) -> Option<String> {
-    let lines: Vec<String> = missed.iter().filter(|l| !l.text.trim().is_empty()).map(|l| format!("{}: {}", l.who, l.text.trim())).collect();
+    let lines: Vec<String> = missed
+        .iter()
+        .filter(|l| !l.text.trim().is_empty())
+        .map(|l| format!("{}: {}", l.who, l.text.trim()))
+        .collect();
     if lines.is_empty() {
         return None;
     }
@@ -106,9 +117,14 @@ pub(super) fn looks_unauthenticated(error: &str) -> bool {
 /// What the user can do when a session won't open: usually sign in.
 pub(super) fn explain_start_failure(harness: &Harness, error: &str) -> String {
     let low = error.to_lowercase();
-    if ["auth", "login", "log in", "sign in", "api key"].iter().any(|word| low.contains(word)) {
+    if ["auth", "login", "log in", "sign in", "api key"]
+        .iter()
+        .any(|word| low.contains(word))
+    {
         let how = match harness.id.as_str() {
-            "claude-acp" => " Run `claude` once in a terminal and sign in (or set ANTHROPIC_API_KEY).",
+            "claude-acp" => {
+                " Run `claude` once in a terminal and sign in (or set ANTHROPIC_API_KEY)."
+            }
             "codex-acp" => " Run `codex login` in a terminal (or set OPENAI_API_KEY).",
             "gemini" => " Run `gemini` once in a terminal and sign in (or set GEMINI_API_KEY).",
             _ => " Sign in to it once in a terminal.",
@@ -125,11 +141,17 @@ pub(super) fn explain_start_failure(harness: &Harness, error: &str) -> String {
 pub(super) fn auth_method(caps: &Value, v2: bool) -> Option<String> {
     caps.get("authMethods")?.as_array()?.iter().find_map(|m| {
         let kind = m.get("type").and_then(Value::as_str);
-        let agent = if v2 { kind == Some("agent") } else { kind.is_none() || kind == Some("agent") };
+        let agent = if v2 {
+            kind == Some("agent")
+        } else {
+            kind.is_none() || kind == Some("agent")
+        };
         if !agent {
             return None;
         }
-        m.get(if v2 { "methodId" } else { "id" }).and_then(Value::as_str).map(str::to_owned)
+        m.get(if v2 { "methodId" } else { "id" })
+            .and_then(Value::as_str)
+            .map(str::to_owned)
     })
 }
 
@@ -145,7 +167,9 @@ async fn sign_in(conn: &Conn, harness: &Harness) -> Result<(), String> {
     };
     let call = if v2 { "auth/login" } else { "authenticate" };
     trace(&harness.name, format!("signing in with method {method}"));
-    conn.request(call, json!({ "methodId": method }), Some(SIGN_IN_TIMEOUT)).await.map_err(|e| explain_start_failure(harness, &e.to_string()))?;
+    conn.request(call, json!({ "methodId": method }), Some(SIGN_IN_TIMEOUT))
+        .await
+        .map_err(|e| explain_start_failure(harness, &e.to_string()))?;
     Ok(())
 }
 
@@ -155,7 +179,9 @@ async fn sign_in(conn: &Conn, harness: &Harness) -> Result<(), String> {
 /// `loadSession`, else resumes.
 fn resume_method(conn: &Conn) -> Option<&'static str> {
     if conn.speaks_v2() {
-        return conn.flag("/capabilities/session").then_some("session/resume");
+        return conn
+            .flag("/capabilities/session")
+            .then_some("session/resume");
     }
     if conn.flag("/agentCapabilities/loadSession") {
         Some("session/load")
@@ -168,25 +194,57 @@ fn resume_method(conn: &Conn) -> Option<&'static str> {
 
 /// Opens the thread's session: resumes the saved one when the agent can, else starts a new one. Returns the
 /// session id and how much of the thread it has already seen.
-async fn setup_session(conn: &Conn, saved: Option<(String, usize)>, cwd: &str, servers: &[Value]) -> Result<(String, usize), RpcError> {
+async fn setup_session(
+    conn: &Conn,
+    saved: Option<(String, usize)>,
+    cwd: &str,
+    servers: &[Value],
+) -> Result<(String, usize), RpcError> {
     if let Some((id, seen)) = saved {
         if let Some(method) = resume_method(conn) {
             // No `replayFrom` on a v2 resume: Vivianne doesn't re-render history, and the turn's digest
             // covers what the session missed.
-            match conn.request(method, json!({ "sessionId": id, "cwd": cwd, "mcpServers": servers }), Some(SESSION_TIMEOUT)).await {
-                Ok(_) => {
+            match conn
+                .request(
+                    method,
+                    json!({ "sessionId": id, "cwd": cwd, "mcpServers": servers }),
+                    Some(SESSION_TIMEOUT),
+                )
+                .await
+            {
+                Ok(result) => {
                     trace("harness", format!("reopened session {id} with {method}"));
+                    super::info::apply_opened(
+                        &mut conn.info.lock().unwrap_or_else(PoisonError::into_inner),
+                        &result,
+                    );
                     return Ok((id, seen));
                 }
                 // The agent no longer has it, or refused for some other reason: a new session is better than
                 // a stuck thread, and the digest fills in what it missed.
-                Err(e) => trace("harness", format!("{method} for {id} failed ({e}); starting a new session")),
+                Err(e) => trace(
+                    "harness",
+                    format!("{method} for {id} failed ({e}); starting a new session"),
+                ),
             }
         } else {
-            trace("harness", format!("it can't reopen session {id}; starting a new session"));
+            trace(
+                "harness",
+                format!("it can't reopen session {id}; starting a new session"),
+            );
         }
     }
-    let opened = conn.request("session/new", json!({ "cwd": cwd, "mcpServers": servers }), Some(SESSION_TIMEOUT)).await?;
+    let opened = conn
+        .request(
+            "session/new",
+            json!({ "cwd": cwd, "mcpServers": servers }),
+            Some(SESSION_TIMEOUT),
+        )
+        .await?;
+    super::info::apply_opened(
+        &mut conn.info.lock().unwrap_or_else(PoisonError::into_inner),
+        &opened,
+    );
     let id = opened
         .get("sessionId")
         .and_then(Value::as_str)
@@ -196,7 +254,13 @@ async fn setup_session(conn: &Conn, saved: Option<(String, usize)>, cwd: &str, s
 }
 
 /// The thread's session on the agent: reopened after a restart when the agent can, otherwise new.
-pub(super) async fn open_session(conn: &Conn, harness: &Harness, thread: &str, cwd: &str, servers: &[Value]) -> Result<String, String> {
+pub(super) async fn open_session(
+    conn: &Conn,
+    harness: &Harness,
+    thread: &str,
+    cwd: &str,
+    servers: &[Value],
+) -> Result<String, String> {
     let saved = saved_sessions().remove(&session_key(thread, &harness.id));
     let id = open_with(conn, harness, saved, cwd, servers).await?;
     // A session that has seen nothing is a new one: what the last said about how full it was no longer holds.
@@ -208,7 +272,13 @@ pub(super) async fn open_session(conn: &Conn, harness: &Harness, thread: &str, c
 
 /// The rest of [`open_session`], with the saved session handed in so a test doesn't have to write the
 /// saved-sessions file.
-pub(super) async fn open_with(conn: &Conn, harness: &Harness, saved: Option<(String, usize)>, cwd: &str, servers: &[Value]) -> Result<String, String> {
+pub(super) async fn open_with(
+    conn: &Conn,
+    harness: &Harness,
+    saved: Option<(String, usize)>,
+    cwd: &str,
+    servers: &[Value],
+) -> Result<String, String> {
     let mut session = conn.session.lock().await;
     if session.is_none() {
         let mut setup = setup_session(conn, saved, cwd, servers).await;
@@ -219,9 +289,12 @@ pub(super) async fn open_with(conn: &Conn, harness: &Harness, saved: Option<(Str
         }
         let (id, seen) = setup.map_err(|e| explain_start_failure(harness, &e.to_string()))?;
         conn.seen.store(seen, Ordering::SeqCst);
-        *session = Some(id);
+        *session = Some(id.clone());
+        super::models::on_opened(conn, harness, &id).await;
     }
-    session.clone().ok_or_else(|| "the agent opened no session".to_owned())
+    session
+        .clone()
+        .ok_or_else(|| "the agent opened no session".to_owned())
 }
 
 #[cfg(test)]
@@ -232,7 +305,10 @@ mod tests {
     use super::*;
 
     fn line(who: &'static str, text: &str) -> Line {
-        Line { who, text: text.to_owned() }
+        Line {
+            who,
+            text: text.to_owned(),
+        }
     }
 
     #[test]
@@ -247,10 +323,17 @@ mod tests {
 
     #[test]
     fn an_agents_sign_in_errors_are_recognised() {
-        for e in ["Authentication required", "Failed to authenticate: OAuth session expired", "401 Invalid API key"] {
+        for e in [
+            "Authentication required",
+            "Failed to authenticate: OAuth session expired",
+            "401 Invalid API key",
+        ] {
             assert!(looks_unauthenticated(e), "{e}");
         }
-        assert!(!looks_unauthenticated("the agent exited") && !looks_unauthenticated("rate limit reached"));
+        assert!(
+            !looks_unauthenticated("the agent exited")
+                && !looks_unauthenticated("rate limit reached")
+        );
     }
 
     #[test]
@@ -259,10 +342,20 @@ mod tests {
         assert_eq!(auth_method(&v2, true).as_deref(), Some("a"));
         let v1 = json!({"authMethods": [{"id": "oauth"}]});
         assert_eq!(auth_method(&v1, false).as_deref(), Some("oauth"));
-        assert_eq!(auth_method(&json!({"authMethods": [{"type": "terminal", "methodId": "t"}]}), true), None);
+        assert_eq!(
+            auth_method(
+                &json!({"authMethods": [{"type": "terminal", "methodId": "t"}]}),
+                true
+            ),
+            None
+        );
     }
 
-    async fn start(version: u64, caps: Value, auth: Value) -> (std::sync::Arc<Conn>, super::super::conn::testing::Peer) {
+    async fn start(
+        version: u64,
+        caps: Value,
+        auth: Value,
+    ) -> (std::sync::Arc<Conn>, super::super::conn::testing::Peer) {
         let (conn, mut agent) = peer("mock");
         let asked = tokio::spawn({
             let conn = conn.clone();
@@ -281,8 +374,17 @@ mod tests {
             async move { open_with(&conn, &harness("a"), None, "/p", &[]).await }
         });
         let asked = agent.open("s1").await;
-        assert_eq!((asked["params"]["cwd"].as_str(), asked["params"]["mcpServers"].as_array().map(Vec::len)), (Some("/p"), Some(0)));
-        assert_eq!(opened.await.unwrap_or(Err(String::new())), Ok("s1".to_owned()));
+        assert_eq!(
+            (
+                asked["params"]["cwd"].as_str(),
+                asked["params"]["mcpServers"].as_array().map(Vec::len)
+            ),
+            (Some("/p"), Some(0))
+        );
+        assert_eq!(
+            opened.await.unwrap_or(Err(String::new())),
+            Ok("s1".to_owned())
+        );
     }
 
     #[tokio::test]
@@ -293,9 +395,15 @@ mod tests {
             async move { open_with(&conn, &harness("a"), Some(("old".into(), 4)), "/p", &[]).await }
         });
         let msg = agent.recv().await;
-        assert_eq!((msg["method"].as_str(), msg["params"]["sessionId"].as_str()), (Some("session/resume"), Some("old")));
+        assert_eq!(
+            (msg["method"].as_str(), msg["params"]["sessionId"].as_str()),
+            (Some("session/resume"), Some("old"))
+        );
         agent.answer(&msg["id"], json!({})).await;
-        assert_eq!(opened.await.unwrap_or(Err(String::new())), Ok("old".to_owned()));
+        assert_eq!(
+            opened.await.unwrap_or(Err(String::new())),
+            Ok("old".to_owned())
+        );
         assert_eq!(conn.seen.load(Ordering::SeqCst), 4);
     }
 
@@ -307,10 +415,19 @@ mod tests {
             async move { open_with(&conn, &harness("a"), Some(("gone".into(), 4)), "/p", &[]).await }
         });
         let msg = agent.recv().await;
-        agent.refuse(&msg["id"], -32002, "no such session", Value::Null).await;
+        agent
+            .refuse(&msg["id"], -32002, "no such session", Value::Null)
+            .await;
         agent.open("fresh").await;
-        assert_eq!(opened.await.unwrap_or(Err(String::new())), Ok("fresh".to_owned()));
-        assert_eq!(conn.seen.load(Ordering::SeqCst), 0, "a new session has seen nothing");
+        assert_eq!(
+            opened.await.unwrap_or(Err(String::new())),
+            Ok("fresh".to_owned())
+        );
+        assert_eq!(
+            conn.seen.load(Ordering::SeqCst),
+            0,
+            "a new session has seen nothing"
+        );
     }
 
     #[tokio::test]
@@ -323,7 +440,10 @@ mod tests {
         let msg = agent.recv().await;
         assert_eq!(msg["method"], "session/load");
         agent.answer(&msg["id"], json!({})).await;
-        assert_eq!(opened.await.unwrap_or(Err(String::new())), Ok("old".to_owned()));
+        assert_eq!(
+            opened.await.unwrap_or(Err(String::new())),
+            Ok("old".to_owned())
+        );
     }
 
     #[tokio::test]
@@ -334,7 +454,10 @@ mod tests {
             async move { open_with(&conn, &harness("a"), Some(("old".into(), 2)), "/p", &[]).await }
         });
         agent.open("new").await;
-        assert_eq!(opened.await.unwrap_or(Err(String::new())), Ok("new".to_owned()));
+        assert_eq!(
+            opened.await.unwrap_or(Err(String::new())),
+            Ok("new".to_owned())
+        );
     }
 
     #[tokio::test]
@@ -347,12 +470,23 @@ mod tests {
         });
         let first = agent.recv().await;
         assert_eq!(first["method"], "session/new");
-        agent.refuse(&first["id"], -32000, "auth required", Value::Null).await;
+        agent
+            .refuse(&first["id"], -32000, "auth required", Value::Null)
+            .await;
         let login = agent.recv().await;
-        assert_eq!((login["method"].as_str(), login["params"]["methodId"].as_str()), (Some("auth/login"), Some("login")));
+        assert_eq!(
+            (
+                login["method"].as_str(),
+                login["params"]["methodId"].as_str()
+            ),
+            (Some("auth/login"), Some("login"))
+        );
         agent.answer(&login["id"], json!({})).await;
         agent.open("s9").await;
-        assert_eq!(opened.await.unwrap_or(Err(String::new())), Ok("s9".to_owned()));
+        assert_eq!(
+            opened.await.unwrap_or(Err(String::new())),
+            Ok("s9".to_owned())
+        );
     }
 
     #[tokio::test]
@@ -364,9 +498,21 @@ mod tests {
             async move { open_with(&conn, &harness("claude-acp"), None, "/p", &[]).await }
         });
         let first = agent.recv().await;
-        agent.refuse(&first["id"], -32000, "auth required", Value::Null).await;
-        let failure = opened.await.unwrap_or(Ok(String::new())).err().unwrap_or_default();
-        assert!(failure.contains("needs you to sign in") && failure.contains("claude"), "{failure}");
-        assert!(failure.contains("terminal sign-in has to be done by hand"), "{failure}");
+        agent
+            .refuse(&first["id"], -32000, "auth required", Value::Null)
+            .await;
+        let failure = opened
+            .await
+            .unwrap_or(Ok(String::new()))
+            .err()
+            .unwrap_or_default();
+        assert!(
+            failure.contains("needs you to sign in") && failure.contains("claude"),
+            "{failure}"
+        );
+        assert!(
+            failure.contains("terminal sign-in has to be done by hand"),
+            "{failure}"
+        );
     }
 }

@@ -13,7 +13,7 @@
 //! - **History kept.** A refined observation keeps its earlier texts, with when each was replaced.
 //! - **Stale is visible.** An observation whose evidence has since been corrected or archived is flagged, not silently trusted.
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 
 use super::MemoryEntry;
 
@@ -25,7 +25,14 @@ pub const NEIGHBOURS: usize = 3;
 const MAX_TEXT: usize = 400;
 
 /// Kinds an observation can be built from: facts about the user and the world, not session notes, summaries or other observations.
-pub const SOURCE_KINDS: &[&str] = &["fact", "persona", "episodic", "instruction", "preference", "correction"];
+pub const SOURCE_KINDS: &[&str] = &[
+    "fact",
+    "persona",
+    "episodic",
+    "instruction",
+    "preference",
+    "correction",
+];
 
 pub fn init(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(
@@ -65,15 +72,28 @@ pub fn route(best: Option<f32>) -> Route {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Op {
-    Attach { fact: usize, observation: usize },
-    Refine { observation: usize, text: String, facts: Vec<usize> },
-    Create { text: String, facts: Vec<usize> },
+    Attach {
+        fact: usize,
+        observation: usize,
+    },
+    Refine {
+        observation: usize,
+        text: String,
+        facts: Vec<usize>,
+    },
+    Create {
+        text: String,
+        facts: Vec<usize>,
+    },
 }
 
 fn index(v: &serde_json::Value, key: &str, max: usize) -> Option<usize> {
     let n = match v.get(key)? {
         serde_json::Value::Number(n) => n.as_u64()? as usize,
-        serde_json::Value::String(s) => s.trim_start_matches(['o', 'O', 'f', 'F', 'm', 'M']).parse().ok()?,
+        serde_json::Value::String(s) => s
+            .trim_start_matches(['o', 'O', 'f', 'F', 'm', 'M'])
+            .parse()
+            .ok()?,
         _ => return None,
     };
     (1..=max).contains(&n).then_some(n - 1)
@@ -106,22 +126,44 @@ fn clean(text: &str) -> Option<String> {
 /// The model's operations, kept only when they are well formed and obey the rules: facts and observations are named by the numbers they were
 /// shown, a new observation cites at least two facts, and anything else is dropped.
 pub fn parse_ops(reply: &serde_json::Value, facts: usize, observations: usize) -> Vec<Op> {
-    let Some(list) = reply.as_array() else { return Vec::new() };
+    let Some(list) = reply.as_array() else {
+        return Vec::new();
+    };
     let mut ops = Vec::new();
     for item in list {
-        match item.get("op").and_then(|v| v.as_str()).map(str::to_uppercase).as_deref() {
+        match item
+            .get("op")
+            .and_then(|v| v.as_str())
+            .map(str::to_uppercase)
+            .as_deref()
+        {
             Some("ATTACH") => {
-                if let (Some(fact), Some(observation)) = (index(item, "fact", facts), index(item, "observation", observations)) {
+                if let (Some(fact), Some(observation)) = (
+                    index(item, "fact", facts),
+                    index(item, "observation", observations),
+                ) {
                     ops.push(Op::Attach { fact, observation });
                 }
             }
             Some("REFINE") => {
-                let (Some(observation), Some(text)) = (index(item, "observation", observations), item.get("text").and_then(|v| v.as_str()).and_then(clean)) else { continue };
-                ops.push(Op::Refine { observation, text, facts: indexes(item, "facts", facts) });
+                let (Some(observation), Some(text)) = (
+                    index(item, "observation", observations),
+                    item.get("text").and_then(|v| v.as_str()).and_then(clean),
+                ) else {
+                    continue;
+                };
+                ops.push(Op::Refine {
+                    observation,
+                    text,
+                    facts: indexes(item, "facts", facts),
+                });
             }
             Some("CREATE") => {
                 let facts = indexes(item, "facts", facts);
-                if let (true, Some(text)) = (facts.len() >= 2, item.get("text").and_then(|v| v.as_str()).and_then(clean)) {
+                if let (true, Some(text)) = (
+                    facts.len() >= 2,
+                    item.get("text").and_then(|v| v.as_str()).and_then(clean),
+                ) {
                     ops.push(Op::Create { text, facts });
                 }
             }
@@ -132,28 +174,59 @@ pub fn parse_ops(reply: &serde_json::Value, facts: usize, observations: usize) -
 }
 
 pub fn attach(conn: &Connection, observation_id: &str, entry_id: &str) -> Result<(), String> {
-    conn.execute("INSERT OR IGNORE INTO observation_evidence (observation_id, entry_id) VALUES (?1, ?2)", params![observation_id, entry_id]).map(|_| ()).map_err(|e| e.to_string())
+    conn.execute(
+        "INSERT OR IGNORE INTO observation_evidence (observation_id, entry_id) VALUES (?1, ?2)",
+        params![observation_id, entry_id],
+    )
+    .map(|_| ())
+    .map_err(|e| e.to_string())
 }
 
 /// Replace an observation's text, keeping the old one in its history.
 pub fn refine(conn: &Connection, observation_id: &str, text: &str, now: u64) -> Result<(), String> {
-    let old: String = conn.query_row("SELECT text FROM memories WHERE id = ?1 AND kind = 'observation'", params![observation_id], |r| r.get(0)).map_err(|e| format!("no such observation: {e}"))?;
+    let old: String = conn
+        .query_row(
+            "SELECT text FROM memories WHERE id = ?1 AND kind = 'observation'",
+            params![observation_id],
+            |r| r.get(0),
+        )
+        .map_err(|e| format!("no such observation: {e}"))?;
     if old == text {
         return Ok(());
     }
-    conn.execute("INSERT INTO observation_history (observation_id, text, replaced_at) VALUES (?1, ?2, ?3)", params![observation_id, old, now as i64]).map_err(|e| e.to_string())?;
-    conn.execute("UPDATE memories SET text = ?2, updated_at = ?3, stale = 0 WHERE id = ?1", params![observation_id, text, now as i64]).map(|_| ()).map_err(|e| e.to_string())
+    conn.execute(
+        "INSERT INTO observation_history (observation_id, text, replaced_at) VALUES (?1, ?2, ?3)",
+        params![observation_id, old, now as i64],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE memories SET text = ?2, updated_at = ?3, stale = 0 WHERE id = ?1",
+        params![observation_id, text, now as i64],
+    )
+    .map(|_| ())
+    .map_err(|e| e.to_string())
 }
 
 /// How many facts an observation rests on.
 pub fn proof_count(conn: &Connection, observation_id: &str) -> usize {
-    conn.query_row("SELECT COUNT(*) FROM observation_evidence WHERE observation_id = ?1", params![observation_id], |r| r.get::<_, i64>(0)).unwrap_or(0) as usize
+    conn.query_row(
+        "SELECT COUNT(*) FROM observation_evidence WHERE observation_id = ?1",
+        params![observation_id],
+        |r| r.get::<_, i64>(0),
+    )
+    .unwrap_or(0) as usize
 }
 
 /// An observation's earlier texts, oldest first.
 pub fn history(conn: &Connection, observation_id: &str) -> Vec<String> {
-    let Ok(mut stmt) = conn.prepare("SELECT text FROM observation_history WHERE observation_id = ?1 ORDER BY id") else { return Vec::new() };
-    let Ok(rows) = stmt.query_map(params![observation_id], |r| r.get::<_, String>(0)) else { return Vec::new() };
+    let Ok(mut stmt) =
+        conn.prepare("SELECT text FROM observation_history WHERE observation_id = ?1 ORDER BY id")
+    else {
+        return Vec::new();
+    };
+    let Ok(rows) = stmt.query_map(params![observation_id], |r| r.get::<_, String>(0)) else {
+        return Vec::new();
+    };
     rows.flatten().collect()
 }
 
@@ -172,7 +245,11 @@ pub fn refresh_stale(conn: &Connection) -> Result<usize, String> {
 }
 
 /// The prompt's view of what to decide, built from numbered facts and the observations nearest to them.
-pub fn prompt_for(facts: &[MemoryEntry], neighbours: &[Vec<usize>], observations: &[MemoryEntry]) -> String {
+pub fn prompt_for(
+    facts: &[MemoryEntry],
+    neighbours: &[Vec<usize>],
+    observations: &[MemoryEntry],
+) -> String {
     let mut out = String::new();
     for (i, f) in facts.iter().enumerate() {
         out.push_str(&format!("FACT {}: {}\n", i + 1, f.text));
@@ -197,18 +274,34 @@ Reply [] when there is nothing to do.";
 
 fn cosine(a: &[f32], b: &[f32]) -> f32 {
     let dot: f32 = a.iter().zip(b).map(|(x, y)| x * y).sum();
-    let (na, nb) = (a.iter().map(|x| x * x).sum::<f32>().sqrt(), b.iter().map(|x| x * x).sum::<f32>().sqrt());
-    if na == 0.0 || nb == 0.0 { 0.0 } else { dot / (na * nb) }
+    let (na, nb) = (
+        a.iter().map(|x| x * x).sum::<f32>().sqrt(),
+        b.iter().map(|x| x * x).sum::<f32>().sqrt(),
+    );
+    if na == 0.0 || nb == 0.0 {
+        0.0
+    } else {
+        dot / (na * nb)
+    }
 }
 
-async fn db<T: Send + 'static>(root: &str, f: impl FnOnce(&Connection) -> Result<T, String> + Send + 'static) -> Result<T, String> {
+async fn db<T: Send + 'static>(
+    root: &str,
+    f: impl FnOnce(&Connection) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
     let root = root.to_string();
-    tokio::task::spawn_blocking(move || super::store::with_conn(&root, f)).await.map_err(|e| format!("db task panicked: {e}"))?
+    tokio::task::spawn_blocking(move || super::store::with_conn(&root, f))
+        .await
+        .map_err(|e| format!("db task panicked: {e}"))?
 }
 
 /// Live facts no observation rests on yet and no pass has weighed, oldest first.
 async fn pending_facts(root: &str) -> Vec<MemoryEntry> {
-    let kinds = SOURCE_KINDS.iter().map(|k| format!("'{k}'")).collect::<Vec<_>>().join(", ");
+    let kinds = SOURCE_KINDS
+        .iter()
+        .map(|k| format!("'{k}'"))
+        .collect::<Vec<_>>()
+        .join(", ");
     let sql = format!(
         "SELECT id FROM memories WHERE kind IN ({kinds}) AND invalid_at IS NULL AND archived_at IS NULL
            AND id NOT IN (SELECT entry_id FROM observation_evidence) AND id NOT IN (SELECT entry_id FROM observation_seen)
@@ -216,12 +309,16 @@ async fn pending_facts(root: &str) -> Vec<MemoryEntry> {
     );
     let ids: Vec<String> = db(root, move |c| {
         let mut stmt = c.prepare(&sql).map_err(|e| e.to_string())?;
-        let rows = stmt.query_map([], |r| r.get::<_, String>(0)).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
         Ok(rows.flatten().collect())
     })
     .await
     .unwrap_or_default();
-    let mut facts = super::store::get_entries_by_ids(root, &ids).await.unwrap_or_default();
+    let mut facts = super::store::get_entries_by_ids(root, &ids)
+        .await
+        .unwrap_or_default();
     facts.sort_by_key(|f| f.created_at);
     facts
 }
@@ -240,25 +337,46 @@ pub async fn consolidate(
     }
     let embedding_model = vivianne_ai::ai::embedding::embedding_model();
     let observations: Vec<(MemoryEntry, Option<Vec<f32>>)> =
-        super::store::live_entries(root, embedding_model).await.unwrap_or_default().into_iter().filter(|(e, _)| e.kind == "observation").collect();
+        super::store::live_entries(root, embedding_model)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|(e, _)| e.kind == "observation")
+            .collect();
     let mut changed = 0;
     let mut judged: Vec<MemoryEntry> = Vec::new();
     let mut near: Vec<Vec<usize>> = Vec::new();
     for fact in &facts {
-        let v = vivianne_ai::ai::embedding::embed_text(auth, &fact.text).await.ok().flatten();
+        let v = vivianne_ai::ai::embedding::embed_text(auth, &fact.text)
+            .await
+            .ok()
+            .flatten();
         let mut sims: Vec<(usize, f32)> = match &v {
-            Some(v) => observations.iter().enumerate().filter_map(|(i, (_, ov))| ov.as_ref().map(|ov| (i, cosine(v, ov)))).collect(),
+            Some(v) => observations
+                .iter()
+                .enumerate()
+                .filter_map(|(i, (_, ov))| ov.as_ref().map(|ov| (i, cosine(v, ov))))
+                .collect(),
             None => Vec::new(),
         };
         sims.sort_by(|a, b| b.1.total_cmp(&a.1));
         if let (Route::Attach, Some((i, _))) = (route(sims.first().map(|s| s.1)), sims.first()) {
             let (obs_id, fact_id) = (observations[*i].0.id.clone(), fact.id.clone());
-            if db(root, move |c| attach(c, &obs_id, &fact_id)).await.is_ok() {
+            if db(root, move |c| attach(c, &obs_id, &fact_id))
+                .await
+                .is_ok()
+            {
                 changed += 1;
             }
             continue;
         }
-        near.push(sims.iter().take(NEIGHBOURS).filter(|(_, s)| *s >= 0.5).map(|(i, _)| *i).collect());
+        near.push(
+            sims.iter()
+                .take(NEIGHBOURS)
+                .filter(|(_, s)| *s >= 0.5)
+                .map(|(i, _)| *i)
+                .collect(),
+        );
         judged.push(fact.clone());
     }
     if judged.len() >= 2 {
@@ -278,12 +396,22 @@ pub async fn consolidate(
                     .collect()
             })
             .collect();
-        let shown_entries: Vec<MemoryEntry> = shown.iter().map(|i| observations[*i].0.clone()).collect();
+        let shown_entries: Vec<MemoryEntry> =
+            shown.iter().map(|i| observations[*i].0.clone()).collect();
         let prompt = prompt_for(&judged, &local, &shown_entries);
-        match vivianne_ai::ai::completion::complete_background(app, model, SYSTEM_PROMPT, &prompt).await {
+        match vivianne_ai::ai::completion::complete_background(app, model, SYSTEM_PROMPT, &prompt)
+            .await
+        {
             Ok(reply) => {
                 if let Some(json) = vivianne_ai::ai::completion::extract_json_array(&reply) {
-                    changed += apply(root, auth, &judged, &shown_entries, &parse_ops(&json, judged.len(), shown_entries.len())).await;
+                    changed += apply(
+                        root,
+                        auth,
+                        &judged,
+                        &shown_entries,
+                        &parse_ops(&json, judged.len(), shown_entries.len()),
+                    )
+                    .await;
                 }
             }
             // Try again next pass with the same facts.
@@ -293,7 +421,11 @@ pub async fn consolidate(
         let ids: Vec<String> = judged.iter().map(|f| f.id.clone()).collect();
         let _ = db(root, move |c| {
             for id in &ids {
-                c.execute("INSERT OR IGNORE INTO observation_seen (entry_id) VALUES (?1)", params![id]).map_err(|e| e.to_string())?;
+                c.execute(
+                    "INSERT OR IGNORE INTO observation_seen (entry_id) VALUES (?1)",
+                    params![id],
+                )
+                .map_err(|e| e.to_string())?;
             }
             Ok(())
         })
@@ -303,26 +435,53 @@ pub async fn consolidate(
     changed
 }
 
-async fn embed_row(root: &str, auth: &std::sync::Arc<vivianne_ai::ai::auth::AuthState>, id: &str, text: &str) {
+async fn embed_row(
+    root: &str,
+    auth: &std::sync::Arc<vivianne_ai::ai::auth::AuthState>,
+    id: &str,
+    text: &str,
+) {
     if let Ok(Some(v)) = vivianne_ai::ai::embedding::embed_text(auth, text).await {
-        let _ = super::store::update_embedding(root, id, &v, vivianne_ai::ai::embedding::embedding_model()).await;
+        let _ = super::store::update_embedding(
+            root,
+            id,
+            &v,
+            vivianne_ai::ai::embedding::embedding_model(),
+        )
+        .await;
     }
 }
 
-async fn apply(root: &str, auth: &std::sync::Arc<vivianne_ai::ai::auth::AuthState>, facts: &[MemoryEntry], observations: &[MemoryEntry], ops: &[Op]) -> usize {
+async fn apply(
+    root: &str,
+    auth: &std::sync::Arc<vivianne_ai::ai::auth::AuthState>,
+    facts: &[MemoryEntry],
+    observations: &[MemoryEntry],
+    ops: &[Op],
+) -> usize {
     let now = super::now_ms();
     let mut changed = 0;
     for op in ops {
         match op {
             Op::Attach { fact, observation } => {
-                let (o, f) = (observations[*observation].id.clone(), facts[*fact].id.clone());
+                let (o, f) = (
+                    observations[*observation].id.clone(),
+                    facts[*fact].id.clone(),
+                );
                 if db(root, move |c| attach(c, &o, &f)).await.is_ok() {
                     changed += 1;
                 }
             }
-            Op::Refine { observation, text, facts: cited } => {
+            Op::Refine {
+                observation,
+                text,
+                facts: cited,
+            } => {
                 let o = observations[*observation].id.clone();
-                let (new_text, ids): (String, Vec<String>) = (text.clone(), cited.iter().map(|i| facts[*i].id.clone()).collect());
+                let (new_text, ids): (String, Vec<String>) = (
+                    text.clone(),
+                    cited.iter().map(|i| facts[*i].id.clone()).collect(),
+                );
                 let (o2, t2) = (o.clone(), new_text.clone());
                 let done = db(root, move |c| {
                     refine(c, &o2, &t2, now)?;
@@ -353,7 +512,10 @@ async fn apply(root: &str, auth: &std::sync::Arc<vivianne_ai::ai::auth::AuthStat
                 if super::store::insert_entry(root, &entry).await.is_err() {
                     continue;
                 }
-                let (o, ids): (String, Vec<String>) = (entry.id.clone(), cited.iter().map(|i| facts[*i].id.clone()).collect());
+                let (o, ids): (String, Vec<String>) = (
+                    entry.id.clone(),
+                    cited.iter().map(|i| facts[*i].id.clone()).collect(),
+                );
                 let _ = db(root, move |c| ids.iter().try_for_each(|f| attach(c, &o, f))).await;
                 embed_row(root, auth, &entry.id, &entry.text).await;
                 changed += 1;
@@ -378,7 +540,11 @@ mod tests {
         c
     }
     fn mem(c: &Connection, id: &str, kind: &str, text: &str) {
-        c.execute("INSERT INTO memories (id, kind, text) VALUES (?1, ?2, ?3)", params![id, kind, text]).unwrap();
+        c.execute(
+            "INSERT INTO memories (id, kind, text) VALUES (?1, ?2, ?3)",
+            params![id, kind, text],
+        )
+        .unwrap();
     }
 
     #[test]
@@ -386,7 +552,11 @@ mod tests {
         assert_eq!(route(Some(0.95)), Route::Attach);
         assert_eq!(route(Some(ATTACH_SIM)), Route::Attach);
         assert_eq!(route(Some(0.89)), Route::Judge);
-        assert_eq!(route(None), Route::Judge, "no observations yet: facts can still add up to one");
+        assert_eq!(
+            route(None),
+            Route::Judge,
+            "no observations yet: facts can still add up to one"
+        );
     }
 
     #[test]
@@ -403,9 +573,19 @@ mod tests {
         assert_eq!(
             ops,
             vec![
-                Op::Attach { fact: 0, observation: 1 },
-                Op::Refine { observation: 0, text: "Prefers Neovim; used to prefer Sublime Text".to_string(), facts: vec![1, 2] },
-                Op::Create { text: "Ships on Fridays".to_string(), facts: vec![0, 2] },
+                Op::Attach {
+                    fact: 0,
+                    observation: 1
+                },
+                Op::Refine {
+                    observation: 0,
+                    text: "Prefers Neovim; used to prefer Sublime Text".to_string(),
+                    facts: vec![1, 2]
+                },
+                Op::Create {
+                    text: "Ships on Fridays".to_string(),
+                    facts: vec![0, 2]
+                },
             ]
         );
     }
@@ -427,15 +607,30 @@ mod tests {
             2,
         );
         assert!(ops.is_empty(), "{ops:?}");
-        assert!(parse_ops(&json!({"op": "CREATE"}), 3, 2).is_empty(), "not a list");
+        assert!(
+            parse_ops(&json!({"op": "CREATE"}), 3, 2).is_empty(),
+            "not a list"
+        );
     }
 
     #[test]
     fn a_secret_in_an_observation_is_redacted_before_it_is_kept() {
-        let key = format!("sk-{}", "Ab3dE6gH9jK2mN5pQ8sT1vW4yZ7".chars().take(26).collect::<String>());
-        let ops = parse_ops(&json!([{"op": "CREATE", "text": format!("Uses {key} for the api"), "facts": [1, 2]}]), 2, 0);
+        let key = format!(
+            "sk-{}",
+            "Ab3dE6gH9jK2mN5pQ8sT1vW4yZ7"
+                .chars()
+                .take(26)
+                .collect::<String>()
+        );
+        let ops = parse_ops(
+            &json!([{"op": "CREATE", "text": format!("Uses {key} for the api"), "facts": [1, 2]}]),
+            2,
+            0,
+        );
         match &ops[0] {
-            Op::Create { text, .. } => assert!(text.contains("[REDACTED:openai_key]") && !text.contains(&key)),
+            Op::Create { text, .. } => {
+                assert!(text.contains("[REDACTED:openai_key]") && !text.contains(&key))
+            }
             other => panic!("{other:?}"),
         }
     }
@@ -457,12 +652,25 @@ mod tests {
         refine(&c, "o1", "Prefers Neovim; used to prefer Sublime Text", 50).unwrap();
         refine(&c, "o1", "Prefers Neovim; used to prefer Sublime Text", 60).unwrap();
         refine(&c, "o1", "Prefers Helix; used to prefer Neovim", 70).unwrap();
-        assert_eq!(history(&c, "o1"), vec!["Prefers Sublime Text", "Prefers Neovim; used to prefer Sublime Text"]);
-        let now: String = c.query_row("SELECT text FROM memories WHERE id = 'o1'", [], |r| r.get(0)).unwrap();
+        assert_eq!(
+            history(&c, "o1"),
+            vec![
+                "Prefers Sublime Text",
+                "Prefers Neovim; used to prefer Sublime Text"
+            ]
+        );
+        let now: String = c
+            .query_row("SELECT text FROM memories WHERE id = 'o1'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
         assert_eq!(now, "Prefers Helix; used to prefer Neovim");
         assert!(refine(&c, "nope", "x", 1).is_err());
         mem(&c, "f9", "fact", "a fact, not an observation");
-        assert!(refine(&c, "f9", "rewritten", 1).is_err(), "a fact is never rewritten by this module");
+        assert!(
+            refine(&c, "f9", "rewritten", 1).is_err(),
+            "a fact is never rewritten by this module"
+        );
     }
 
     #[test]
@@ -474,19 +682,41 @@ mod tests {
         attach(&c, "o1", "f1").unwrap();
         attach(&c, "o1", "f2").unwrap();
         assert_eq!(refresh_stale(&c).unwrap(), 0);
-        c.execute("UPDATE memories SET invalid_at = 9 WHERE id = 'f1'", []).unwrap();
+        c.execute("UPDATE memories SET invalid_at = 9 WHERE id = 'f1'", [])
+            .unwrap();
         assert_eq!(refresh_stale(&c).unwrap(), 1);
-        c.execute("UPDATE memories SET invalid_at = NULL WHERE id = 'f1'", []).unwrap();
-        assert_eq!(refresh_stale(&c).unwrap(), 0, "the flag clears with the cause");
+        c.execute("UPDATE memories SET invalid_at = NULL WHERE id = 'f1'", [])
+            .unwrap();
+        assert_eq!(
+            refresh_stale(&c).unwrap(),
+            0,
+            "the flag clears with the cause"
+        );
     }
 
     #[test]
     fn the_prompt_numbers_what_it_shows() {
         let e = |t: &str| MemoryEntry {
-            id: t.into(), key: t.into(), text: t.into(), kind: "fact".into(), session_id: None, created_at: 0, confidence: 1.0, access_count: 0, last_accessed_at: 0,
-            embedding_model: None, user_wide: false,
+            id: t.into(),
+            key: t.into(),
+            text: t.into(),
+            kind: "fact".into(),
+            session_id: None,
+            created_at: 0,
+            confidence: 1.0,
+            access_count: 0,
+            last_accessed_at: 0,
+            embedding_model: None,
+            user_wide: false,
         };
-        let p = prompt_for(&[e("likes tea"), e("likes green tea")], &[vec![0], vec![]], &[e("Drinks tea")]);
-        assert_eq!(p, "FACT 1: likes tea\n  NEAR OBSERVATION 1\nFACT 2: likes green tea\n\nOBSERVATION 1: Drinks tea\n");
+        let p = prompt_for(
+            &[e("likes tea"), e("likes green tea")],
+            &[vec![0], vec![]],
+            &[e("Drinks tea")],
+        );
+        assert_eq!(
+            p,
+            "FACT 1: likes tea\n  NEAR OBSERVATION 1\nFACT 2: likes green tea\n\nOBSERVATION 1: Drinks tea\n"
+        );
     }
 }

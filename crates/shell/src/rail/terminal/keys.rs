@@ -61,7 +61,11 @@ fn control_byte(key: &str) -> Option<u8> {
 
 /// Alt sends the key prefixed with Escape.
 fn with_alt(alt: bool, bytes: Vec<u8>) -> Vec<u8> {
-    if alt { [&[ESC][..], &bytes].concat() } else { bytes }
+    if alt {
+        [&[ESC][..], &bytes].concat()
+    } else {
+        bytes
+    }
 }
 
 #[cfg(test)]
@@ -69,13 +73,22 @@ mod tests {
     use super::*;
 
     fn press<'a>(key: &'a str, text: Option<&'a str>) -> Press<'a> {
-        Press { key, text, ctrl: false, alt: false, shift: false }
+        Press {
+            key,
+            text,
+            ctrl: false,
+            alt: false,
+            shift: false,
+        }
     }
 
     #[test]
     fn typed_text_is_sent_as_it_is() {
         assert_eq!(bytes_for(&press("a", Some("a"))), Some(b"a".to_vec()));
-        assert_eq!(bytes_for(&press("ß", Some("ß"))), Some("ß".as_bytes().to_vec()));
+        assert_eq!(
+            bytes_for(&press("ß", Some("ß"))),
+            Some("ß".as_bytes().to_vec())
+        );
     }
 
     #[test]
@@ -87,19 +100,31 @@ mod tests {
 
     #[test]
     fn ctrl_c_is_the_interrupt_byte() {
-        let ctrl_c = Press { ctrl: true, ..press("c", Some("c")) };
+        let ctrl_c = Press {
+            ctrl: true,
+            ..press("c", Some("c"))
+        };
         assert_eq!(bytes_for(&ctrl_c), Some(vec![3]));
     }
 
     #[test]
     fn alt_prefixes_escape() {
-        let alt_b = Press { alt: true, ..press("b", Some("b")) };
+        let alt_b = Press {
+            alt: true,
+            ..press("b", Some("b"))
+        };
         assert_eq!(bytes_for(&alt_b), Some(b"\x1bb".to_vec()));
     }
 
     #[test]
     fn shift_tab_goes_back_and_a_bare_modifier_sends_nothing() {
-        assert_eq!(bytes_for(&Press { shift: true, ..press("tab", None) }), Some(b"\x1b[Z".to_vec()));
+        assert_eq!(
+            bytes_for(&Press {
+                shift: true,
+                ..press("tab", None)
+            }),
+            Some(b"\x1b[Z".to_vec())
+        );
         assert_eq!(bytes_for(&press("shift", None)), None);
     }
 }

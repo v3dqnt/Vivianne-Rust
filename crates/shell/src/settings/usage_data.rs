@@ -78,7 +78,11 @@ pub fn model_usage(totals: &BTreeMap<String, DayUsage>) -> Vec<ModelUsage> {
             }
         })
         .collect();
-    rows.sort_by(|a, b| (b.input + b.output).cmp(&(a.input + a.output)).then_with(|| a.model.cmp(&b.model)));
+    rows.sort_by(|a, b| {
+        (b.input + b.output)
+            .cmp(&(a.input + a.output))
+            .then_with(|| a.model.cmp(&b.model))
+    });
     rows
 }
 
@@ -100,7 +104,12 @@ pub fn load(values: &Shared, cx: &mut App) {
     let values = values.clone();
     backend::run(
         cx,
-        async move { (usage_store::read_history().await, usage_store::read_usage_by_model(since.as_deref()).await) },
+        async move {
+            (
+                usage_store::read_history().await,
+                usage_store::read_usage_by_model(since.as_deref()).await,
+            )
+        },
         move |(history, by_model), cx| {
             {
                 let mut v = values.borrow_mut();
@@ -140,7 +149,15 @@ mod tests {
     use super::*;
 
     fn day(input: u64, cost: f64, unknown: bool) -> DayUsage {
-        DayUsage { input, output: 1, cache_read: 0, cache_write: 0, cost, requests: 2, has_unknown_cost: unknown }
+        DayUsage {
+            input,
+            output: 1,
+            cache_read: 0,
+            cache_write: 0,
+            cost,
+            requests: 2,
+            has_unknown_cost: unknown,
+        }
     }
 
     #[test]
@@ -166,8 +183,15 @@ mod tests {
         let days = usage_days(&history, today);
         assert_eq!(days.len(), 2);
         let by_offset = |n: u32| days.iter().find(|d| d.offset == n);
-        assert_eq!(by_offset(0).map(|d| (d.input, d.cost, d.unpriced)), Some((100, Some(0.5), false)));
-        assert_eq!(by_offset(2).map(|d| (d.cost, d.unpriced)), Some((None, true)), "a day with only unpriced calls has no cost, not $0");
+        assert_eq!(
+            by_offset(0).map(|d| (d.input, d.cost, d.unpriced)),
+            Some((100, Some(0.5), false))
+        );
+        assert_eq!(
+            by_offset(2).map(|d| (d.cost, d.unpriced)),
+            Some((None, true)),
+            "a day with only unpriced calls has no cost, not $0"
+        );
     }
 
     #[test]
@@ -177,8 +201,18 @@ mod tests {
             ("harness/claude-code".to_owned(), day(500, 0.0, true)),
         ]);
         let rows = model_usage(&totals);
-        assert_eq!((rows[0].provider.as_str(), rows[0].model.as_str(), rows[0].cost), ("harness", "claude-code", None));
-        assert_eq!((rows[1].provider.as_str(), rows[1].model.as_str()), ("nebius", "nvidia/nemotron"));
+        assert_eq!(
+            (
+                rows[0].provider.as_str(),
+                rows[0].model.as_str(),
+                rows[0].cost
+            ),
+            ("harness", "claude-code", None)
+        );
+        assert_eq!(
+            (rows[1].provider.as_str(), rows[1].model.as_str()),
+            ("nebius", "nvidia/nemotron")
+        );
     }
 
     #[test]

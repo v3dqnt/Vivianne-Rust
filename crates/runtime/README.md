@@ -35,3 +35,5 @@ verification nudge.
 
 - `thread_tools.rs`: `list_threads` and `read_thread`, read-only, limited to the project's own saved conversations.
   Offered to coding agents over MCP.
+- `config.rs`: settings in layers (flag, environment, settings.json, the repository's `.viv.json` with repo-safe fields only, default), each with its origin.
+- `profiles.rs`: agent profiles from `~/.viv/agents` and the repository's `.viv/agents` (a repository profile cannot set `permission_mode`).

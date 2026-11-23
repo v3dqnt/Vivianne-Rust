@@ -19,6 +19,7 @@ mod auth;
 mod conn;
 mod info;
 mod install;
+mod models;
 mod own_tools;
 mod permission;
 mod registry;
@@ -34,13 +35,17 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use conn::{Conn, quiet, spawn, trace};
-pub use auth::{AuthKind, AuthMethod, AuthState, Depth, check as check_auth, options as sign_in_options, sign_in};
+pub use auth::{
+    AuthKind, AuthMethod, AuthState, Depth, check as check_auth, options as sign_in_options,
+    sign_in,
+};
 pub use conn::trace_lines;
-pub use info::{AgentCommand, SessionInfo, context_usage};
+use conn::{Conn, quiet, spawn, trace};
+pub use info::{AgentCommand, AgentModel, SessionInfo, context_usage, current_model_id, models_of};
+pub use models::{known_models, preferred_model};
 pub use install::InstallProgress;
-pub use registry::{Harness, find, harnesses, is_usable};
 pub use own_tools::{CallFn, McpServerSpec, OfferedTool, OwnTools, ToolOutput};
+pub use registry::{Harness, find, harnesses, is_usable};
 pub use session::Line;
 pub use turn::{AcpEvent, Outcome, PermissionRequest, PromptPart, ToolInfo, TurnEnd, TurnRequest};
 
@@ -100,7 +105,12 @@ impl Acp {
         trace(&harness.name, format!("turn: connecting (thread {thread})"));
         let conn = self.connection(thread, &harness, cwd).await?;
         // What the agent is handed at session start: the user's MCP servers, and Vivianne's own tools beside them.
-        let mut servers = own_tools::servers_json(request.mcp_servers, conn.speaks_v2(), conn.takes_stdio_mcp(), conn.takes_http_mcp());
+        let mut servers = own_tools::servers_json(
+            request.mcp_servers,
+            conn.speaks_v2(),
+            conn.takes_stdio_mcp(),
+            conn.takes_http_mcp(),
+        );
         if let Some(own) = &request.own {
             conn.mcp.offer(own.tools.clone());
             servers.extend(conn.own_mcp_server().await);
@@ -109,19 +119,36 @@ impl Acp {
         let end = turn::run(&conn, &harness, &session, thread, request, events, cancel).await;
         if !conn.is_alive() {
             // The next turn starts a fresh agent.
-            self.conns.lock().unwrap_or_else(PoisonError::into_inner).remove(&(thread.to_owned(), harness.id.clone()));
+            self.conns
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .remove(&(thread.to_owned(), harness.id.clone()));
         }
         Ok(end)
     }
 
-    async fn connection(&self, thread: &str, harness: &Harness, cwd: &str) -> Result<Arc<Conn>, String> {
+    async fn connection(
+        &self,
+        thread: &str,
+        harness: &Harness,
+        cwd: &str,
+    ) -> Result<Arc<Conn>, String> {
         let key = (thread.to_owned(), harness.id.clone());
-        let existing = self.conns.lock().unwrap_or_else(PoisonError::into_inner).get(&key).filter(|c| c.is_alive()).cloned();
+        let existing = self
+            .conns
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&key)
+            .filter(|c| c.is_alive())
+            .cloned();
         if let Some(conn) = existing {
             return Ok(conn);
         }
         let conn = spawn(harness, cwd).await?;
-        self.conns.lock().unwrap_or_else(PoisonError::into_inner).insert(key, conn.clone());
+        self.conns
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(key, conn.clone());
         Ok(conn)
     }
 
@@ -129,9 +156,44 @@ impl Acp {
     /// one is running.
     #[must_use]
     pub fn session_info(&self, thread: &str, harness_id: &str) -> Option<SessionInfo> {
-        let conn = self.conns.lock().unwrap_or_else(PoisonError::into_inner).get(&(thread.to_owned(), harness_id.to_owned())).cloned()?;
-        let info = conn.info.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        let conn = self
+            .conns
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&(thread.to_owned(), harness_id.to_owned()))
+            .cloned()?;
+        let info = conn
+            .info
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
         Some(info)
+    }
+
+    /// Switches the agent running this thread to `model_id` (through its model option, or `session/set_model`), and
+    /// remembers the choice for every later session with this agent. When no session is open yet, only remembers it:
+    /// it is applied as the session opens.
+    pub async fn set_model(
+        &self,
+        thread: &str,
+        harness_id: &str,
+        model_id: &str,
+    ) -> Result<(), String> {
+        models::set_preferred(harness_id, model_id);
+        let conn = self
+            .conns
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&(thread.to_owned(), harness_id.to_owned()))
+            .cloned();
+        let Some(conn) = conn.filter(|c| c.is_alive()) else {
+            return Ok(());
+        };
+        let session = conn.session.lock().await.clone();
+        match session {
+            Some(session) => models::switch(&conn, &session, model_id).await,
+            None => Ok(()),
+        }
     }
 
     /// Drops every running agent, so the next turn starts a fresh one: the way out of a stuck one. Returns how
@@ -141,7 +203,10 @@ impl Acp {
         let count = conns.len();
         conns.clear(); // the processes end when their connections are dropped
         drop(conns);
-        trace("harness", format!("reset: dropped {count} running agent(s)"));
+        trace(
+            "harness",
+            format!("reset: dropped {count} running agent(s)"),
+        );
         count
     }
 }
@@ -149,7 +214,10 @@ impl Acp {
 /// Sets an agent up. An npm agent is installed under `~/.viv/agents` (so it starts with no `npx` and no
 /// network), telling `progress` what npm is doing; any other agent's launcher is run once with no input, which
 /// fetches the package into the launcher's cache. After that, a turn starts at once.
-pub async fn install(id: &str, progress: &(dyn Fn(InstallProgress) + Sync)) -> Result<String, String> {
+pub async fn install(
+    id: &str,
+    progress: &(dyn Fn(InstallProgress) + Sync),
+) -> Result<String, String> {
     let harness = find(id).await?;
     if !harness.available {
         return Err(format!(
@@ -161,18 +229,37 @@ pub async fn install(id: &str, progress: &(dyn Fn(InstallProgress) + Sync)) -> R
     if let Some(package) = harness.package() {
         return install::install_managed(&harness, package, progress).await;
     }
-    let program = which::which(&harness.launcher).map_err(|_| format!("{} isn't installed.", harness.launcher))?;
+    let program = which::which(&harness.launcher)
+        .map_err(|_| format!("{} isn't installed.", harness.launcher))?;
     let mut command = quiet(&program);
-    command.args(&harness.args).envs(&harness.env).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped()).kill_on_drop(true);
-    trace(&harness.name, format!("setting up: {} {}", program.display(), harness.args.join(" ")));
-    let child = command.spawn().map_err(|e| format!("Couldn't run {}: {e}", program.display()))?;
+    command
+        .args(&harness.args)
+        .envs(&harness.env)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    trace(
+        &harness.name,
+        format!(
+            "setting up: {} {}",
+            program.display(),
+            harness.args.join(" ")
+        ),
+    );
+    let child = command
+        .spawn()
+        .map_err(|e| format!("Couldn't run {}: {e}", program.display()))?;
     let output = tokio::time::timeout(SETUP_LIMIT, child.wait_with_output())
         .await
         .map_err(|_| format!("{} took over 5 minutes to download.", harness.name))?
         .map_err(|e| e.to_string())?;
     let stderr = String::from_utf8_lossy(&output.stderr);
     let tail = last_lines(&stderr, 6);
-    trace(&harness.name, format!("setup finished ({}): {tail}", output.status));
+    trace(
+        &harness.name,
+        format!("setup finished ({}): {tail}", output.status),
+    );
     // The agent may exit non-zero on empty input; a failure to *fetch* is what matters.
     if !output.status.success() && fetch_failed(&stderr) {
         return Err(format!("Couldn't download {}:\n{tail}", harness.name));
@@ -182,7 +269,15 @@ pub async fn install(id: &str, progress: &(dyn Fn(InstallProgress) + Sync)) -> R
 }
 
 fn fetch_failed(stderr: &str) -> bool {
-    ["E404", "ENOTFOUND", "ETIMEDOUT", "code E", "not found in the registry"].iter().any(|sign| stderr.contains(sign))
+    [
+        "E404",
+        "ENOTFOUND",
+        "ETIMEDOUT",
+        "code E",
+        "not found in the registry",
+    ]
+    .iter()
+    .any(|sign| stderr.contains(sign))
 }
 
 fn last_lines(text: &str, count: usize) -> String {
@@ -209,7 +304,12 @@ pub struct DebugReport {
 }
 
 fn step(name: &str, ok: bool, since: Instant, detail: String) -> Step {
-    Step { name: name.to_owned(), ok, millis: u64::try_from(since.elapsed().as_millis()).unwrap_or(u64::MAX), detail }
+    Step {
+        name: name.to_owned(),
+        ok,
+        millis: u64::try_from(since.elapsed().as_millis()).unwrap_or(u64::MAX),
+        detail,
+    }
 }
 
 /// Starts the agent fresh and walks it through what a turn needs, timing each step and saying what failed:
@@ -222,7 +322,11 @@ pub async fn debug(id: &str, prompt: Option<String>) -> Result<DebugReport, Stri
         "Launcher found",
         harness.available,
         started,
-        if harness.available { format!("{} {}", harness.launcher, harness.args.join(" ")) } else { format!("{} isn't installed", harness.launcher_name()) },
+        if harness.available {
+            format!("{} {}", harness.launcher, harness.args.join(" "))
+        } else {
+            format!("{} isn't installed", harness.launcher_name())
+        },
     ));
     if harness.available && harness.package().is_some() {
         let installed = !harness.needs_setup();
@@ -233,7 +337,9 @@ pub async fn debug(id: &str, prompt: Option<String>) -> Result<DebugReport, Stri
         } else {
             "not installed: use Set up first (it downloads the agent once)"
         };
-        report.steps.push(step("Installed", installed, started, detail.to_owned()));
+        report
+            .steps
+            .push(step("Installed", installed, started, detail.to_owned()));
         if !installed {
             report.trace = trace_lines();
             return Ok(report);
@@ -253,11 +359,18 @@ async fn walk(harness: &Harness, prompt: Option<String>, report: &mut DebugRepor
     let t = Instant::now();
     let conn = match spawn(harness, &cwd).await {
         Ok(conn) => {
-            report.steps.push(step("Start and initialize", true, t, format!("protocol version {}", conn.version())));
+            report.steps.push(step(
+                "Start and initialize",
+                true,
+                t,
+                format!("protocol version {}", conn.version()),
+            ));
             conn
         }
         Err(why) => {
-            report.steps.push(step("Start and initialize", false, t, why));
+            report
+                .steps
+                .push(step("Start and initialize", false, t, why));
             return;
         }
     };
@@ -266,7 +379,12 @@ async fn walk(harness: &Harness, prompt: Option<String>, report: &mut DebugRepor
     let thread = format!("{}debug-{}", session::DELEGATE, harness.id);
     let session = match session::open_with(&conn, harness, None, &cwd, &[]).await {
         Ok(session) => {
-            report.steps.push(step("Open a session", true, t, format!("session {session}")));
+            report.steps.push(step(
+                "Open a session",
+                true,
+                t,
+                format!("session {session}"),
+            ));
             session
         }
         Err(why) => {
@@ -291,7 +409,13 @@ async fn walk(harness: &Harness, prompt: Option<String>, report: &mut DebugRepor
             match event {
                 AcpEvent::Text(piece) => reply.push_str(&piece),
                 AcpEvent::Permission(request) => {
-                    trace("debug", format!("it asked permission: {}", request.why.clone().unwrap_or_default()));
+                    trace(
+                        "debug",
+                        format!(
+                            "it asked permission: {}",
+                            request.why.clone().unwrap_or_default()
+                        ),
+                    );
                     request.answer(false);
                 }
                 _ => {}
@@ -301,14 +425,30 @@ async fn walk(harness: &Harness, prompt: Option<String>, report: &mut DebugRepor
     });
     let text = prompt.unwrap_or_else(|| "Reply with the single word: ok".to_owned());
     let parts = [PromptPart::Text(text)];
-    let request = TurnRequest { prompt: &parts, earlier: &[], plan_mode: false, bypass: false, mcp_servers: &[], own: None };
+    let request = TurnRequest {
+        prompt: &parts,
+        earlier: &[],
+        plan_mode: false,
+        bypass: false,
+        mcp_servers: &[],
+        own: None,
+    };
     let end = turn::run(&conn, harness, &session, &thread, &request, &tx, &cancel).await;
     timer.abort();
     drop(tx);
     report.reply = reader.await.unwrap_or_default();
     match end.outcome {
-        Outcome::Finished => report.steps.push(step("Answer a prompt", true, t, "it answered".to_owned())),
-        Outcome::Stopped => report.steps.push(step("Answer a prompt", false, t, "no answer in 90s".to_owned())),
+        Outcome::Finished => {
+            report
+                .steps
+                .push(step("Answer a prompt", true, t, "it answered".to_owned()))
+        }
+        Outcome::Stopped => report.steps.push(step(
+            "Answer a prompt",
+            false,
+            t,
+            "no answer in 90s".to_owned(),
+        )),
         Outcome::Failed(why) => report.steps.push(step("Answer a prompt", false, t, why)),
     }
 }

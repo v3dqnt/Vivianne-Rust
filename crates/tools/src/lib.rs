@@ -1,3 +1,4 @@
+#![recursion_limit = "512"]
 //! Agent tools. The read-and-search tools (`read`, `ls`, `grep`, `glob`,
 //! `code_search`, `repo_clone`, `repo_overview`, `diagnostics`, `lsp`) are Vivianne's originals,
 //! copied as they were (see the README here). `shell`, `write` and `edit` are
@@ -9,10 +10,18 @@
 // The copied modules are marked `rustfmt::skip` so formatting never touches them.
 #[rustfmt::skip]
 pub mod builtin;
+pub mod browser;
+pub mod computer;
+pub mod git;
 #[rustfmt::skip]
 pub mod code;
 #[rustfmt::skip]
 pub mod files;
+#[rustfmt::skip]
+pub mod connections;
+#[rustfmt::skip]
+#[allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, dead_code, unused, missing_debug_implementations)]
+pub mod dap;
 #[rustfmt::skip]
 mod lsp;
 #[rustfmt::skip]
@@ -53,6 +62,15 @@ impl std::fmt::Debug for Toolbox {
     }
 }
 
+/// R3.7: a result over the limit is kept aside and the model gets a preview and a handle. The tool that reads
+/// the kept results is exempt, so it can page through one without making a new one.
+fn capped(name: &str, mut result: ToolResult) -> ToolResult {
+    if name != results::TOOL_NAME {
+        result.content = results::cap(std::mem::take(&mut result.content));
+    }
+    result
+}
+
 impl Toolbox {
     /// An empty box working in `cwd`.
     #[must_use]
@@ -77,10 +95,13 @@ impl Toolbox {
         toolbox.add(code::repo_tools::RepoCloneTool::new());
         toolbox.add(code::repo_tools::RepoOverviewTool::new(cwd.clone()));
         toolbox.add(builtin::DiagnosticsTool::new(cwd.clone()));
+        toolbox.add(dap::DebugTool::new(cwd.clone(), false));
+        toolbox.add(dap::DebugTool::new(cwd.clone(), true));
         toolbox.add(lsp_nav::LspTool::new(cwd));
         toolbox.add(shell::Shell::new(workspace.clone()));
         toolbox.add(files_simple::WriteFile::new(workspace.clone()));
         toolbox.add(files_simple::EditFile::new(workspace));
+        toolbox.add(results::ReadToolResult);
         toolbox
     }
 
@@ -105,16 +126,28 @@ impl Toolbox {
     pub async fn execute(&self, name: &str, args: &Value) -> Option<ToolResult> {
         if name.starts_with("mcp__") && self.get(name).is_none() {
             // A tool of a connected MCP server: its text is the result, its failure an error result.
-            if !mcp::definitions().iter().any(|(public, _, _)| public == name) {
+            if !mcp::definitions()
+                .iter()
+                .any(|(public, _, _)| public == name)
+            {
                 return None;
             }
-            return Some(match mcp::call_public(name, args.clone()).await {
-                Ok(content) => ToolResult { content, is_error: false, details: None },
-                Err(content) => ToolResult { content, is_error: true, details: None },
-            });
+            let result = match mcp::call_public(name, args.clone()).await {
+                Ok(content) => ToolResult {
+                    content,
+                    is_error: false,
+                    details: None,
+                },
+                Err(content) => ToolResult {
+                    content,
+                    is_error: true,
+                    details: None,
+                },
+            };
+            return Some(capped(name, result));
         }
         let tool = self.get(name)?;
-        Some(tool.execute(args, &self.cwd).await)
+        Some(capped(name, tool.execute(args, &self.cwd).await))
     }
 
     /// The definitions of the tools in this box, in the order they were added.
@@ -122,13 +155,23 @@ impl Toolbox {
     pub fn definitions(&self) -> Vec<ToolDef> {
         let originals = schemas::definitions();
         let own = simple::definitions();
-        let servers = mcp::definitions().into_iter().map(|(name, description, parameters)| ToolDef { name, description, parameters });
+        let servers = mcp::definitions()
+            .into_iter()
+            .map(|(name, description, parameters)| ToolDef {
+                name,
+                description,
+                parameters,
+            });
         self.tools
             .iter()
             .filter_map(|tool| {
-                let found = tool
-                    .definition()
-                    .or_else(|| originals.iter().chain(own.iter()).find(|d| d["name"] == tool.name()).cloned())?;
+                let found = tool.definition().or_else(|| {
+                    originals
+                        .iter()
+                        .chain(own.iter())
+                        .find(|d| d["name"] == tool.name())
+                        .cloned()
+                })?;
                 Some(ToolDef {
                     name: tool.name().to_owned(),
                     description: found["description"].as_str().unwrap_or_default().to_owned(),
@@ -171,7 +214,8 @@ pub mod ai;
 pub mod mods;
 #[rustfmt::skip]
 pub mod proc;
+pub mod dev_server;
 pub mod mcp;
 pub mod open_apps;
-pub mod dev_server;
+pub mod results;
 mod tauri;

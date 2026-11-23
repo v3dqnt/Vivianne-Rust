@@ -132,6 +132,97 @@ fn plural(n: u64, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
 
+/// The desktop tools in the words a person would use: "Clicked @s1:e5", "Looked at Notepad". What a tool returned is
+/// never shown here (it is private, and the transcript folds it); only whether it worked.
+fn desktop_header(tool: &ToolItem) -> Header {
+    let name = tool
+        .name
+        .strip_prefix(vivianne_core::COMPUTER_PREFIX)
+        .unwrap_or(&tool.name);
+    let app = arg(tool, "app")
+        .or_else(|| arg(tool, "title"))
+        .map(str::to_owned);
+    let target_ref = arg(tool, "ref_id").map(str::to_owned);
+    let (verb, target) = match name {
+        "snapshot" => ("Looked at", app.unwrap_or_else(|| "the desktop".to_owned())),
+        "find" => ("Searched", app.unwrap_or_else(|| "an app".to_owned())),
+        "get" | "is" => ("Read", target_ref.unwrap_or_default()),
+        "screenshot" => (
+            "Screenshot of",
+            app.unwrap_or_else(|| "the screen".to_owned()),
+        ),
+        "click" => ("Clicked", target_ref.unwrap_or_default()),
+        "right_click" => ("Right-clicked", target_ref.unwrap_or_default()),
+        "type" => ("Typed into", target_ref.unwrap_or_default()),
+        "set_value" | "clear" => ("Changed", target_ref.unwrap_or_default()),
+        "press" => ("Pressed", arg(tool, "combo").unwrap_or_default().to_owned()),
+        "launch" => ("Opened", app.unwrap_or_default()),
+        "close_app" => ("Closed", app.unwrap_or_default()),
+        "list_windows" | "list_apps" => ("Listed", "windows and apps".to_owned()),
+        "focus_window" => ("Focused", app.unwrap_or_default()),
+        "wait" => ("Waited", app.unwrap_or_default()),
+        other => ("Desktop", other.replace('_', " ")),
+    };
+    let ok = tool
+        .output
+        .as_deref()
+        .and_then(|o| serde_json::from_str::<serde_json::Value>(o).ok())
+        .map(|j| j["ok"] == true);
+    Header {
+        icon: IconName::Bot,
+        verb,
+        target,
+        chip: ok
+            .map(|good| {
+                if good {
+                    ("Worked".to_owned(), Tone::Good)
+                } else {
+                    ("Didn't work".to_owned(), Tone::Bad)
+                }
+            })
+            .or(Some(("Desktop".to_owned(), Tone::Plain))),
+    }
+}
+
+/// The site of a web address, for a row that says where the agent went: `https://a.test/x?y` is `a.test`.
+fn site(url: &str) -> String {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    rest.split(['/', '?', '#'])
+        .next()
+        .unwrap_or(rest)
+        .to_owned()
+}
+
+/// The browser tools in the words a person would use: "Opened a.test", "Clicked @e3". The page's own words are never
+/// shown here; only where the agent went and what it did to the page.
+fn browser_header(tool: &ToolItem) -> Header {
+    let name = tool
+        .name
+        .strip_prefix(vivianne_core::BROWSER_PREFIX)
+        .unwrap_or(&tool.name);
+    let selector = arg(tool, "selector").unwrap_or_default().to_owned();
+    let (verb, target) = match name {
+        "open" => ("Opened", site(arg(tool, "url").unwrap_or_default())),
+        "read" => ("Read", site(arg(tool, "url").unwrap_or_default())),
+        "snapshot" => ("Looked at", "the page".to_owned()),
+        "click" => ("Clicked", selector),
+        "fill" | "type" => ("Typed into", selector),
+        "press" => ("Pressed", arg(tool, "key").unwrap_or_default().to_owned()),
+        "select" | "check" | "uncheck" => ("Changed", selector),
+        "scroll" => ("Scrolled", "the page".to_owned()),
+        "back" | "forward" | "reload" => ("Went", name.to_owned()),
+        "find" => ("Searched", arg(tool, "text").unwrap_or_default().to_owned()),
+        "close" => ("Closed", "the browser".to_owned()),
+        other => ("Browser", other.replace('_', " ")),
+    };
+    Header {
+        icon: IconName::Bot,
+        verb,
+        target,
+        chip: Some(("Browser".to_owned(), Tone::Plain)),
+    }
+}
+
 /// A flat match: one arm per tool, so it stays one long function.
 #[allow(clippy::too_many_lines)]
 fn header_of(tool: &ToolItem) -> Header {
@@ -281,6 +372,8 @@ fn header_of(tool: &ToolItem) -> Header {
             target: path,
             chip: None,
         },
+        other if other.starts_with(vivianne_core::COMPUTER_PREFIX) => desktop_header(tool),
+        other if other.starts_with(vivianne_core::BROWSER_PREFIX) => browser_header(tool),
         other => Header {
             icon: IconName::Bot,
             verb: "Used",

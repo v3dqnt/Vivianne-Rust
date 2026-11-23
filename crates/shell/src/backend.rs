@@ -27,10 +27,56 @@ pub fn init(runtime: &Runtime) {
     let events = Events::new();
     let hub = runtime.block_on(Hub::start(&events));
     // The MCP servers added in an earlier session reconnect in the background, so a slow one holds nothing up.
-    runtime.spawn(async { vivianne_tools::mcp::restore_servers(vivianne_tools::mcp::load_persisted_configs().await).await });
+    runtime.spawn(async {
+        vivianne_tools::mcp::restore_servers(vivianne_tools::mcp::load_persisted_configs().await)
+            .await
+    });
+    // Multiplayer listens from the start, so a partner can connect without this side doing anything. It needs the
+    // network; without it, pairing is simply unavailable.
+    runtime.spawn(async {
+        let _ = vivianne_multiplayer::Multiplayer::start(std::sync::Arc::new(
+            crate::pair::PairedProjects,
+        ))
+        .await;
+    });
+    // Computer use, when the person turned it on: its server connects in the background. A failure (the program is
+    // gone, say) leaves it off and is shown on its Settings page.
+    runtime.spawn(async {
+        if let Err(e) = vivianne_tools::computer::apply().await {
+            vivianne_core::debuglog::log("app", format!("computer use: {e}"));
+        }
+    });
+    runtime.spawn(async {
+        if let Err(e) = vivianne_tools::browser::apply().await {
+            vivianne_core::debuglog::log("app", format!("browser: {e}"));
+        }
+    });
+    runtime.spawn(async {
+        vivianne_core::debuglog::log("app", "services started");
+    });
+    // Ledgers of tasks that ended a month ago are not kept.
+    runtime.spawn(async { vivianne_runtime::ledger::prune(30) });
     // Usage is kept in memory and written on a timer, so the last of a session is not lost to a crash.
     runtime.spawn(usage_store::flush_periodically());
-    let _ = BACKEND.set(Backend { handle: runtime.handle().clone(), events, hub, acp: Arc::new(Acp::new()) });
+    let _ = BACKEND.set(Backend {
+        handle: runtime.handle().clone(),
+        events,
+        hub,
+        acp: Arc::new(Acp::new()),
+    });
+    // The saved machines connect in the background; a machine that is down never holds anything up.
+    sync_machines();
+}
+
+/// Brings the links to the saved machines in line with the catalog (after it changed, and at start).
+pub fn sync_machines() {
+    let Some(backend) = get() else { return };
+    match vivianne_remote::catalog::Catalog::load() {
+        Ok(catalog) => vivianne_remote::client::Hub::global().sync(&catalog, &backend.handle),
+        Err(_) => {
+            // An unreadable catalog leaves the current links as they are; the Machines page says so.
+        }
+    }
 }
 
 #[must_use]
@@ -91,7 +137,9 @@ pub fn run<T: Send + 'static>(
 
 /// Starts `work` on the async runtime and gives back where its answer will arrive, for code that waits for it
 /// inside its own async task. `None` if the services never opened.
-pub fn spawn<T: Send + 'static>(work: impl Future<Output = T> + Send + 'static) -> Option<futures::channel::oneshot::Receiver<T>> {
+pub fn spawn<T: Send + 'static>(
+    work: impl Future<Output = T> + Send + 'static,
+) -> Option<futures::channel::oneshot::Receiver<T>> {
     let backend = get()?;
     let (tx, rx) = futures::channel::oneshot::channel();
     backend.handle.spawn(async move {
@@ -108,5 +156,8 @@ pub fn note_sign_in(agent: &str, result: &Result<vivianne_providers::acp::AuthSt
         Ok(AuthState::NeedsSignIn(_)) => "needs_sign_in",
         Ok(AuthState::Failed(_)) | Err(_) => "failed",
     };
-    vivianne_telemetry::track("agent.sign_in", serde_json::json!({ "agent": agent, "outcome": outcome }));
+    vivianne_telemetry::track(
+        "agent.sign_in",
+        serde_json::json!({ "agent": agent, "outcome": outcome }),
+    );
 }

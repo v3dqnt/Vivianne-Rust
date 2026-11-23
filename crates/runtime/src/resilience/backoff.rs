@@ -16,7 +16,11 @@ pub struct Backoff {
 
 impl Default for Backoff {
     fn default() -> Self {
-        Self { base: Duration::from_secs(1), cap: Duration::from_secs(16), jitter: 0.2 }
+        Self {
+            base: Duration::from_secs(1),
+            cap: Duration::from_secs(16),
+            jitter: 0.2,
+        }
     }
 }
 
@@ -50,7 +54,18 @@ mod tests {
     fn the_wait_doubles_from_the_base_and_stops_at_the_cap() {
         let backoff = Backoff::default();
         let waits: Vec<_> = (1..=7).map(|attempt| backoff.delay(attempt, 0.0)).collect();
-        assert_eq!(waits, [secs(1), secs(2), secs(4), secs(8), secs(16), secs(16), secs(16)]);
+        assert_eq!(
+            waits,
+            [
+                secs(1),
+                secs(2),
+                secs(4),
+                secs(8),
+                secs(16),
+                secs(16),
+                secs(16)
+            ]
+        );
     }
 
     #[test]
@@ -58,7 +73,11 @@ mod tests {
         let backoff = Backoff::default();
         assert_eq!(backoff.delay(3, 1.0), Duration::from_millis(4800));
         assert_eq!(backoff.delay(3, -1.0), Duration::from_millis(3200));
-        assert_eq!(backoff.delay(3, 50.0), Duration::from_millis(4800), "a wild spread is clamped");
+        assert_eq!(
+            backoff.delay(3, 50.0),
+            Duration::from_millis(4800),
+            "a wild spread is clamped"
+        );
     }
 
     #[test]
