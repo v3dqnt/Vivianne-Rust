@@ -1,3 +1,5 @@
+#![allow(clippy::pedantic)] // stand-in: mirrors the original signatures
+
 //! What the copied tools need from the old app, in one place: where files live under `~/.viv`, the settings
 //! file, an atomic write, and the two seams the new runtime has not filled yet (the running thread, and
 //! whether a project folder is trusted). Each seam answers "none"/`false` today; the copied code already
@@ -82,4 +84,17 @@ pub fn project_trusted(_project: &str) -> bool {
 /// Which thread the current turn belongs to. None until the runtime tells the tools.
 pub fn turn_thread() -> Option<String> {
     None
+}
+
+/// The app handle for delivering notes into a thread. The new runtime has none yet.
+#[derive(Debug)]
+pub struct AppHandle;
+
+pub fn app() -> Option<AppHandle> {
+    None
+}
+
+/// Hand a note to a running thread.
+pub async fn deliver_if_running(_app: &AppHandle, _thread: &str, _note: &str) -> Result<(), String> {
+    Err("no running thread".to_owned())
 }

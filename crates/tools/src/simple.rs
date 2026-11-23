@@ -1,9 +1,15 @@
-#![allow(clippy::pedantic, missing_debug_implementations)] // stand-in: mirrors the original signatures
-//! A small tool shape for the stand-in tools (shell, write, edit), adapted to
-//! the original `Tool` trait. Goes away once those tools are copied too.
+#![allow(clippy::pedantic, missing_debug_implementations)] // stand-ins: mirror the original signatures
+//! The stand-in `shell`, `write` and `edit` tools (run a command with a timeout, atomic write, exact
+//! single-match edit), confined to the project folder (`Workspace`). Replaced by the original tools
+//! (`bash`, `powershell`, ...) once those are copied.
+
+use std::path::{Component, Path, PathBuf};
+use std::process::Stdio;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
+use tokio::process::Command;
 
 use crate::builtin::{Tool, ToolResult};
 
@@ -108,4 +114,335 @@ pub fn definitions() -> Vec<Value> {
             }
         }),
     ]
+}
+
+// ── The folder the tools may touch ───────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct Workspace {
+    root: PathBuf,
+}
+
+impl Workspace {
+    #[must_use]
+    pub fn new(root: &Path) -> Self {
+        Self {
+            root: root.to_path_buf(),
+        }
+    }
+
+    #[must_use]
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// Resolve `path` for writing: it must stay inside the workspace.
+    // ponytail: lexical check only, a symlink inside the root can still point out of it.
+    pub fn resolve(&self, path: &str) -> Result<PathBuf, ToolError> {
+        let resolved = normalize(&self.root.join(path));
+        if resolved.starts_with(&self.root) {
+            Ok(resolved)
+        } else {
+            Err(ToolError::Failed(format!(
+                "`{path}` is outside the workspace"
+            )))
+        }
+    }
+
+    /// `path` as shown to the model and the UI: relative to the workspace when it is inside.
+    #[must_use]
+    pub fn display(&self, path: &Path) -> String {
+        let shown = path.strip_prefix(&self.root).unwrap_or(path);
+        let text = shown.to_string_lossy().replace('\\', "/");
+        if text.is_empty() {
+            ".".to_owned()
+        } else {
+            text
+        }
+    }
+}
+
+fn normalize(path: &Path) -> PathBuf {
+    let mut resolved = PathBuf::new();
+    for part in path.components() {
+        match part {
+            Component::ParentDir => {
+                resolved.pop();
+            }
+            Component::CurDir => {}
+            other => resolved.push(other),
+        }
+    }
+    resolved
+}
+
+#[cfg(test)]
+mod workspace_tests {
+    use super::*;
+
+    fn ws() -> Workspace {
+        Workspace::new(&std::env::temp_dir().join("viv-ws"))
+    }
+
+    #[test]
+    fn relative_paths_stay_inside() {
+        assert!(ws().resolve("src/a.rs").unwrap().ends_with("src/a.rs"));
+        assert!(ws().resolve("./x/../y").unwrap().ends_with("y"));
+    }
+
+    #[test]
+    fn parent_escapes_are_refused() {
+        assert!(ws().resolve("../secret").is_err());
+        assert!(ws().resolve("a/../../secret").is_err());
+    }
+
+    #[test]
+    fn absolute_paths_outside_are_refused() {
+        let outside = std::env::temp_dir().join("elsewhere");
+        assert!(ws().resolve(outside.to_str().unwrap()).is_err());
+    }
+
+    #[test]
+    fn display_is_relative_with_forward_slashes() {
+        let w = ws();
+        assert_eq!(w.display(&w.root().join("src").join("a.rs")), "src/a.rs");
+        assert_eq!(w.display(w.root()), ".");
+    }
+}
+
+// ── shell ────────────────────────────────────────────────────────────────
+
+const DEFAULT_TIMEOUT_SECS: u64 = 120;
+const MAX_TIMEOUT_SECS: u64 = 600;
+const MAX_OUTPUT_BYTES: usize = 64 * 1024;
+
+#[derive(Debug)]
+pub struct Shell {
+    workspace: Workspace,
+}
+
+impl Shell {
+    #[must_use]
+    pub fn new(workspace: Workspace) -> Self {
+        Self { workspace }
+    }
+}
+
+#[async_trait]
+impl SimpleTool for Shell {
+    fn name(&self) -> &str {
+        "shell"
+    }
+
+    async fn call(&self, args: &Value) -> Result<SimpleOutput, ToolError> {
+        let command = string_arg(args, "command")?;
+        let secs = args["timeout_secs"]
+            .as_u64()
+            .unwrap_or(DEFAULT_TIMEOUT_SECS)
+            .clamp(5, MAX_TIMEOUT_SECS);
+        let mut cmd = shell_command(command);
+        cmd.current_dir(self.workspace.root())
+            .stdin(Stdio::null())
+            .kill_on_drop(true);
+        let run = tokio::time::timeout(Duration::from_secs(secs), cmd.output());
+        let output = run
+            .await
+            .map_err(|_| ToolError::Failed(format!("timed out after {secs}s")))?
+            .map_err(|e| ToolError::Failed(e.to_string()))?;
+        let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
+        text.push_str(&String::from_utf8_lossy(&output.stderr));
+        let exit_code = output.status.code();
+        Ok(SimpleOutput {
+            text: format!("exit {}\n{}", exit_code.unwrap_or(-1), truncate(text)),
+            details: Some(json!({"command": command, "exit_code": exit_code})),
+        })
+    }
+}
+
+fn shell_command(command: &str) -> Command {
+    if cfg!(windows) {
+        let mut c = Command::new("powershell");
+        c.args(["-NoProfile", "-NonInteractive", "-Command", command]);
+        c
+    } else {
+        let mut c = Command::new("sh");
+        c.args(["-c", command]);
+        c
+    }
+}
+
+/// Keep the tail: errors and results are at the end.
+fn truncate(mut text: String) -> String {
+    if text.len() > MAX_OUTPUT_BYTES {
+        let mut cut = text.len() - MAX_OUTPUT_BYTES;
+        while !text.is_char_boundary(cut) {
+            cut += 1;
+        }
+        text = format!("[...earlier output dropped]\n{}", &text[cut..]);
+    }
+    text
+}
+
+#[cfg(test)]
+mod shell_tests {
+    use super::*;
+    use crate::builtin::Tool;
+
+    fn shell() -> Shell {
+        Shell::new(Workspace::new(&std::env::temp_dir()))
+    }
+
+    #[tokio::test]
+    async fn runs_a_command_and_reports_exit_code() {
+        let out = shell().execute(&json!({"command": "echo hello"}), "").await;
+        assert!(!out.is_error);
+        assert!(out.content.starts_with("exit 0"), "{}", out.content);
+        assert!(out.content.contains("hello"), "{}", out.content);
+        assert_eq!(out.details.unwrap()["exit_code"], 0);
+    }
+
+    #[tokio::test]
+    async fn missing_command_is_an_error_result() {
+        assert!(shell().execute(&json!({}), "").await.is_error);
+    }
+
+    #[test]
+    fn long_output_keeps_the_tail() {
+        let text = format!("{}END", "x".repeat(MAX_OUTPUT_BYTES * 2));
+        let cut = truncate(text);
+        assert!(cut.ends_with("END"));
+        assert!(cut.len() < MAX_OUTPUT_BYTES + 100);
+    }
+}
+
+// ── write and edit ───────────────────────────────────────────────────────
+
+fn failed(e: impl std::fmt::Display) -> ToolError {
+    ToolError::Failed(e.to_string())
+}
+
+/// Write via a temp file and rename so a crash never leaves half a file.
+async fn write_atomic(path: &Path, content: &str) -> Result<(), ToolError> {
+    if let Some(dir) = path.parent() {
+        tokio::fs::create_dir_all(dir).await.map_err(failed)?;
+    }
+    let tmp = path.with_extension("viv-tmp");
+    tokio::fs::write(&tmp, content).await.map_err(failed)?;
+    tokio::fs::rename(&tmp, path).await.map_err(failed)
+}
+
+#[derive(Debug)]
+pub struct WriteFile(Workspace);
+
+impl WriteFile {
+    #[must_use]
+    pub fn new(ws: Workspace) -> Self {
+        Self(ws)
+    }
+}
+
+#[async_trait]
+impl SimpleTool for WriteFile {
+    fn name(&self) -> &str {
+        "write"
+    }
+
+    async fn call(&self, args: &Value) -> Result<SimpleOutput, ToolError> {
+        let path = self.0.resolve(string_arg(args, "path")?)?;
+        let content = string_arg(args, "content")?;
+        write_atomic(&path, content).await?;
+        Ok(SimpleOutput {
+            text: format!("wrote {} bytes", content.len()),
+            details: Some(json!({"path": self.0.display(&path), "bytes": content.len()})),
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct EditFile(Workspace);
+
+impl EditFile {
+    #[must_use]
+    pub fn new(ws: Workspace) -> Self {
+        Self(ws)
+    }
+}
+
+#[async_trait]
+impl SimpleTool for EditFile {
+    fn name(&self) -> &str {
+        "edit"
+    }
+
+    async fn call(&self, args: &Value) -> Result<SimpleOutput, ToolError> {
+        let path = self.0.resolve(string_arg(args, "path")?)?;
+        let (old, new) = (
+            string_arg(args, "old_string")?,
+            string_arg(args, "new_string")?,
+        );
+        let text = tokio::fs::read_to_string(&path).await.map_err(failed)?;
+        match text.matches(old).count() {
+            1 => {
+                write_atomic(&path, &text.replacen(old, new, 1)).await?;
+                Ok(SimpleOutput {
+                    text: "edited".to_owned(),
+                    details: Some(json!({"path": self.0.display(&path), "old": old, "new": new})),
+                })
+            }
+            0 => Err(ToolError::Failed("`old_string` not found".to_owned())),
+            n => Err(ToolError::Failed(format!(
+                "`old_string` matches {n} times; add context"
+            ))),
+        }
+    }
+}
+
+#[cfg(test)]
+mod file_tests {
+    use super::*;
+    use crate::builtin::Tool;
+
+    fn scratch(name: &str) -> Workspace {
+        let dir = std::env::temp_dir().join(format!("viv-files-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        Workspace::new(&dir)
+    }
+
+    #[tokio::test]
+    async fn write_then_edit_changes_the_file() {
+        let ws = scratch("flow");
+        let out = WriteFile(ws.clone())
+            .execute(&json!({"path": "a/b.txt", "content": "one two"}), "")
+            .await;
+        assert!(!out.is_error, "{}", out.content);
+        let edit = json!({"path": "a/b.txt", "old_string": "two", "new_string": "2"});
+        assert!(!EditFile(ws.clone()).execute(&edit, "").await.is_error);
+        let text = std::fs::read_to_string(ws.root().join("a").join("b.txt")).unwrap();
+        assert_eq!(text, "one 2");
+        let _ = std::fs::remove_dir_all(ws.root());
+    }
+
+    #[tokio::test]
+    async fn edit_refuses_ambiguous_and_missing_matches() {
+        let ws = scratch("edit");
+        WriteFile(ws.clone())
+            .execute(&json!({"path": "f", "content": "aa"}), "")
+            .await;
+        let edit = EditFile(ws.clone());
+        let ambiguous = json!({"path": "f", "old_string": "a", "new_string": "b"});
+        let missing = json!({"path": "f", "old_string": "z", "new_string": "b"});
+        assert!(edit.execute(&ambiguous, "").await.is_error);
+        assert!(edit.execute(&missing, "").await.is_error);
+        let _ = std::fs::remove_dir_all(ws.root());
+    }
+
+    #[tokio::test]
+    async fn writing_outside_the_workspace_is_refused() {
+        let ws = scratch("fence");
+        let out = WriteFile(ws)
+            .execute(&json!({"path": "../../x", "content": "no"}), "")
+            .await;
+        assert!(out.is_error);
+    }
 }
