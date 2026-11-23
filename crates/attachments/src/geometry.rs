@@ -21,7 +21,10 @@ pub fn request_image_dimensions(width: u32, height: u32, max_pixels: u64) -> Dim
             projected_w -= 1;
             projected_h = round(projected_w as f64 * h / w);
         }
-        return Dimensions { width: projected_w as u32, height: projected_h as u32 };
+        return Dimensions {
+            width: projected_w as u32,
+            height: projected_h as u32,
+        };
     }
     let mut projected_h = ((h * scale).floor() as u64).max(1);
     let mut projected_w = round(projected_h as f64 * w / h);
@@ -29,7 +32,10 @@ pub fn request_image_dimensions(width: u32, height: u32, max_pixels: u64) -> Dim
         projected_h -= 1;
         projected_w = round(projected_h as f64 * w / h);
     }
-    Dimensions { width: projected_w as u32, height: projected_h as u32 }
+    Dimensions {
+        width: projected_w as u32,
+        height: projected_h as u32,
+    }
 }
 
 /// Aspect-preserving dimensions with an exact long edge; the short edge rounds to the nearest pixel. A long edge at
@@ -41,8 +47,14 @@ pub fn long_edge_dimensions(width: u32, height: u32, long_edge: u32) -> Dimensio
     }
     let (w, h, l) = (f64::from(width), f64::from(height), f64::from(long_edge));
     if width >= height {
-        Dimensions { width: long_edge, height: ((l * h / w).round() as u32).max(1) }
+        Dimensions {
+            width: long_edge,
+            height: ((l * h / w).round() as u32).max(1),
+        }
     } else {
-        Dimensions { width: ((l * w / h).round() as u32).max(1), height: long_edge }
+        Dimensions {
+            width: ((l * w / h).round() as u32).max(1),
+            height: long_edge,
+        }
     }
 }

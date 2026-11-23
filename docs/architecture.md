@@ -4,7 +4,8 @@
 
 | Crate | Role |
 |---|---|
-| `core` | Domain types: threads, messages, plans, memory. No I/O. |
+| `core` | Domain types: threads, messages, plans, memory, attachment references. No I/O. |
+| `attachments` | Durable images and files attached to messages: content-addressed store, image normalization, request-sized versions. |
 | `plugins` | Context, typed services and events, reversible registrations. |
 | `providers` | One trait, adapters for OpenAI-compatible, Anthropic, Google, local. |
 | `tools` | Shell, browser, desktop control. |
@@ -33,12 +34,13 @@ This is the graph `scripts/check-boundaries.sh` enforces. An arrow means "may de
 
 ```mermaid
 graph TD
-  shell --> memory & multiplayer & remote & runtime & providers & tools & telemetry & core & ai
-  cli --> remote & runtime & providers & tools & core & ai
+  shell --> memory & multiplayer & remote & runtime & providers & tools & telemetry & core & ai & attachments
+  cli --> remote & runtime & providers & tools & core & ai & attachments
   remote --> runtime & providers & tools & core & ai
   memory --> tools & core & ai
   multiplayer --> tools & core & ai
-  runtime --> providers & tools & core & ai
+  runtime --> providers & tools & core & ai & attachments
+  attachments --> core
   providers --> core & ai
   telemetry --> ai
   tools

@@ -15,11 +15,17 @@ fn without_controls(value: &str) -> String {
 }
 
 fn is_windows_device(name: &str) -> bool {
-    let stem = name.split('.').next().unwrap_or(name).trim_end_matches(['.', ' ']);
+    let stem = name
+        .split('.')
+        .next()
+        .unwrap_or(name)
+        .trim_end_matches(['.', ' ']);
     let lower = stem.to_ascii_lowercase();
     matches!(lower.as_str(), "con" | "prn" | "aux" | "nul")
         || ["com", "lpt"].iter().any(|p| {
-            lower.strip_prefix(p).is_some_and(|d| d.len() == 1 && matches!(d.as_bytes()[0], b'1'..=b'9'))
+            lower
+                .strip_prefix(p)
+                .is_some_and(|d| d.len() == 1 && matches!(d.as_bytes()[0], b'1'..=b'9'))
         })
 }
 
@@ -43,7 +49,13 @@ pub fn file_leaf_name(value: Option<&str>) -> String {
     };
     let mut clean: String = without_controls(last_part(value))
         .chars()
-        .map(|c| if matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*') { '_' } else { c })
+        .map(|c| {
+            if matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*') {
+                '_'
+            } else {
+                c
+            }
+        })
         .collect();
     clean = clean.trim().trim_end_matches(['.', ' ']).to_owned();
     if is_windows_device(&clean) {
@@ -72,8 +84,14 @@ mod tests {
     #[test]
     fn ordinary_names_stay_and_client_paths_of_both_styles_are_cut() {
         assert_eq!(file_leaf_name(Some("report.pdf")), "report.pdf");
-        assert_eq!(file_leaf_name(Some("C:\\Users\\ana\\secret\\report.pdf")), "report.pdf");
-        assert_eq!(file_leaf_name(Some("/home/ana/../report.pdf")), "report.pdf");
+        assert_eq!(
+            file_leaf_name(Some("C:\\Users\\ana\\secret\\report.pdf")),
+            "report.pdf"
+        );
+        assert_eq!(
+            file_leaf_name(Some("/home/ana/../report.pdf")),
+            "report.pdf"
+        );
         assert_eq!(file_leaf_name(Some("a/b\\c/d.txt")), "d.txt");
     }
 
@@ -98,14 +116,28 @@ mod tests {
 
     #[test]
     fn an_absent_empty_or_dot_only_name_becomes_file() {
-        for name in [None, Some(""), Some("."), Some(".."), Some("  "), Some("dir/"), Some("\\")] {
+        for name in [
+            None,
+            Some(""),
+            Some("."),
+            Some(".."),
+            Some("  "),
+            Some("dir/"),
+            Some("\\"),
+        ] {
             assert_eq!(file_leaf_name(name), "file", "{name:?}");
         }
     }
 
     #[test]
     fn a_leaf_name_is_a_fixed_point() {
-        for name in ["a<b", "con", "x. ", "é".repeat(300).as_str(), "C:\\x\\y.txt"] {
+        for name in [
+            "a<b",
+            "con",
+            "x. ",
+            "é".repeat(300).as_str(),
+            "C:\\x\\y.txt",
+        ] {
             let once = file_leaf_name(Some(name));
             assert_eq!(file_leaf_name(Some(&once)), once);
         }
@@ -113,7 +145,10 @@ mod tests {
 
     #[test]
     fn an_image_name_keeps_its_last_part_only() {
-        assert_eq!(image_display_name(Some("C:\\pics\\cat.png")).as_deref(), Some("cat.png"));
+        assert_eq!(
+            image_display_name(Some("C:\\pics\\cat.png")).as_deref(),
+            Some("cat.png")
+        );
         assert_eq!(image_display_name(Some(" \u{1} ")), None);
         assert_eq!(image_display_name(None), None);
     }

@@ -16,10 +16,18 @@ pub enum Empty {
 /// Decodes one upload, refusing every non-canonical form: other alphabets, missing or extra padding, whitespace,
 /// line breaks, and trailing bits that are not zero.
 pub fn decode_canonical_base64(data: &str, empty: Empty, code: Code) -> Result<Vec<u8>> {
-    let what = if code == Code::InvalidFileBase64 { "File" } else { "Image" };
+    let what = if code == Code::InvalidFileBase64 {
+        "File"
+    } else {
+        "Image"
+    };
     let bad = || fail(code, format!("{what} upload is not canonical base64."));
     if data.is_empty() {
-        return if empty == Empty::Accept { Ok(Vec::new()) } else { bad() };
+        return if empty == Empty::Accept {
+            Ok(Vec::new())
+        } else {
+            bad()
+        };
     }
     let Ok(decoded) = STANDARD.decode(data) else {
         return bad();
@@ -46,8 +54,23 @@ mod tests {
 
     #[test]
     fn every_non_canonical_spelling_is_refused() {
-        for bad in ["aGk", "aGk==", "aG k=", "aGk=\n", "aGl=", "aGk=aGk=", "a", "!!!!", "aGk\u{0}=", "-_-_"] {
-            assert_eq!(image(bad).map_err(|e| e.code()), Err(Some(Code::InvalidImageBase64)), "{bad:?}");
+        for bad in [
+            "aGk",
+            "aGk==",
+            "aG k=",
+            "aGk=\n",
+            "aGl=",
+            "aGk=aGk=",
+            "a",
+            "!!!!",
+            "aGk\u{0}=",
+            "-_-_",
+        ] {
+            assert_eq!(
+                image(bad).map_err(|e| e.code()),
+                Err(Some(Code::InvalidImageBase64)),
+                "{bad:?}"
+            );
         }
     }
 
@@ -60,7 +83,8 @@ mod tests {
 
     #[test]
     fn a_file_failure_carries_the_file_code() {
-        let e = decode_canonical_base64("zz", Empty::Accept, Code::InvalidFileBase64).expect_err("refused");
+        let e = decode_canonical_base64("zz", Empty::Accept, Code::InvalidFileBase64)
+            .expect_err("refused");
         assert_eq!(e.code(), Some(Code::InvalidFileBase64));
     }
 }

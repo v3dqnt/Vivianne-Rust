@@ -55,7 +55,8 @@ pub fn model_option_id(info: &SessionInfo) -> Option<String> {
 /// Every model the agent offers, from its model option or its model list.
 #[must_use]
 pub fn models_of(info: &SessionInfo) -> Vec<AgentModel> {
-    if let Some(choices) = model_option(info).and_then(|o| o.get("options").and_then(Value::as_array))
+    if let Some(choices) =
+        model_option(info).and_then(|o| o.get("options").and_then(Value::as_array))
     {
         let flat = choices
             .iter()
@@ -68,7 +69,11 @@ pub fn models_of(info: &SessionInfo) -> Vec<AgentModel> {
                 let id = trimmed(c.get("value"))?;
                 Some(AgentModel {
                     id: id.to_owned(),
-                    name: trimmed(c.get("name")).unwrap_or(id).chars().take(80).collect(),
+                    name: trimmed(c.get("name"))
+                        .unwrap_or(id)
+                        .chars()
+                        .take(80)
+                        .collect(),
                 })
             })
             .take(200)
@@ -104,7 +109,11 @@ pub(super) fn apply_opened(info: &mut SessionInfo, result: &Value) {
                         let id = trimmed(m.get("modelId").or_else(|| m.get("id")))?;
                         Some(AgentModel {
                             id: id.to_owned(),
-                            name: trimmed(m.get("name")).unwrap_or(id).chars().take(80).collect(),
+                            name: trimmed(m.get("name"))
+                                .unwrap_or(id)
+                                .chars()
+                                .take(80)
+                                .collect(),
                         })
                     })
                     .take(200)
@@ -342,7 +351,10 @@ mod tests {
         let ids = |i: &SessionInfo| models_of(i).into_iter().map(|m| m.id).collect::<Vec<_>>();
         assert_eq!(ids(&info), ["opus", "sonnet"]);
         assert_eq!(current_model_id(&info).as_deref(), Some("opus"));
-        assert!(model_option_id(&info).is_none(), "no option: set_model is used");
+        assert!(
+            model_option_id(&info).is_none(),
+            "no option: set_model is used"
+        );
 
         apply_opened(
             &mut info,

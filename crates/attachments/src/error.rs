@@ -81,7 +81,10 @@ pub struct AttachmentError {
 
 impl AttachmentError {
     pub fn new(code: Code, message: impl Into<String>) -> Self {
-        Self { code, message: message.into() }
+        Self {
+            code,
+            message: message.into(),
+        }
     }
 }
 

@@ -11,3 +11,9 @@ and sets an `https://` endpoint; both are off by default.
 - `src/report.rs`: bug reports (always written to `~/.viv/agent/reports/` first) and the opt-in upload.
 
 The files are the old app's, so existing events and crashes are read in place.
+
+## Boundary and checks
+
+- **May depend on** (R1.1, `scripts/check-boundaries.sh`): `ai`.
+- **State it owns** (R1.6): local events and crash records (`agent/telemetry.jsonl`, `agent/crashes/`) and bug reports (`agent/reports/`).
+- **Check it:** `cargo test -p vivianne-telemetry` and `cargo clippy -p vivianne-telemetry --all-targets`. Tests read no real `~/.viv` and need no network (R7.3).

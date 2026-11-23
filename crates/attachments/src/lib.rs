@@ -4,6 +4,18 @@
 //!
 //! The store takes its home folder from the caller. Calls block: run them off the render path.
 
+// Pixel and byte counts are far below 2^52 and every cast of a rounded dimension is bounded by the source's own
+// `u32` size, so these lints would only add noise to the size maths.
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss
+)]
+#![cfg_attr(
+    test,
+    allow(clippy::expect_used, clippy::unwrap_used, clippy::pedantic)
+)]
+
 pub mod admission;
 pub mod error;
 pub mod files;

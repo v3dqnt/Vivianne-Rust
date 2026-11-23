@@ -57,7 +57,12 @@ pub fn known_models(harness: &str) -> Vec<AgentModel> {
 
 /// Switches a running session to `model_id`.
 pub(super) async fn switch(conn: &Conn, session: &str, model_id: &str) -> Result<(), String> {
-    let option = info::model_option_id(&conn.info.lock().unwrap_or_else(std::sync::PoisonError::into_inner));
+    let option = info::model_option_id(
+        &conn
+            .info
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+    );
     let (method, params) = match option {
         Some(config_id) => (
             "session/set_config_option",
@@ -71,7 +76,10 @@ pub(super) async fn switch(conn: &Conn, session: &str, model_id: &str) -> Result
     conn.request(method, params, Some(std::time::Duration::from_secs(30)))
         .await
         .map_err(|e| format!("the agent would not switch to {model_id}: {e}"))?;
-    let mut info = conn.info.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut info = conn
+        .info
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     info.model_id = Some(model_id.to_owned());
     for o in &mut info.config_options {
         if o.get("id").and_then(serde_json::Value::as_str) == Some("model")
@@ -86,7 +94,10 @@ pub(super) async fn switch(conn: &Conn, session: &str, model_id: &str) -> Result
 /// A session has opened: remember what the agent offers, and put it on the model the person chose.
 pub(super) async fn on_opened(conn: &Conn, harness: &Harness, session: &str) {
     let (offered, current) = {
-        let info = conn.info.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let info = conn
+            .info
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         (info::models_of(&info), info::current_model_id(&info))
     };
     if offered.is_empty() {

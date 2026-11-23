@@ -41,7 +41,11 @@ impl Default for Limits {
 
 impl Default for Policy {
     fn default() -> Self {
-        Self { max_pixels: 2048 * 2048, max_dimension: 8192, max_bytes: 4 * 1024 * 1024 }
+        Self {
+            max_pixels: 2048 * 2048,
+            max_dimension: 8192,
+            max_bytes: 4 * 1024 * 1024,
+        }
     }
 }
 
@@ -63,22 +67,32 @@ pub struct Prepared {
 /// Decodes, normalizes and verifies one submitted image.
 pub fn prepare_image(input: &SaveImage, limits: &Limits, policy: &Policy) -> Result<Prepared> {
     if input.data.len() as u64 > limits.max_image_bytes {
-        return fail(Code::ImageTooLarge, "Image exceeds the configured byte limit.");
+        return fail(
+            Code::ImageTooLarge,
+            "Image exceeds the configured byte limit.",
+        );
     }
     if input.data.is_empty() {
         return fail(Code::InvalidImage, "Image is empty.");
     }
     let decoded = decode(
         &input.data,
-        Some(DecodeLimits { max_pixels: limits.max_image_pixels, max_dimension: limits.max_image_dimension }),
+        Some(DecodeLimits {
+            max_pixels: limits.max_image_pixels,
+            max_dimension: limits.max_image_dimension,
+        }),
     )?;
     if decoded.facts.media_type != input.media_type {
-        return fail(Code::ImageTypeMismatch, "Declared image type does not match its bytes.");
+        return fail(
+            Code::ImageTypeMismatch,
+            "Declared image type does not match its bytes.",
+        );
     }
     let normalized = normalize(&input.data, &decoded, policy)?;
     let id = AttachmentId::from_digest(&digest_bytes(&normalized.data))
         .ok_or_else(|| AttachmentError::new(Code::AttachmentCorrupt, "Digest is malformed."))?;
-    let shrunk = (decoded.facts.width, decoded.facts.height) != (normalized.width, normalized.height);
+    let shrunk =
+        (decoded.facts.width, decoded.facts.height) != (normalized.width, normalized.height);
     Ok(Prepared {
         image: ImageRef {
             attachment_id: id,
@@ -87,7 +101,10 @@ pub fn prepare_image(input: &SaveImage, limits: &Limits, policy: &Policy) -> Res
             width: normalized.width,
             height: normalized.height,
             name: image_display_name(input.name.as_deref()),
-            original_dimensions: shrunk.then_some(Dimensions { width: decoded.facts.width, height: decoded.facts.height }),
+            original_dimensions: shrunk.then_some(Dimensions {
+                width: decoded.facts.width,
+                height: decoded.facts.height,
+            }),
         },
         data: normalized.data,
     })
@@ -96,8 +113,12 @@ pub fn prepare_image(input: &SaveImage, limits: &Limits, policy: &Policy) -> Res
 /// Publishes a prepared image, after checking that its bytes still are what its reference says.
 pub fn commit_prepared(layout: &Layout, prepared: &Prepared) -> Result<ImageRef> {
     let digest = checked_digest(&prepared.image.attachment_id)?;
-    if digest_bytes(&prepared.data) != digest || prepared.data.len() as u64 != prepared.image.bytes {
-        return fail(Code::AttachmentCorrupt, "Prepared attachment bytes do not match their reference.");
+    if digest_bytes(&prepared.data) != digest || prepared.data.len() as u64 != prepared.image.bytes
+    {
+        return fail(
+            Code::AttachmentCorrupt,
+            "Prepared attachment bytes do not match their reference.",
+        );
     }
     let target = layout.image_path(&prepared.image)?;
     publish_object(&layout.root, &layout.home, &target, &prepared.data, digest)?;
@@ -121,12 +142,18 @@ pub fn read_image(layout: &Layout, image: &ImageRef, cancel: &Cancel) -> Result<
         if e.kind() == std::io::ErrorKind::NotFound {
             AttachmentError::new(Code::AttachmentNotFound, "Attachment object is missing.")
         } else {
-            AttachmentError::new(Code::AttachmentReadFailed, "Unable to read image attachment.")
+            AttachmentError::new(
+                Code::AttachmentReadFailed,
+                "Unable to read image attachment.",
+            )
         }
     })?;
     cancel.check()?;
     if digest_bytes(&data) != digest {
-        return fail(Code::AttachmentCorrupt, "Stored attachment failed integrity verification.");
+        return fail(
+            Code::AttachmentCorrupt,
+            "Stored attachment failed integrity verification.",
+        );
     }
     // The digest proves these are the bytes admission fully decoded, so a read re-derives only header facts: no
     // decode, no pixel cost on every replay of history.
@@ -136,7 +163,13 @@ pub fn read_image(layout: &Layout, image: &ImageRef, cancel: &Cancel) -> Result<
         || data.len() as u64 != image.bytes
         || (facts.width, facts.height) != (image.width, image.height)
     {
-        return fail(Code::AttachmentCorrupt, "Stored attachment metadata does not match its reference.");
+        return fail(
+            Code::AttachmentCorrupt,
+            "Stored attachment metadata does not match its reference.",
+        );
     }
-    Ok(StoredImage { image: image.clone(), data })
+    Ok(StoredImage {
+        image: image.clone(),
+        data,
+    })
 }

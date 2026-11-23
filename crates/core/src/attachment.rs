@@ -38,7 +38,10 @@ impl AttachmentId {
 }
 
 fn is_digest(hex: &str) -> bool {
-    hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    hex.len() == 64
+        && hex
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 /// Raster formats accepted as images.
@@ -162,7 +165,7 @@ mod tests {
             "",
             "sha256:",
             &format!("sha256:{}", HEX.to_uppercase()),
-            &format!("sha256:{}0", HEX),
+            &format!("sha256:{HEX}0"),
             &format!("sha1:{HEX}"),
             &format!("sha256:{}/", &HEX[..63]),
             &format!("sha256:../{}", &HEX[3..]),
@@ -185,9 +188,14 @@ mod tests {
         let json = serde_json::to_string(&image).expect("serializes");
         assert!(json.contains(r#""type":"image""#) && json.contains("image/png"));
         assert!(!json.contains("originalDimensions"));
-        assert_eq!(serde_json::from_str::<AttachmentRef>(&json).expect("reads"), image);
+        assert_eq!(
+            serde_json::from_str::<AttachmentRef>(&json).expect("reads"),
+            image
+        );
         // A damaged id still reads (a thread must open); the store refuses it when asked for the bytes.
-        let damaged = serde_json::from_str::<AttachmentRef>(r#"{"type":"file","attachmentId":"nope","name":"a","bytes":1}"#);
+        let damaged = serde_json::from_str::<AttachmentRef>(
+            r#"{"type":"file","attachmentId":"nope","name":"a","bytes":1}"#,
+        );
         assert!(damaged.is_ok_and(|r| AttachmentId::parse(r.id().as_str()).is_none()));
     }
 

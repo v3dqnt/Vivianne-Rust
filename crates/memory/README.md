@@ -18,3 +18,9 @@ keyword index and optional embeddings) and per user (`~/.viv/user-memory`).
 - `src/hindsight.rs`: an optional connection to a Hindsight server (off by default).
 
 Not ported: the benchmark harness, and the Settings page's buttons (the page exists but is not connected to this crate).
+
+## Boundary and checks
+
+- **May depend on** (R1.1, `scripts/check-boundaries.sh`): `ai`, `core`, `tools`.
+- **State it owns** (R1.6): per-project memory in `<project>/.viv/memory/memory.db` and the user's memory under `~/.viv/user-memory`.
+- **Check it:** `cargo test -p vivianne-memory` and `cargo clippy -p vivianne-memory --all-targets`. Tests read no real `~/.viv` and need no network (R7.3).

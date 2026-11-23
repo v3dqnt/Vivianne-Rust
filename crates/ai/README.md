@@ -52,3 +52,9 @@ it is given: cost-aware routing is not part of the new app.
 `src/providers.rs` is the keys the user has (save, delete, extra keys with cooldowns, ChatGPT plan sign-in) that
 Settings → Providers talks to. `src/custom_providers.rs` is the providers the user defines. `host::update_settings`
 changes `settings.json` under one lock and writes it atomically.
+
+## Boundary and checks
+
+- **May depend on** (R1.1, `scripts/check-boundaries.sh`): no other workspace crate.
+- **State it owns** (R1.6): API keys and sign-ins (OS keychain, with a `~/.viv` file as the fallback), usage and routing data, custom providers, local model files, all under `~/.viv` (or `$VIV_HOME`).
+- **Check it:** `cargo test -p vivianne-ai` and `cargo clippy -p vivianne-ai --all-targets`. Tests read no real `~/.viv` and need no network (R7.3).

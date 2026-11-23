@@ -47,7 +47,10 @@ impl Layout {
     pub fn file_path(&self, file: &FileRef) -> Result<PathBuf> {
         let digest = checked_digest(&file.attachment_id)?;
         if file.name != file_leaf_name(Some(&file.name)) {
-            return fail(Code::InvalidAttachmentRef, "File attachment reference is invalid.");
+            return fail(
+                Code::InvalidAttachmentRef,
+                "File attachment reference is invalid.",
+            );
         }
         Ok(self.shard("files", digest).join(digest).join(&file.name))
     }
@@ -61,7 +64,10 @@ impl Layout {
     /// Where a request-sized version is cached.
     #[must_use]
     pub fn request_image_path(&self, hash: &str) -> PathBuf {
-        self.cache.join("request-images").join(&hash[..2]).join(hash)
+        self.cache
+            .join("request-images")
+            .join(&hash[..2])
+            .join(hash)
     }
 }
 
@@ -69,6 +75,9 @@ impl Layout {
 pub fn checked_digest(id: &AttachmentId) -> Result<&str> {
     match AttachmentId::parse(id.as_str()) {
         Some(_) => Ok(id.digest()),
-        None => fail(Code::InvalidAttachmentRef, "Attachment reference is invalid."),
+        None => fail(
+            Code::InvalidAttachmentRef,
+            "Attachment reference is invalid.",
+        ),
     }
 }

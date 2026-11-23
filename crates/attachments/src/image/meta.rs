@@ -45,7 +45,9 @@ fn png(data: &[u8]) -> Container {
             _ => {}
         }
         // length, type, data, crc
-        let Some(next) = at.checked_add(12).and_then(|n| n.checked_add(len)) else { break };
+        let Some(next) = at.checked_add(12).and_then(|n| n.checked_add(len)) else {
+            break;
+        };
         at = next;
     }
     out
@@ -55,7 +57,9 @@ fn jpeg(data: &[u8]) -> Container {
     let mut out = Container::default();
     let mut at = 2; // after SOI
     while data.get(at) == Some(&0xFF) {
-        let Some(&marker) = data.get(at + 1) else { break };
+        let Some(&marker) = data.get(at + 1) else {
+            break;
+        };
         match marker {
             // Fill bytes before a marker.
             0xFF => {
@@ -73,7 +77,12 @@ fn jpeg(data: &[u8]) -> Container {
             0xE1 | 0xE2 | 0xED | 0xFE => out.carries_metadata = true,
             _ => {}
         }
-        let Some(len) = data.get(at + 2..at + 4).map(|b| usize::from(u16::from_be_bytes([b[0], b[1]]))) else { break };
+        let Some(len) = data
+            .get(at + 2..at + 4)
+            .map(|b| usize::from(u16::from_be_bytes([b[0], b[1]])))
+        else {
+            break;
+        };
         if len < 2 {
             break;
         }
@@ -93,7 +102,13 @@ fn webp(data: &[u8]) -> Container {
             _ => {}
         }
         // Chunks are padded to an even size.
-        let Some(next) = at.checked_add(8).and_then(|n| n.checked_add(len)).and_then(|n| n.checked_add(len & 1)) else { break };
+        let Some(next) = at
+            .checked_add(8)
+            .and_then(|n| n.checked_add(len))
+            .and_then(|n| n.checked_add(len & 1))
+        else {
+            break;
+        };
         at = next;
     }
     out
@@ -114,7 +129,9 @@ fn skip_sub_blocks(data: &[u8], mut at: usize) -> Option<usize> {
 fn gif(data: &[u8]) -> Container {
     let mut out = Container::default();
     let mut frames = 0usize;
-    let Some(flags) = data.get(10) else { return out };
+    let Some(flags) = data.get(10) else {
+        return out;
+    };
     let mut at = 13;
     if flags & 0x80 != 0 {
         at += 3 * (1usize << ((flags & 0x07) + 1));
@@ -126,7 +143,9 @@ fn gif(data: &[u8]) -> Container {
                 if data.get(at + 1) == Some(&0xFE) {
                     out.carries_metadata = true;
                 }
-                let Some(next) = skip_sub_blocks(data, at + 2) else { break };
+                let Some(next) = skip_sub_blocks(data, at + 2) else {
+                    break;
+                };
                 at = next;
             }
             // Image: position and size, an optional local palette, a code size, then sub-blocks.
@@ -137,7 +156,9 @@ fn gif(data: &[u8]) -> Container {
                 if local & 0x80 != 0 {
                     next += 3 * (1usize << ((local & 0x07) + 1));
                 }
-                let Some(after) = skip_sub_blocks(data, next + 1) else { break };
+                let Some(after) = skip_sub_blocks(data, next + 1) else {
+                    break;
+                };
                 at = after;
             }
             _ => break,

@@ -14,6 +14,7 @@ use crate::error::{Code, Result, fail};
 const DECODER_MAX_ALLOC: u64 = 1 << 30;
 
 /// What is known about one image.
+#[allow(clippy::struct_excessive_bools)] // a record of independent facts, not a state machine
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Detected {
     pub media_type: MediaType,
@@ -62,18 +63,25 @@ fn format_of(media_type: MediaType) -> ImageFormat {
 }
 
 fn invalid() -> crate::error::Error {
-    crate::error::AttachmentError::new(Code::InvalidImage, "Unsupported or malformed image data.").into()
+    crate::error::AttachmentError::new(Code::InvalidImage, "Unsupported or malformed image data.")
+        .into()
 }
 
 fn transposes(orientation: Orientation) -> bool {
     matches!(
         orientation,
-        Orientation::Rotate90 | Orientation::Rotate270 | Orientation::Rotate90FlipH | Orientation::Rotate270FlipH
+        Orientation::Rotate90
+            | Orientation::Rotate270
+            | Orientation::Rotate90FlipH
+            | Orientation::Rotate270FlipH
     )
 }
 
 fn is_high_depth(color: ColorType) -> bool {
-    !matches!(color, ColorType::L8 | ColorType::La8 | ColorType::Rgb8 | ColorType::Rgba8)
+    !matches!(
+        color,
+        ColorType::L8 | ColorType::La8 | ColorType::Rgb8 | ColorType::Rgba8
+    )
 }
 
 /// The decoder of `data` with the facts that its header and container give. Nothing is decoded yet.
@@ -92,14 +100,21 @@ fn open(data: &[u8]) -> Result<(impl ImageDecoder + '_, Detected, Orientation)> 
     }
     let container = meta::scan(media_type, data);
     let color = decoder.color_type();
-    let has_profile = decoder.icc_profile().ok().flatten().is_some() || decoder.exif_metadata().ok().flatten().is_some();
-    let (width, height) = if transposes(orientation) { (h, w) } else { (w, h) };
+    let has_profile = decoder.icc_profile().ok().flatten().is_some()
+        || decoder.exif_metadata().ok().flatten().is_some();
+    let (width, height) = if transposes(orientation) {
+        (h, w)
+    } else {
+        (w, h)
+    };
     let facts = Detected {
         media_type,
         width,
         height,
         animated: container.animated,
-        carries_metadata: container.carries_metadata || has_profile || orientation != Orientation::NoTransforms,
+        carries_metadata: container.carries_metadata
+            || has_profile
+            || orientation != Orientation::NoTransforms,
         high_depth: is_high_depth(color),
         has_alpha: color.has_alpha(),
     };
@@ -117,10 +132,16 @@ pub fn decode(data: &[u8], limits: Option<DecodeLimits>) -> Result<Decoded> {
     let (decoder, mut facts, orientation) = open(data)?;
     if let Some(limits) = limits {
         if u64::from(facts.width) * u64::from(facts.height) > limits.max_pixels {
-            return fail(Code::ImageTooManyPixels, "Image exceeds the configured decoded-pixel limit.");
+            return fail(
+                Code::ImageTooManyPixels,
+                "Image exceeds the configured decoded-pixel limit.",
+            );
         }
         if facts.width.max(facts.height) > limits.max_dimension {
-            return fail(Code::ImageDimensionTooLarge, "Image exceeds the configured per-side pixel limit.");
+            return fail(
+                Code::ImageDimensionTooLarge,
+                "Image exceeds the configured per-side pixel limit.",
+            );
         }
     }
     let mut pixels = DynamicImage::from_decoder(decoder).map_err(|_| invalid())?;

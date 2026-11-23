@@ -113,8 +113,7 @@ pub fn ensure_durable_directory(path: &Path, boundary: &Path) -> Result<()> {
         fs::create_dir_all(path)?;
         make_private_dir(path)?;
         let mut level = path.to_path_buf();
-        loop {
-            let Some(parent) = level.parent().map(Path::to_path_buf) else { break };
+        while let Some(parent) = level.parent().map(Path::to_path_buf) {
             sync_directory(&parent)?;
             if level == boundary || parent == level || !level.starts_with(boundary) {
                 break;
@@ -149,7 +148,11 @@ pub fn stage(
     ensure_durable_directory(&staging, boundary)?;
     let path = staging.join(uuid::Uuid::new_v4().to_string());
     let outcome = (|| -> Result<(String, u64)> {
-        let mut file = OpenOptions::new().write(true).create_new(true).open(&path).map_err(|e| write_failed(&e))?;
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .map_err(|e| write_failed(&e))?;
         let mut hash = Sha256::new();
         let mut bytes = 0u64;
         let mut buf = vec![0u8; CHUNK];
@@ -161,7 +164,10 @@ pub fn stage(
             }
             bytes += n as u64;
             if max_bytes.is_some_and(|max| bytes > max) {
-                return fail(Code::FileTooLarge, "File is larger than the configured size limit.");
+                return fail(
+                    Code::FileTooLarge,
+                    "File is larger than the configured size limit.",
+                );
             }
             hash.update(&buf[..n]);
             file.write_all(&buf[..n]).map_err(|e| write_failed(&e))?;
@@ -171,7 +177,11 @@ pub fn stage(
         Ok((hex(&hash.finalize()), bytes))
     })();
     match outcome {
-        Ok((sha256, bytes)) => Ok(Staged { path, sha256, bytes }),
+        Ok((sha256, bytes)) => Ok(Staged {
+            path,
+            sha256,
+            bytes,
+        }),
         Err(e) => {
             remove_staged(&path);
             Err(e)
@@ -187,7 +197,10 @@ fn link_in_place(source: &Path, target: &Path, sha256: &str) -> Result<()> {
             if digest_file(target).map_err(|e| write_failed(&e))? == sha256 {
                 Ok(())
             } else {
-                fail(Code::AttachmentCorrupt, "Stored attachment failed integrity verification.")
+                fail(
+                    Code::AttachmentCorrupt,
+                    "Stored attachment failed integrity verification.",
+                )
             }
         }
         Err(e) => Err(write_failed(&e)),
@@ -209,7 +222,9 @@ fn sync_up_to(parent: &Path, root: &Path) -> Result<()> {
 /// Publishes a staged object at `target`.
 pub fn publish_staged(root: &Path, boundary: &Path, target: &Path, staged: &Staged) -> Result<()> {
     let result = (|| -> Result<()> {
-        let parent = target.parent().ok_or_else(|| write_failed(&std::io::Error::other("no parent")))?;
+        let parent = target
+            .parent()
+            .ok_or_else(|| write_failed(&std::io::Error::other("no parent")))?;
         ensure_durable_directory(parent, boundary)?;
         link_in_place(&staged.path, target, &staged.sha256)?;
         // Windows shares the read-only attribute across hard links and then refuses to remove either name, so the
@@ -225,19 +240,36 @@ pub fn publish_staged(root: &Path, boundary: &Path, target: &Path, staged: &Stag
 }
 
 /// Publishes `data` at `target`, which must be its digest's place.
-pub fn publish_object(root: &Path, boundary: &Path, target: &Path, data: &[u8], sha256: &str) -> Result<()> {
+pub fn publish_object(
+    root: &Path,
+    boundary: &Path,
+    target: &Path,
+    data: &[u8],
+    sha256: &str,
+) -> Result<()> {
     let mut reader = data;
     let staged = stage(root, boundary, &mut reader, None, &Cancel::new())?;
     if staged.sha256 != sha256 {
         remove_staged(&staged.path);
-        return fail(Code::AttachmentCorrupt, "Attachment bytes do not match their publication digest.");
+        return fail(
+            Code::AttachmentCorrupt,
+            "Attachment bytes do not match their publication digest.",
+        );
     }
     publish_staged(root, boundary, target, &staged)
 }
 
 /// Publishes another name for an object that is already stored.
-pub fn publish_alias(root: &Path, boundary: &Path, source: &Path, target: &Path, sha256: &str) -> Result<()> {
-    let parent = target.parent().ok_or_else(|| write_failed(&std::io::Error::other("no parent")))?;
+pub fn publish_alias(
+    root: &Path,
+    boundary: &Path,
+    source: &Path,
+    target: &Path,
+    sha256: &str,
+) -> Result<()> {
+    let parent = target
+        .parent()
+        .ok_or_else(|| write_failed(&std::io::Error::other("no parent")))?;
     ensure_durable_directory(parent, boundary)?;
     link_in_place(source, target, sha256)?;
     make_read_only(target).map_err(|e| write_failed(&e))?;

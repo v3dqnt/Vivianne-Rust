@@ -10101,6 +10101,7 @@ dependencies = [
  "tokio-util",
  "uuid",
  "vivianne-ai",
+ "vivianne-attachments",
  "vivianne-core",
  "vivianne-providers",
  "vivianne-tools",

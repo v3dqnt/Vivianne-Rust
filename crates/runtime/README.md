@@ -37,3 +37,9 @@ verification nudge.
   Offered to coding agents over MCP.
 - `config.rs`: settings in layers (flag, environment, settings.json, the repository's `.viv.json` with repo-safe fields only, default), each with its origin.
 - `profiles.rs`: agent profiles from `~/.viv/agents` and the repository's `.viv/agents` (a repository profile cannot set `permission_mode`).
+
+## Boundary and checks
+
+- **May depend on** (R1.1, `scripts/check-boundaries.sh`): `core`, `ai`, `providers`, `tools`, `attachments`.
+- **State it owns** (R1.6): saved threads (`~/.viv/agent/threads/<id>.json`), settings layers, agent profiles, run checkpoints (hidden git refs in the project) and the task ledger.
+- **Check it:** `cargo test -p vivianne-runtime` and `cargo clippy -p vivianne-runtime --all-targets`. Tests read no real `~/.viv` and need no network (R7.3).

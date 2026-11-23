@@ -6,7 +6,7 @@ use image::imageops::FilterType;
 use vivianne_core::attachment::{Dimensions, MediaType};
 
 use super::detect::{Decoded, Detected, decode};
-use super::encode::{ladder, first_within_limit};
+use super::encode::{first_within_limit, ladder};
 use crate::error::{AttachmentError, Code, Result, fail};
 use crate::geometry::request_image_dimensions;
 
@@ -45,8 +45,14 @@ pub fn can_pass_through(facts: &Detected, bytes: u64, policy: &Policy) -> bool {
 /// A source with an alpha plane may be encoded without one when every pixel is opaque, but an encoder must never add
 /// or drop transparency otherwise. `None`: the source's frame is unspecified (a GIF).
 #[must_use]
-pub fn alpha_is_compatible(source_has_alpha: Option<bool>, media_type: MediaType, output_has_alpha: bool) -> bool {
-    source_has_alpha.is_none_or(|s| s == output_has_alpha || (s && !output_has_alpha && media_type == MediaType::Webp))
+pub fn alpha_is_compatible(
+    source_has_alpha: Option<bool>,
+    media_type: MediaType,
+    output_has_alpha: bool,
+) -> bool {
+    source_has_alpha.is_none_or(|s| {
+        s == output_has_alpha || (s && !output_has_alpha && media_type == MediaType::Webp)
+    })
 }
 
 /// Dimensions under the pixel budget, then under the long-edge cap, with the aspect ratio kept.
@@ -87,26 +93,43 @@ fn verify(out: &Normalized, expected_alpha: Option<bool>) -> Result<()> {
 pub fn normalize(data: &[u8], decoded: &Decoded, policy: &Policy) -> Result<Normalized> {
     let facts = decoded.facts;
     if can_pass_through(&facts, data.len() as u64, policy) {
-        return Ok(Normalized { data: data.to_vec(), media_type: facts.media_type, width: facts.width, height: facts.height });
+        return Ok(Normalized {
+            data: data.to_vec(),
+            media_type: facts.media_type,
+            width: facts.width,
+            height: facts.height,
+        });
     }
     let target = initial_dimensions(&facts, policy);
     let sized;
     let prepared = if (target.width, target.height) == (facts.width, facts.height) {
         &decoded.pixels
     } else {
-        sized = decoded.pixels.resize_exact(target.width, target.height, FilterType::Lanczos3);
+        sized = decoded
+            .pixels
+            .resize_exact(target.width, target.height, FilterType::Lanczos3);
         &sized
     };
-    let chosen = first_within_limit(ladder(prepared, facts.has_alpha), policy.max_bytes).map_err(|e| match e {
-        crate::error::Error::Failed(_) => AttachmentError::new(
-            Code::AttachmentWriteFailed,
-            "The image could not be converted to the normalized 8-bit form.",
-        )
-        .into(),
-        other => other,
-    })?;
+    let chosen = first_within_limit(ladder(prepared, facts.has_alpha), policy.max_bytes).map_err(
+        |e| match e {
+            crate::error::Error::Failed(_) => AttachmentError::new(
+                Code::AttachmentWriteFailed,
+                "The image could not be converted to the normalized 8-bit form.",
+            )
+            .into(),
+            other @ crate::error::Error::Cancelled => other,
+        },
+    )?;
     let encoded = chosen.into_inner();
-    let out = Normalized { data: encoded.data, media_type: encoded.media_type, width: encoded.width, height: encoded.height };
-    verify(&out, (facts.media_type != MediaType::Gif).then_some(facts.has_alpha))?;
+    let out = Normalized {
+        data: encoded.data,
+        media_type: encoded.media_type,
+        width: encoded.width,
+        height: encoded.height,
+    };
+    verify(
+        &out,
+        (facts.media_type != MediaType::Gif).then_some(facts.has_alpha),
+    )?;
     Ok(out)
 }

@@ -16,3 +16,9 @@ Several machines, one window: a port of herdr's multi-machine system. Each machi
 The `viv-loopback` target runs the bridge on this computer instead of over SSH, for tests and for a second session on one machine.
 - `pane.rs`, `panes.rs`: terminal panes the server owns (a pseudo terminal each, the screen as text, the agent's state read from it); `persist.rs` saves them (48 snapshots, 3 backups) and reopens them after a stop.
 - `meta.rs`: what is known of each machine's operating system, to pick the remote command (POSIX shell or PowerShell).
+
+## Boundary and checks
+
+- **May depend on** (R1.1, `scripts/check-boundaries.sh`): `ai`, `core`, `providers`, `runtime`, `tools`.
+- **State it owns** (R1.6): the saved machines (`~/.viv/client/machines.json`) and a server's terminal panes (snapshots, with backups).
+- **Check it:** `cargo test -p vivianne-remote` and `cargo clippy -p vivianne-remote --all-targets`. Tests read no real `~/.viv` and need no network (R7.3).

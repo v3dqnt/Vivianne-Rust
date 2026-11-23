@@ -38,11 +38,11 @@ impl<T> Choice<T> {
 
 /// Something with an encoded length.
 pub trait Candidate {
-    fn len(&self) -> usize;
+    fn byte_len(&self) -> usize;
 }
 
 impl Candidate for Encoded {
-    fn len(&self) -> usize {
+    fn byte_len(&self) -> usize {
         self.data.len()
     }
 }
@@ -54,18 +54,21 @@ pub fn first_within_limit<T: Candidate>(
 ) -> Result<Choice<T>> {
     let mut attempts = attempts.into_iter();
     let Some(first) = attempts.next() else {
-        return fail(Code::AttachmentWriteFailed, "Image encoding needs at least one candidate.");
+        return fail(
+            Code::AttachmentWriteFailed,
+            "Image encoding needs at least one candidate.",
+        );
     };
     let mut smallest = first()?;
-    if smallest.len() as u64 <= max_bytes {
+    if smallest.byte_len() as u64 <= max_bytes {
         return Ok(Choice::Fits(smallest));
     }
     for attempt in attempts {
         let candidate = attempt()?;
-        if candidate.len() as u64 <= max_bytes {
+        if candidate.byte_len() as u64 <= max_bytes {
             return Ok(Choice::Fits(candidate));
         }
-        if candidate.len() < smallest.len() {
+        if candidate.byte_len() < smallest.byte_len() {
             smallest = candidate;
         }
     }
@@ -73,7 +76,11 @@ pub fn first_within_limit<T: Candidate>(
 }
 
 fn failed(what: &str) -> crate::error::Error {
-    AttachmentError::new(Code::AttachmentWriteFailed, format!("Image encoding failed: {what}.")).into()
+    AttachmentError::new(
+        Code::AttachmentWriteFailed,
+        format!("Image encoding failed: {what}."),
+    )
+    .into()
 }
 
 fn encode_jpeg(image: &DynamicImage, quality: u8) -> Result<Encoded> {
@@ -83,7 +90,12 @@ fn encode_jpeg(image: &DynamicImage, quality: u8) -> Result<Encoded> {
     image::codecs::jpeg::JpegEncoder::new_with_quality(&mut data, quality)
         .encode(rgb.as_raw(), width, height, ExtendedColorType::Rgb8)
         .map_err(|_| failed("jpeg"))?;
-    Ok(Encoded { data, media_type: MediaType::Jpeg, width, height })
+    Ok(Encoded {
+        data,
+        media_type: MediaType::Jpeg,
+        width,
+        height,
+    })
 }
 
 fn encode_webp(image: &DynamicImage, quality: u8) -> Result<Encoded> {
@@ -96,13 +108,27 @@ fn encode_webp(image: &DynamicImage, quality: u8) -> Result<Encoded> {
     let memory = webp::Encoder::from_rgba(rgba.as_raw(), width, height)
         .encode_advanced(&config)
         .map_err(|_| failed("webp"))?;
-    Ok(Encoded { data: memory.to_vec(), media_type: MediaType::Webp, width, height })
+    Ok(Encoded {
+        data: memory.to_vec(),
+        media_type: MediaType::Webp,
+        width,
+        height,
+    })
 }
 
 /// The ladder for one prepared picture, from the best quality to the lowest.
-pub fn ladder(image: &DynamicImage, has_alpha: bool) -> impl Iterator<Item = impl FnOnce() -> Result<Encoded> + '_> {
+pub fn ladder(
+    image: &DynamicImage,
+    has_alpha: bool,
+) -> impl Iterator<Item = impl FnOnce() -> Result<Encoded> + '_> {
     QUALITIES.into_iter().map(move |quality| {
-        move || if has_alpha { encode_webp(image, quality) } else { encode_jpeg(image, quality) }
+        move || {
+            if has_alpha {
+                encode_webp(image, quality)
+            } else {
+                encode_jpeg(image, quality)
+            }
+        }
     })
 }
 
@@ -116,7 +142,7 @@ mod tests {
     struct Fake(usize);
 
     impl Candidate for Fake {
-        fn len(&self) -> usize {
+        fn byte_len(&self) -> usize {
             self.0
         }
     }
@@ -131,19 +157,29 @@ mod tests {
                 Ok(Fake(n))
             }
         };
-        let chosen = first_within_limit([attempt(90), attempt(70), attempt(50)], 80).expect("chose");
+        let chosen =
+            first_within_limit([attempt(90), attempt(70), attempt(50)], 80).expect("chose");
         assert_eq!(chosen, Choice::Fits(Fake(70)));
         assert_eq!(ran.get(), 2);
         ran.set(0);
-        assert_eq!(first_within_limit([attempt(10), attempt(5)], 80).expect("chose"), Choice::Fits(Fake(10)));
+        assert_eq!(
+            first_within_limit([attempt(10), attempt(5)], 80).expect("chose"),
+            Choice::Fits(Fake(10))
+        );
         assert_eq!(ran.get(), 1);
     }
 
     #[test]
     fn when_nothing_fits_the_smallest_is_kept() {
-        let attempts: Vec<Box<dyn FnOnce() -> Result<Fake>>> =
-            vec![Box::new(|| Ok(Fake(900))), Box::new(|| Ok(Fake(700))), Box::new(|| Ok(Fake(800)))];
-        assert_eq!(first_within_limit(attempts, 100).expect("chose"), Choice::Exhausted(Fake(700)));
+        let attempts: Vec<Box<dyn FnOnce() -> Result<Fake>>> = vec![
+            Box::new(|| Ok(Fake(900))),
+            Box::new(|| Ok(Fake(700))),
+            Box::new(|| Ok(Fake(800))),
+        ];
+        assert_eq!(
+            first_within_limit(attempts, 100).expect("chose"),
+            Choice::Exhausted(Fake(700))
+        );
     }
 
     #[test]
@@ -154,8 +190,10 @@ mod tests {
 
     #[test]
     fn a_failing_candidate_ends_the_ladder_with_its_error() {
-        let attempts: Vec<Box<dyn FnOnce() -> Result<Fake>>> =
-            vec![Box::new(|| Ok(Fake(900))), Box::new(|| fail(Code::AttachmentWriteFailed, "no"))];
+        let attempts: Vec<Box<dyn FnOnce() -> Result<Fake>>> = vec![
+            Box::new(|| Ok(Fake(900))),
+            Box::new(|| fail(Code::AttachmentWriteFailed, "no")),
+        ];
         assert!(first_within_limit(attempts, 100).is_err());
     }
 }

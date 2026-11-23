@@ -264,7 +264,9 @@ fn to_context(request: &ChatRequest) -> Context {
             .map(|(i, m)| {
                 let mut message = to_ai_message(m, &tool_names);
                 for image in request.images.iter().filter(|image| image.message == i) {
-                    message.content_blocks.push(MessageContent::Text { text: image.label.clone() });
+                    message.content_blocks.push(MessageContent::Text {
+                        text: image.label.clone(),
+                    });
                     message.content_blocks.push(MessageContent::Image {
                         url: None,
                         base64: Some(image.base64.clone()),

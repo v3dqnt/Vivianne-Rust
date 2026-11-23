@@ -54,7 +54,10 @@ impl RequestImage {
 /// Refuses a target with a zero side or byte count.
 pub fn validate_target(target: &Target) -> Result<()> {
     if target.width == 0 || target.height == 0 || target.max_bytes == 0 {
-        return fail(Code::InvalidAttachmentRef, "Image request target must be positive.");
+        return fail(
+            Code::InvalidAttachmentRef,
+            "Image request target must be positive.",
+        );
     }
     Ok(())
 }
@@ -85,28 +88,53 @@ fn read_cached(path: &Path, target: &Target, source_has_alpha: bool) -> Option<M
     let data = fs::read(path).ok()?;
     let facts = probe(&data).ok()?;
     let fits = facts.width <= target.width && facts.height <= target.height;
-    (!facts.high_depth && !facts.animated && fits && alpha_is_compatible(Some(source_has_alpha), facts.media_type, facts.has_alpha))
-        .then_some(Made { data, media_type: facts.media_type, width: facts.width, height: facts.height, has_alpha: facts.has_alpha })
+    (!facts.high_depth
+        && !facts.animated
+        && fits
+        && alpha_is_compatible(Some(source_has_alpha), facts.media_type, facts.has_alpha))
+    .then_some(Made {
+        data,
+        media_type: facts.media_type,
+        width: facts.width,
+        height: facts.height,
+        has_alpha: facts.has_alpha,
+    })
 }
 
 fn make(stored: &[u8], image: &ImageRef, target: &Target, cancel: &Cancel) -> Result<Made> {
     let decoded = decode(stored, None)?;
     let facts = decoded.facts;
     cancel.check()?;
-    if target.width >= image.width && target.height >= image.height && stored.len() as u64 <= target.max_bytes {
-        return Ok(Made { data: stored.to_vec(), media_type: image.media_type, width: image.width, height: image.height, has_alpha: facts.has_alpha });
+    if target.width >= image.width
+        && target.height >= image.height
+        && stored.len() as u64 <= target.max_bytes
+    {
+        return Ok(Made {
+            data: stored.to_vec(),
+            media_type: image.media_type,
+            width: image.width,
+            height: image.height,
+            has_alpha: facts.has_alpha,
+        });
     }
     // Resize by the long edge only, so the short edge is whatever that gives, as the route predicts.
-    let long = if image.width >= image.height { target.width } else { target.height };
+    let long = if image.width >= image.height {
+        target.width
+    } else {
+        target.height
+    };
     let size = long_edge_dimensions(image.width, image.height, long);
     let sized;
     let pixels = if (size.width, size.height) == (image.width, image.height) {
         &decoded.pixels
     } else {
-        sized = decoded.pixels.resize_exact(size.width, size.height, FilterType::Lanczos3);
+        sized = decoded
+            .pixels
+            .resize_exact(size.width, size.height, FilterType::Lanczos3);
         &sized
     };
-    let encoded = first_within_limit(ladder(pixels, facts.has_alpha), target.max_bytes)?.into_inner();
+    let encoded =
+        first_within_limit(ladder(pixels, facts.has_alpha), target.max_bytes)?.into_inner();
     cancel.check()?;
     let seen = decode(&encoded.data, None)?;
     let f = seen.facts;
@@ -115,9 +143,18 @@ fn make(stored: &[u8], image: &ImageRef, target: &Target, cancel: &Cancel) -> Re
         || f.media_type != encoded.media_type
         || !alpha_is_compatible(Some(facts.has_alpha), f.media_type, f.has_alpha)
     {
-        return fail(Code::AttachmentWriteFailed, "Encoded model-request image does not match its verified metadata.");
+        return fail(
+            Code::AttachmentWriteFailed,
+            "Encoded model-request image does not match its verified metadata.",
+        );
     }
-    Ok(Made { data: encoded.data, media_type: encoded.media_type, width: encoded.width, height: encoded.height, has_alpha: f.has_alpha })
+    Ok(Made {
+        data: encoded.data,
+        media_type: encoded.media_type,
+        width: encoded.width,
+        height: encoded.height,
+        has_alpha: f.has_alpha,
+    })
 }
 
 fn write_cached(path: &Path, data: &[u8]) {

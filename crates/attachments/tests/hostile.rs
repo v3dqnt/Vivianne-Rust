@@ -1,5 +1,6 @@
 //! R3.2: every decoder of outside bytes gets hostile input. Nothing here may panic, hang or allocate wildly; a
 //! refusal or a harmless answer is the only outcome.
+#![allow(clippy::expect_used, clippy::unwrap_used, clippy::pedantic)] // tests assert by panicking
 
 mod common;
 
@@ -19,7 +20,14 @@ fn the_container_scanners_survive_every_truncation_of_every_format() {
         (MediaType::Png, png_with_text(&png(&gradient(9, 9)))),
         (MediaType::Jpeg, jpeg(&gradient(9, 9), 80)),
         (MediaType::Gif, gif(9, 9, 3)),
-        (MediaType::Webp, common::webp(&image::RgbaImage::from_pixel(9, 9, image::Rgba([1, 2, 3, 4])))),
+        (
+            MediaType::Webp,
+            common::webp(&image::RgbaImage::from_pixel(
+                9,
+                9,
+                image::Rgba([1, 2, 3, 4]),
+            )),
+        ),
     ];
     for (media_type, data) in &samples {
         for cut in every_cut(data) {
@@ -56,7 +64,13 @@ fn the_scanners_read_what_they_are_meant_to() {
     assert!(scan(MediaType::Png, &png_with_text(&png(&gradient(9, 9)))).carries_metadata);
     assert!(!scan(MediaType::Png, &png(&gradient(9, 9))).carries_metadata);
     assert!(!scan(MediaType::Jpeg, &jpeg(&gradient(9, 9), 80)).carries_metadata);
-    assert!(scan(MediaType::Jpeg, &common::jpeg_with_orientation(&jpeg(&gradient(9, 9), 80), 3)).carries_metadata);
+    assert!(
+        scan(
+            MediaType::Jpeg,
+            &common::jpeg_with_orientation(&jpeg(&gradient(9, 9), 80), 3)
+        )
+        .carries_metadata
+    );
     assert!(scan(MediaType::Gif, &gif(9, 9, 3)).animated);
     assert!(!scan(MediaType::Gif, &gif(9, 9, 1)).animated);
 }
@@ -64,12 +78,22 @@ fn the_scanners_read_what_they_are_meant_to() {
 #[test]
 fn decoding_refuses_garbage_truncation_and_wrong_headers_without_panicking() {
     let good = png(&gradient(30, 30));
-    let limits = Some(DecodeLimits { max_pixels: 64_000_000, max_dimension: 65_535 });
+    let limits = Some(DecodeLimits {
+        max_pixels: 64_000_000,
+        max_dimension: 65_535,
+    });
     for cut in every_cut(&good) {
         let _ = probe(cut);
         let _ = decode(cut, limits);
     }
-    for noise in [vec![0u8; 100], vec![0xFFu8; 100], b"\x89PNG\r\n\x1a\n".to_vec(), b"GIF89a".to_vec(), b"RIFF\0\0\0\0WEBP".to_vec(), vec![0xFF, 0xD8, 0xFF]] {
+    for noise in [
+        vec![0u8; 100],
+        vec![0xFFu8; 100],
+        b"\x89PNG\r\n\x1a\n".to_vec(),
+        b"GIF89a".to_vec(),
+        b"RIFF\0\0\0\0WEBP".to_vec(),
+        vec![0xFF, 0xD8, 0xFF],
+    ] {
         assert!(decode(&noise, limits).is_err(), "{noise:?}");
     }
 }
@@ -86,7 +110,10 @@ fn a_header_claiming_a_huge_raster_is_refused_before_it_is_decoded() {
     header.extend_from_slice(b"IHDR");
     header.extend_from_slice(&ihdr);
     header.extend_from_slice(&[0, 0, 0, 0]);
-    let limits = Some(DecodeLimits { max_pixels: 64_000_000, max_dimension: 65_535 });
+    let limits = Some(DecodeLimits {
+        max_pixels: 64_000_000,
+        max_dimension: 65_535,
+    });
     let start = std::time::Instant::now();
     assert!(decode(&header, limits).is_err());
     assert!(start.elapsed() < std::time::Duration::from_secs(5));

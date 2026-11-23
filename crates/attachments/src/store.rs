@@ -16,7 +16,9 @@ use crate::image::normalize::Policy;
 use crate::image::request::{RequestImage, Target, request_version, validate_target, variant_id};
 use crate::layout::Layout;
 use crate::limiter::{Cancel, Limiter};
-use crate::prepare::{Limits, Prepared, SaveImage, StoredImage, commit_prepared, prepare_image, read_image};
+use crate::prepare::{
+    Limits, Prepared, SaveImage, StoredImage, commit_prepared, prepare_image, read_image,
+};
 
 /// Most simultaneous image transformations a store may be set to.
 pub const MAX_COMPRESSION_CONCURRENCY: usize = 8;
@@ -96,19 +98,33 @@ impl Store {
     }
 
     /// Checks one batch against the count, byte and type limits, before any member is decoded.
-    pub fn check_batch(&self, count: usize, bytes: u64, types: impl IntoIterator<Item = vivianne_core::attachment::MediaType>) -> Result<()> {
+    pub fn check_batch(
+        &self,
+        count: usize,
+        bytes: u64,
+        types: impl IntoIterator<Item = vivianne_core::attachment::MediaType>,
+    ) -> Result<()> {
         let limits = &self.config.limits;
         if count > limits.max_images_per_message {
-            return fail(Code::TooManyImages, "Image batch exceeds the configured image-count limit.");
+            return fail(
+                Code::TooManyImages,
+                "Image batch exceeds the configured image-count limit.",
+            );
         }
         if bytes > limits.max_message_image_bytes {
-            return fail(Code::ImagesTooLarge, "Image batch exceeds the configured aggregate image-byte limit.");
+            return fail(
+                Code::ImagesTooLarge,
+                "Image batch exceeds the configured aggregate image-byte limit.",
+            );
         }
         for media_type in types {
             if !limits.media_types.contains(&media_type) {
                 return fail(
                     Code::UnsupportedImageType,
-                    format!("Image type {} is not accepted by this deployment.", media_type.mime()),
+                    format!(
+                        "Image type {} is not accepted by this deployment.",
+                        media_type.mime()
+                    ),
                 );
             }
         }
@@ -116,7 +132,8 @@ impl Store {
     }
 
     fn prepare(&self, input: &SaveImage) -> Result<Prepared> {
-        self.limiter.run(|| prepare_image(input, &self.config.limits, &self.config.policy))
+        self.limiter
+            .run(|| prepare_image(input, &self.config.limits, &self.config.policy))
     }
 
     /// Runs the whole admission policy for one image without storing it.
@@ -135,13 +152,23 @@ impl Store {
         let bytes = inputs.iter().map(|i| i.data.len() as u64).sum();
         self.check_batch(inputs.len(), bytes, inputs.iter().map(|i| i.media_type))?;
         let prepared = std::thread::scope(|scope| {
-            let workers: Vec<_> = inputs.iter().map(|input| scope.spawn(|| self.prepare(input))).collect();
+            let workers: Vec<_> = inputs
+                .iter()
+                .map(|input| scope.spawn(|| self.prepare(input)))
+                .collect();
             workers
                 .into_iter()
-                .map(|w| w.join().unwrap_or_else(|_| fail(Code::AttachmentWriteFailed, "Image preparation failed.")))
+                .map(|w| {
+                    w.join().unwrap_or_else(|_| {
+                        fail(Code::AttachmentWriteFailed, "Image preparation failed.")
+                    })
+                })
                 .collect::<Result<Vec<_>>>()
         })?;
-        prepared.iter().map(|p| commit_prepared(&self.layout, p)).collect()
+        prepared
+            .iter()
+            .map(|p| commit_prepared(&self.layout, p))
+            .collect()
     }
 
     /// Reads a stored image, verified against its reference.
@@ -160,8 +187,19 @@ impl Store {
     }
 
     /// Stores a file from a reader, counting its bytes as they come.
-    pub fn save_file_stream(&self, reader: &mut dyn Read, name: Option<&str>, cancel: &Cancel) -> Result<FileRef> {
-        save_file_stream(&self.layout, reader, name, self.config.max_file_bytes, cancel)
+    pub fn save_file_stream(
+        &self,
+        reader: &mut dyn Read,
+        name: Option<&str>,
+        cancel: &Cancel,
+    ) -> Result<FileRef> {
+        save_file_stream(
+            &self.layout,
+            reader,
+            name,
+            self.config.max_file_bytes,
+            cancel,
+        )
     }
 
     /// Reads a stored file in verified chunks.
@@ -176,7 +214,12 @@ impl Store {
 
     /// The version of a stored image sized for one route. Callers that ask for the same version at the same time
     /// share one transformation; the work stops only when the last of them cancels.
-    pub fn read_image_request(self: &Arc<Self>, image: &ImageRef, target: &Target, cancel: &Cancel) -> Result<RequestImage> {
+    pub fn read_image_request(
+        self: &Arc<Self>,
+        image: &ImageRef,
+        target: &Target,
+        cancel: &Cancel,
+    ) -> Result<RequestImage> {
         cancel.check()?;
         validate_target(target)?;
         let key = variant_id(&image.attachment_id, target);
@@ -194,13 +237,25 @@ impl Store {
         flight.waiters.store(1, Ordering::SeqCst);
         flights.insert(key.to_owned(), flight.clone());
         drop(flights);
-        let (store, worker, image, target, key) = (self.clone(), flight.clone(), image.clone(), *target, key.to_owned());
+        let (store, worker, image, target, key) = (
+            self.clone(),
+            flight.clone(),
+            image.clone(),
+            *target,
+            key.to_owned(),
+        );
         std::thread::spawn(move || {
             // A panic in image work must still settle the flight, or its waiters would wait for ever.
             let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 store.limiter.run(|| {
                     let stored = read_image(&store.layout, &image, &worker.cancel)?;
-                    request_version(|hash| store.layout.request_image_path(hash), &stored.data, &image, &target, &worker.cancel)
+                    request_version(
+                        |hash| store.layout.request_image_path(hash),
+                        &stored.data,
+                        &image,
+                        &target,
+                        &worker.cancel,
+                    )
                 })
             }))
             .unwrap_or_else(|_| fail(Code::AttachmentWriteFailed, "Image transformation failed."));

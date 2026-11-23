@@ -1,7 +1,7 @@
 //! Shared helpers for the attachment tests: a scratch home that cleans up read-only objects, and images built in code.
 //! No test reads the real `~/.viv` (R7.3).
 
-#![allow(dead_code)]
+#![allow(dead_code, clippy::expect_used, clippy::unwrap_used, clippy::pedantic)]
 
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
@@ -32,16 +32,18 @@ impl Scratch {
 }
 
 fn make_tree_writable(path: &Path) {
-    let Ok(meta) = std::fs::symlink_metadata(path) else { return };
+    let Ok(meta) = std::fs::symlink_metadata(path) else {
+        return;
+    };
     let mut permissions = meta.permissions();
     #[allow(clippy::permissions_set_readonly_false)]
     permissions.set_readonly(false);
     let _ = std::fs::set_permissions(path, permissions);
-    if meta.is_dir() {
-        if let Ok(entries) = std::fs::read_dir(path) {
-            for entry in entries.flatten() {
-                make_tree_writable(&entry.path());
-            }
+    if meta.is_dir()
+        && let Ok(entries) = std::fs::read_dir(path)
+    {
+        for entry in entries.flatten() {
+            make_tree_writable(&entry.path());
         }
     }
 }
@@ -55,14 +57,22 @@ impl Drop for Scratch {
 
 /// A smooth colour gradient: compresses well.
 pub fn gradient(width: u32, height: u32) -> RgbImage {
-    RgbImage::from_fn(width, height, |x, y| Rgb([(x * 255 / width.max(1)) as u8, (y * 255 / height.max(1)) as u8, 128]))
+    RgbImage::from_fn(width, height, |x, y| {
+        Rgb([
+            (x * 255 / width.max(1)) as u8,
+            (y * 255 / height.max(1)) as u8,
+            128,
+        ])
+    })
 }
 
 /// Pixels that do not compress: a stand-in for a photograph.
 pub fn noise(width: u32, height: u32) -> RgbImage {
     let mut state = 0x2545_F491_4F6C_DD1Du64;
     RgbImage::from_fn(width, height, |_, _| {
-        state = state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         let b = state.to_be_bytes();
         Rgb([b[0], b[2], b[4]])
     })
@@ -70,28 +80,51 @@ pub fn noise(width: u32, height: u32) -> RgbImage {
 
 pub fn png(img: &RgbImage) -> Vec<u8> {
     let mut out = Vec::new();
-    PngEncoder::new(&mut out).write_image(img.as_raw(), img.width(), img.height(), ExtendedColorType::Rgb8).expect("png");
+    PngEncoder::new(&mut out)
+        .write_image(
+            img.as_raw(),
+            img.width(),
+            img.height(),
+            ExtendedColorType::Rgb8,
+        )
+        .expect("png");
     out
 }
 
 pub fn png_rgba(img: &RgbaImage) -> Vec<u8> {
     let mut out = Vec::new();
-    PngEncoder::new(&mut out).write_image(img.as_raw(), img.width(), img.height(), ExtendedColorType::Rgba8).expect("png");
+    PngEncoder::new(&mut out)
+        .write_image(
+            img.as_raw(),
+            img.width(),
+            img.height(),
+            ExtendedColorType::Rgba8,
+        )
+        .expect("png");
     out
 }
 
 /// A 16-bit PNG.
 pub fn png16(width: u32, height: u32) -> Vec<u8> {
-    let samples: Vec<u8> = (0..width * height * 3).flat_map(|i| ((i * 257) as u16).to_be_bytes()).collect();
+    let samples: Vec<u8> = (0..width * height * 3)
+        .flat_map(|i| ((i * 257) as u16).to_be_bytes())
+        .collect();
     let mut out = Vec::new();
-    PngEncoder::new(&mut out).write_image(&samples, width, height, ExtendedColorType::Rgb16).expect("png16");
+    PngEncoder::new(&mut out)
+        .write_image(&samples, width, height, ExtendedColorType::Rgb16)
+        .expect("png16");
     out
 }
 
 pub fn jpeg(img: &RgbImage, quality: u8) -> Vec<u8> {
     let mut out = Vec::new();
     JpegEncoder::new_with_quality(&mut out, quality)
-        .write_image(img.as_raw(), img.width(), img.height(), ExtendedColorType::Rgb8)
+        .write_image(
+            img.as_raw(),
+            img.width(),
+            img.height(),
+            ExtendedColorType::Rgb8,
+        )
         .expect("jpeg");
     out
 }
@@ -100,7 +133,12 @@ pub fn jpeg(img: &RgbImage, quality: u8) -> Vec<u8> {
 pub fn webp(img: &RgbaImage) -> Vec<u8> {
     let mut out = Vec::new();
     image::codecs::webp::WebPEncoder::new_lossless(&mut out)
-        .write_image(img.as_raw(), img.width(), img.height(), ExtendedColorType::Rgba8)
+        .write_image(
+            img.as_raw(),
+            img.width(),
+            img.height(),
+            ExtendedColorType::Rgba8,
+        )
         .expect("webp");
     out
 }
@@ -112,8 +150,16 @@ pub fn gif(width: u32, height: u32, frames: u8) -> Vec<u8> {
         let mut encoder = GifEncoder::new(&mut out);
         encoder.set_repeat(Repeat::Infinite).expect("repeat");
         for i in 0..frames {
-            let img = RgbaImage::from_pixel(width, height, Rgba([i.wrapping_mul(60), 40, 200, 255]));
-            encoder.encode_frame(Frame::from_parts(img, 0, 0, Delay::from_numer_denom_ms(100, 1))).expect("frame");
+            let img =
+                RgbaImage::from_pixel(width, height, Rgba([i.wrapping_mul(60), 40, 200, 255]));
+            encoder
+                .encode_frame(Frame::from_parts(
+                    img,
+                    0,
+                    0,
+                    Delay::from_numer_denom_ms(100, 1),
+                ))
+                .expect("frame");
         }
     }
     out
@@ -150,5 +196,9 @@ pub fn png_with_text(png: &[u8]) -> Vec<u8> {
 }
 
 pub fn dimensions_of(data: &[u8]) -> (u32, u32) {
-    image::ImageReader::new(Cursor::new(data)).with_guessed_format().expect("format").into_dimensions().expect("size")
+    image::ImageReader::new(Cursor::new(data))
+        .with_guessed_format()
+        .expect("format")
+        .into_dimensions()
+        .expect("size")
 }

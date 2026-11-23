@@ -67,7 +67,8 @@ mod tests {
             read_at(&path),
             State {
                 model: Some(("p".into(), "m".into())),
-                rail_tab: Some("files".into())
+                rail_tab: Some("files".into()),
+                rail_collapsed: Vec::new(),
             }
         );
         std::fs::write(&path, "not json").expect("writes");

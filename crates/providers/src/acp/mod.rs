@@ -42,8 +42,8 @@ pub use auth::{
 pub use conn::trace_lines;
 use conn::{Conn, quiet, spawn, trace};
 pub use info::{AgentCommand, AgentModel, SessionInfo, context_usage, current_model_id, models_of};
-pub use models::{known_models, preferred_model};
 pub use install::InstallProgress;
+pub use models::{known_models, preferred_model};
 pub use own_tools::{CallFn, McpServerSpec, OfferedTool, OwnTools, ToolOutput};
 pub use registry::{Harness, find, harnesses, is_usable};
 pub use session::Line;

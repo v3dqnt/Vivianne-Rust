@@ -28,7 +28,11 @@ impl Cancel {
 
     /// `Err(Cancelled)` once cancelled.
     pub fn check(&self) -> Result<()> {
-        if self.is_cancelled() { Err(Error::Cancelled) } else { Ok(()) }
+        if self.is_cancelled() {
+            Err(Error::Cancelled)
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -50,7 +54,11 @@ struct State {
 impl Limiter {
     #[must_use]
     pub fn new(limit: usize) -> Self {
-        Self { limit: limit.max(1), state: Mutex::new(State::default()), turn: Condvar::new() }
+        Self {
+            limit: limit.max(1),
+            state: Mutex::new(State::default()),
+            turn: Condvar::new(),
+        }
     }
 
     #[must_use]
@@ -70,7 +78,10 @@ impl Limiter {
         state.next_ticket += 1;
         state.waiting.push_back(ticket);
         while state.running >= self.limit || state.waiting.front() != Some(&ticket) {
-            state = self.turn.wait(state).unwrap_or_else(PoisonError::into_inner);
+            state = self
+                .turn
+                .wait(state)
+                .unwrap_or_else(PoisonError::into_inner);
         }
         state.waiting.pop_front();
         state.running += 1;

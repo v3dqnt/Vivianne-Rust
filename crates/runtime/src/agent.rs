@@ -497,8 +497,13 @@ impl Agent {
         cancel: &CancellationToken,
     ) -> Result<Opened, ProviderError> {
         let projected = match &self.attachments {
-            Some(store) => crate::attachments::project(store, history, target.provider.id(), cancel).await,
-            None => crate::attachments::Projection { messages: history.to_vec(), images: Vec::new() },
+            Some(store) => {
+                crate::attachments::project(store, history, target.provider.id(), cancel).await
+            }
+            None => crate::attachments::Projection {
+                messages: history.to_vec(),
+                images: Vec::new(),
+            },
         };
         let request = self.request(target, &projected.messages, thinking, projected.images);
         let on_retry = |retrying: &crate::resilience::Retrying<'_>| {

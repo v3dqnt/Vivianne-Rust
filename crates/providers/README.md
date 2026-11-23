@@ -22,3 +22,9 @@ turn (recall, remember, list_threads, read_thread, lsp), served either on the ag
 `mcp/message`, ACP v2) or on a loopback HTTP endpoint behind a bearer token and a loopback `Host` check. A call to a
 tool not on the list, or outside a running turn, is refused. The user's own MCP servers are handed over in
 `session/new` too. The agent is told what it has (and whether plan mode is on) once, and again only when that changes.
+
+## Boundary and checks
+
+- **May depend on** (R1.1, `scripts/check-boundaries.sh`): `core`, `ai`.
+- **State it owns** (R1.6): coding agents installed under `~/.viv/agents`, which agents are ready (`acp-ready.json`), saved agent sessions, and each agent's chosen model (`acp-models.json`).
+- **Check it:** `cargo test -p vivianne-providers` and `cargo clippy -p vivianne-providers --all-targets`. Tests read no real `~/.viv` and need no network (R7.3).
