@@ -202,7 +202,8 @@ fn the_description_tells_how_to_write_a_program_and_lists_the_tools_with_their_a
     let definition = RunCode::new(&dir).definition().expect("definition");
     let text = definition["description"].as_str().expect("description");
     assert!(
-        text.contains("await tools.read({ path, limit?")
+        text.contains("await tools.read({ path,")
+            && text.contains("limit?")
             && text.contains("await tools.grep({ pattern, path?")
             && text.contains("await tools.glob("),
         "{text}"

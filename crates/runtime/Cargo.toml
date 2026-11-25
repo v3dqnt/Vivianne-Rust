@@ -26,6 +26,8 @@ uuid = { version = "1", features = ["v4"] }
 rand = "0.9"
 similar = "2"
 sha2 = "0.10"
+# Gzip for the kept generations of a thread log (pure Rust, already in the tree through the HTTP stack).
+flate2 = "1"
 
 [dev-dependencies]
 uuid = { version = "1", features = ["v4"] }

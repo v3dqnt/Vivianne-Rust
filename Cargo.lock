@@ -10086,6 +10086,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "cron",
+ "flate2",
  "futures",
  "rand 0.9.5",
  "serde",

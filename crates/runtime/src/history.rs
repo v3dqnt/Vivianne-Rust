@@ -19,6 +19,23 @@ const MASK_MIN_CHARS: usize = 1_200;
 const MASK_BATCH_CHARS: usize = 80_000;
 const MASK_MARKER: &str = "[Earlier output elided";
 
+/// Every tool call in the history, in order, with its arguments and whether it worked (it has a result that is not an
+/// error). A call with no recorded result did not work as far as anyone can tell.
+#[must_use]
+pub fn calls_with_outcomes(history: &[Message]) -> Vec<(String, serde_json::Value, bool)> {
+    let results: HashMap<&str, bool> = history
+        .iter()
+        .filter(|m| m.role == Role::Tool)
+        .filter_map(|m| Some((m.tool_call_id.as_deref()?, !m.text.starts_with("error:"))))
+        .collect();
+    history
+        .iter()
+        .filter(|m| m.role == Role::Assistant)
+        .flat_map(|m| m.tool_calls.iter())
+        .map(|call| (call.name.clone(), call.args.clone(), results.get(call.id.as_str()).copied().unwrap_or(false)))
+        .collect()
+}
+
 /// Makes the history acceptable to a provider: each assistant message's calls are answered right after it (a
 /// missing result becomes an error saying the outcome is unknown), and a result with no call is dropped. A run
 /// that was cut off (the app closed, a crash) leaves such holes, and a provider refuses the whole history for them.
@@ -240,6 +257,29 @@ pub fn pick_cut(history: &[Message], keep_tokens: u32, min_messages: usize) -> u
 }
 
 #[cfg(test)]
+mod outcome_tests {
+    use serde_json::json;
+    use vivianne_core::{Message, Role, ToolCall};
+
+    use super::calls_with_outcomes;
+
+    #[test]
+    fn each_call_comes_back_with_whether_it_worked() {
+        let call = |id: &str, name: &str| ToolCall { id: id.into(), name: name.into(), args: json!({ "path": id }) };
+        let history = vec![
+            Message::new(Role::User, "go"),
+            Message::assistant(String::new(), vec![call("a", "x"), call("b", "y"), call("c", "z")]),
+            Message::tool_result("a", "fine".to_owned()),
+            Message::tool_result("b", "error: no".to_owned()),
+        ];
+        let got = calls_with_outcomes(&history);
+        assert_eq!(got.iter().map(|(n, _, ok)| (n.as_str(), *ok)).collect::<Vec<_>>(), [("x", true), ("y", false), ("z", false)]);
+        assert_eq!(got[0].1["path"], "a");
+        assert!(calls_with_outcomes(&[]).is_empty());
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use serde_json::json;
     use vivianne_core::ToolCall;
@@ -349,6 +389,7 @@ mod tests {
             attachments: vec![],
             context: None,
             at: None,
+            timing: None,
         }
     }
 

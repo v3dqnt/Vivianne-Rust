@@ -64,7 +64,7 @@ pub enum Mode {
 
 /// Tools that only look. Anything not named here (a new tool, an editing one such as `lsp_edit`) counts as one that
 /// changes things: a list of what is safe fails closed, a list of what is dangerous fails open.
-const LOOK_ONLY_TOOLS: [&str; 21] = [
+const LOOK_ONLY_TOOLS: [&str; 22] = [
     "debug",
     "read",
     "ls",
@@ -90,6 +90,8 @@ const LOOK_ONLY_TOOLS: [&str; 21] = [
     "present",
     // Runs a program that can call only the tools that read.
     "run_code",
+    // Moves where relative paths start, inside the project; changes no file.
+    "working_directory",
 ];
 
 /// The tools of the `computer` MCP server (agent-desktop), by public name: `mcp__computer__desktop_<tool>`.
@@ -275,6 +277,16 @@ pub struct ToolCall {
     pub args: Value,
 }
 
+/// How long one model reply took to arrive, split where a person feels it: the wait before anything came back, and the
+/// time the rest took to stream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Timing {
+    /// From asking to the first thing the model sent, in milliseconds.
+    pub first_token_ms: u64,
+    /// From that first thing to the end of the reply, in milliseconds.
+    pub decode_ms: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Message {
     pub role: Role,
@@ -299,6 +311,9 @@ pub struct Message {
     /// When the message was added, in milliseconds since the Unix epoch. Absent in threads saved before it existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub at: Option<u64>,
+    /// Set on assistant messages the agent loop streamed: how long the reply took. Absent in older threads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timing: Option<Timing>,
 }
 
 fn lenient_context<'de, D>(deserializer: D) -> Result<Option<context::ContextSource>, D::Error>
@@ -320,6 +335,7 @@ impl Message {
             attachments: Vec::new(),
             context: None,
             at: None,
+            timing: None,
         }
     }
 
@@ -336,6 +352,13 @@ impl Message {
     #[must_use]
     pub fn at(mut self, millis: u64) -> Self {
         self.at = Some(millis);
+        self
+    }
+
+    /// The message with how long its reply took to arrive.
+    #[must_use]
+    pub fn timed(mut self, timing: Timing) -> Self {
+        self.timing = Some(timing);
         self
     }
 

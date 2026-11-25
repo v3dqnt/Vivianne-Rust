@@ -17,6 +17,7 @@ pub mod present;
 pub mod ptc;
 pub mod run_code;
 pub mod validate;
+pub mod workdir;
 #[cfg(test)]
 mod testing;
 #[rustfmt::skip]
@@ -66,6 +67,8 @@ pub struct Toolbox {
     conditions: std::collections::HashMap<String, Condition>,
     /// The step the conditions are judged against, set by the loop before each model call.
     step: std::sync::Mutex<StepInfo>,
+    /// Where relative paths and commands start; the agent can move it inside the project.
+    workdir: workdir::WorkingDirectory,
 }
 
 impl std::fmt::Debug for Toolbox {
@@ -94,7 +97,22 @@ impl Toolbox {
             tools: Vec::new(),
             conditions: std::collections::HashMap::new(),
             step: std::sync::Mutex::new(StepInfo::default()),
+            workdir: workdir::WorkingDirectory::new(cwd),
         }
+    }
+
+    /// An empty box working in `root` that shares an existing working directory (the inner box of `run_code`).
+    #[must_use]
+    pub fn with_directory(root: &Path, workdir: workdir::WorkingDirectory) -> Self {
+        let mut toolbox = Self::new(root);
+        toolbox.workdir = workdir;
+        toolbox
+    }
+
+    /// Where relative paths and commands start now, and the means to move it.
+    #[must_use]
+    pub fn working_directory(&self) -> &workdir::WorkingDirectory {
+        &self.workdir
     }
 
     /// The coding tools, working in `root`.
@@ -119,7 +137,8 @@ impl Toolbox {
         toolbox.add(simple::EditFile::new(workspace));
         toolbox.add(results::ReadToolResult);
         toolbox.add(present::Present::new(root));
-        toolbox.add(run_code::RunCode::new(root));
+        toolbox.add(run_code::RunCode::with_directory(root, toolbox.workdir.clone()));
+        toolbox.add(workdir::WorkingDirectoryTool::new(toolbox.workdir.clone()));
         // Only where a LibreOffice is installed: a tool that cannot work is not offered.
         if files::office_pdf::tool::available() {
             toolbox.add(files::office_pdf::tool::ConvertToPdf::new(root));
@@ -196,7 +215,9 @@ impl Toolbox {
             return Some(capped(name, result));
         }
         let tool = self.get(name).filter(|tool| self.is_active(tool.name()))?;
-        Some(capped(name, tool.execute(args, &self.cwd).await))
+        // Relative paths start from the working directory, wherever the agent has moved it.
+        let args = self.workdir.localize(name, args);
+        Some(capped(name, tool.execute(&args, &self.cwd).await))
     }
 
     /// The definitions of the tools in this box, in the order they were added.

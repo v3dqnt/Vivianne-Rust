@@ -8,7 +8,7 @@ use futures::StreamExt;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
-use vivianne_core::{Message, Mode, Role, Thinking, ToolCall};
+use vivianne_core::{Message, Mode, Role, Thinking, Timing, ToolCall};
 use vivianne_providers::{
     ChatEvent, ChatRequest, EventStream, Provider, ProviderError, Spent, ToolSpec,
 };
@@ -42,6 +42,27 @@ const CANCELLED_TOOL: &str = "error: cancelled by the user before this finished"
 pub enum AgentError {
     #[error(transparent)]
     Provider(#[from] ProviderError),
+    /// The conversation could not be made durable, so nothing was sent and no tool ran (see [`Checkpoint`]).
+    #[error("could not save the conversation before going on: {0}")]
+    Checkpoint(String),
+}
+
+/// Makes the conversation as it stands durable. Asked before every model request and before the tools of a step run:
+/// if it fails, the model is not asked and the tools do not run, so what happens in the world is never ahead of what
+/// was saved. Port of the original's session checkpoint policy.
+#[derive(Clone)]
+pub struct Checkpoint(Arc<dyn Fn(&[Message]) -> Result<(), String> + Send + Sync>);
+
+impl Checkpoint {
+    pub fn new(save: impl Fn(&[Message]) -> Result<(), String> + Send + Sync + 'static) -> Self {
+        Self(Arc::new(save))
+    }
+}
+
+impl std::fmt::Debug for Checkpoint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Checkpoint")
+    }
 }
 
 /// One place a request can go: a provider (which holds its own key) and a model on it.
@@ -102,6 +123,8 @@ pub struct Agent {
     result_filter: Option<ResultFilter>,
     /// Prompt sections a caller added or replaced, by name.
     sections: Mutex<Sections>,
+    /// Where the conversation is made durable mid-run, when something wants that.
+    checkpoint: Mutex<Option<Checkpoint>>,
     /// Messages sent while a run is going, added before its next model call.
     inbox: Mutex<std::collections::VecDeque<String>>,
     /// Asked for a block of standing context (core memory) at the start of every run.
@@ -151,6 +174,9 @@ impl std::fmt::Debug for ContextSource {
 struct Opened {
     first: Option<ChatEvent>,
     rest: EventStream,
+    /// When the request went out, and when the first event came back.
+    asked: std::time::Instant,
+    answered: std::time::Instant,
 }
 
 impl Agent {
@@ -178,6 +204,7 @@ impl Agent {
             result_filter: None,
             sections: Mutex::new(Sections::default()),
             inbox: Mutex::new(std::collections::VecDeque::new()),
+            checkpoint: Mutex::new(None),
             context_source: None,
             context: Mutex::new(None),
             attachments: None,
@@ -264,6 +291,17 @@ impl Agent {
         if let Some(mode) = mode.prompt_section() {
             sections.set("mode", order::MODE, mode);
         }
+        if self.tools.working_directory().moved() {
+            sections.set(
+                "working-directory",
+                order::CONTEXT + 50,
+                format!(
+                    "Current working directory: {}. Relative paths and commands start here; the project's folder is {}.",
+                    self.tools.working_directory().get().display(),
+                    self.tools.working_directory().root().display()
+                ),
+            );
+        }
         // What the caller added or replaced by name wins over the built-in sections.
         sections.merge(&self.sections.lock().unwrap_or_else(PoisonError::into_inner));
         sections.assemble()
@@ -283,6 +321,20 @@ impl Agent {
     /// Takes a caller's section back out. A built-in one it replaced comes back.
     pub fn remove_section(&self, name: &str) -> bool {
         self.sections.lock().unwrap_or_else(PoisonError::into_inner).remove(name)
+    }
+
+    /// Chooses where the conversation is saved mid-run (`None` stops saving there). See [`Checkpoint`].
+    pub fn set_checkpoint(&self, checkpoint: Option<Checkpoint>) {
+        *self.checkpoint.lock().unwrap_or_else(PoisonError::into_inner) = checkpoint;
+    }
+
+    /// Saves the conversation now, if a place was chosen. An error stops the run before anything goes out.
+    fn save_now(&self, history: &[Message]) -> Result<(), AgentError> {
+        let place = self.checkpoint.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        match place {
+            Some(save) => (save.0)(history).map_err(AgentError::Checkpoint),
+            None => Ok(()),
+        }
     }
 
     /// Sends a message into a run that is going: it is added to the conversation before the next model call, and a
@@ -463,6 +515,8 @@ impl Agent {
         }
         let mut attempts = Attempts::default();
         let mut condensed_for_overflow = false;
+        // Where the conversation had moved its working directory, read back from what it did (also after a resume).
+        self.tools.working_directory().replay(&crate::history::calls_with_outcomes(history));
         // Paths the tools used since the last model call: a folder they reach may hold instructions of its own.
         let mut touched: Vec<String> = Vec::new();
         for step in 1..=self.max_steps {
@@ -484,6 +538,8 @@ impl Agent {
                 workspace.prepare(history, step, &touched);
             }
             touched.clear();
+            // Everything so far (the person's message, the last results) is durable before the model is asked.
+            self.save_now(history)?;
             let streamed = tokio::select! {
                 () = cancel.cancelled() => None,
                 streamed = self.stream_step(history, events, thinking, cancel) => Some(streamed),
@@ -492,7 +548,7 @@ impl Agent {
                 send(events, AgentEvent::Stopped);
                 return Ok(());
             };
-            let (text, calls, spent) = match streamed {
+            let (text, calls, spent, timing) = match streamed {
                 Ok(step) => {
                     condensed_for_overflow = false;
                     step
@@ -513,7 +569,11 @@ impl Agent {
             }
             let finished = calls.is_empty();
             let calls = unique_ids(calls, history.len());
-            history.push(Message::assistant(text, calls.clone()));
+            history.push(
+                Message::assistant(text, calls.clone())
+                    .at(crate::workspace_context::now_ms())
+                    .timed(timing),
+            );
             if finished {
                 // Something said while the model was answering still gets its answer.
                 if self.has_steering() {
@@ -522,6 +582,8 @@ impl Agent {
                 send(events, AgentEvent::Done);
                 return Ok(());
             }
+            // What the model asked for is durable before any of it happens.
+            self.save_now(history)?;
             touched.extend(calls.iter().flat_map(|c| touched_paths(&c.args)));
             let stopped = self
                 .run_tools(&calls, history, events, cancel, &mut attempts)
@@ -592,6 +654,8 @@ impl Agent {
                         attempts.succeeded(call);
                     }
                 }
+                // Stamped when it is added, so a conversation's tool time can be read back from it.
+                answer.at = Some(crate::workspace_context::now_ms());
                 history.push(answer);
             }
             next = end;
@@ -755,7 +819,7 @@ impl Agent {
             // What the summariser says is not part of the conversation, so its text goes nowhere.
             let (sink, _unread) = tokio::sync::mpsc::unbounded_channel();
             let asked = async { collect(open(target, &request).await?, &sink).await };
-            if let Ok(Ok((text, _, spent))) = tokio::time::timeout(SUMMARY_TIMEOUT, asked).await {
+            if let Ok(Ok((text, _, spent, _))) = tokio::time::timeout(SUMMARY_TIMEOUT, asked).await {
                 if let Some(spent) = spent {
                     send(events, usage_event(spent));
                 }
@@ -782,7 +846,7 @@ impl Agent {
         };
         let (sink, _unread) = tokio::sync::mpsc::unbounded_channel();
         let asked = async { collect(open(target, &request).await?, &sink).await };
-        let (text, _, _) = tokio::time::timeout(TITLE_TIMEOUT, asked)
+        let (text, ..) = tokio::time::timeout(TITLE_TIMEOUT, asked)
             .await
             .ok()?
             .ok()?;
@@ -894,13 +958,24 @@ impl Agent {
 /// Starts a stream and reads its first event, so a failure that comes back as the first item is
 /// seen here and not after the caller has started showing output.
 async fn open(target: &Target, request: &ChatRequest) -> Result<Opened, ProviderError> {
+    let asked = std::time::Instant::now();
     let mut rest = target.provider.stream(request).await?;
     let first = rest.next().await.transpose()?;
-    Ok(Opened { first, rest })
+    Ok(Opened {
+        first,
+        rest,
+        asked,
+        answered: std::time::Instant::now(),
+    })
 }
 
-/// What one model call came to: its text, the tool calls it asked for, and what it used.
-type Step = (String, Vec<ToolCall>, Option<Spent>);
+/// What one model call came to: its text, the tool calls it asked for, what it used, and how long it took.
+type Step = (String, Vec<ToolCall>, Option<Spent>, Timing);
+
+/// Milliseconds between two moments, saturating.
+fn millis_between(from: std::time::Instant, to: std::time::Instant) -> u64 {
+    u64::try_from(to.saturating_duration_since(from).as_millis()).unwrap_or(u64::MAX)
+}
 
 /// Reads a stream to its end, sending text on as it arrives. What the call used is summed, so a stream that
 /// reports it in pieces still counts as one call.
@@ -908,7 +983,12 @@ async fn collect(
     opened: Opened,
     events: &UnboundedSender<AgentEvent>,
 ) -> Result<Step, ProviderError> {
-    let Opened { first, rest } = opened;
+    let Opened {
+        first,
+        rest,
+        asked,
+        answered,
+    } = opened;
     let mut stream = futures::stream::iter(first.map(Ok)).chain(rest);
     let (mut text, mut calls, mut spent) = (String::new(), Vec::new(), None::<Spent>);
     while let Some(event) = stream.next().await {
@@ -925,7 +1005,11 @@ async fn collect(
             ChatEvent::Done => break,
         }
     }
-    Ok((text, calls, spent))
+    let timing = Timing {
+        first_token_ms: millis_between(asked, answered),
+        decode_ms: millis_between(answered, std::time::Instant::now()),
+    };
+    Ok((text, calls, spent, timing))
 }
 
 fn usage_event(spent: Spent) -> AgentEvent {
@@ -1147,6 +1231,21 @@ mod tests {
             cache_write: 0,
             cost,
         }
+    }
+
+    #[tokio::test]
+    async fn every_reply_the_loop_streamed_carries_how_long_it_took() {
+        let provider = Scripted::new(vec![vec![ChatEvent::Text("hello".into()), ChatEvent::Done]]);
+        let (tx, _rx) = unbounded_channel();
+        let mut history = user("ping");
+        agent(provider).run(&mut history, &tx, Thinking::Low).await.unwrap();
+        let reply = history.iter().find(|m| m.role == Role::Assistant).expect("a reply");
+        let timing = reply.timing.expect("the reply was timed");
+        assert!(timing.first_token_ms < 5_000 && timing.decode_ms < 5_000, "{timing:?}");
+        let json = serde_json::to_value(reply).expect("serializes");
+        assert!(json["timing"]["first_token_ms"].is_u64(), "kept in the saved thread: {json}");
+        let user_json = serde_json::to_value(&history[0]).expect("serializes");
+        assert!(user_json.get("timing").is_none(), "nothing is written where there is nothing to say");
     }
 
     #[tokio::test]
@@ -1788,6 +1887,83 @@ mod tests {
         assert_eq!(scripted.calls(), 2, "a second call answered what was said during the first");
         assert_eq!(history.last().map(|m| m.text.as_str()), Some("answer to the extra"));
         assert!(!agent.has_steering());
+    }
+
+    #[tokio::test]
+    async fn the_conversation_is_saved_before_each_model_request_and_before_the_tools_of_a_step_run() {
+        let saved: Arc<Mutex<Vec<(usize, String)>>> = Arc::new(Mutex::new(Vec::new()));
+        let provider = Scripted::new(vec![vec![call("c1", "echo"), ChatEvent::Done], vec![ChatEvent::Text("done".into()), ChatEvent::Done]]);
+        let mut tools = Toolbox::new(std::path::Path::new("."));
+        tools.add(Echo);
+        let agent = Agent::new(provider, "m", None, tools);
+        let log = saved.clone();
+        agent.set_checkpoint(Some(Checkpoint::new(move |history: &[Message]| {
+            log.lock().unwrap().push((history.len(), history.last().map(|m| m.role).map_or("none", |r| if r == Role::Tool { "tool" } else if r == Role::Assistant { "assistant" } else { "user" }).to_owned()));
+            Ok(())
+        })));
+        let (tx, _rx) = unbounded_channel();
+        let mut history = user("go");
+        agent.run(&mut history, &tx, Thinking::default()).await.expect("runs");
+        let saved = saved.lock().unwrap().clone();
+        // Before request 1 (the person's message); before the tool ran (the model's call is in); before request 2 (the result is in).
+        assert_eq!(saved, [(1, "user".to_owned()), (2, "assistant".to_owned()), (3, "tool".to_owned())]);
+    }
+
+    #[tokio::test]
+    async fn a_failed_save_stops_the_run_before_the_model_is_asked_or_a_tool_runs() {
+        let provider = Scripted::new(vec![vec![call("c1", "echo"), ChatEvent::Done]]);
+        let mut tools = Toolbox::new(std::path::Path::new("."));
+        tools.add(Echo);
+        let agent = Agent::new(provider.clone(), "m", None, tools);
+        agent.set_checkpoint(Some(Checkpoint::new(|_: &[Message]| Err("disk full".to_owned()))));
+        let (tx, _rx) = unbounded_channel();
+        let mut history = user("go");
+        let error = agent.run(&mut history, &tx, Thinking::default()).await.unwrap_err();
+        assert!(matches!(&error, AgentError::Checkpoint(why) if why == "disk full"), "{error}");
+        assert_eq!(provider.calls(), 0, "the model was never asked");
+        // A save that fails only after the model answered stops the tools from running.
+        let provider = Scripted::new(vec![vec![call("c1", "echo"), ChatEvent::Done]]);
+        let mut tools = Toolbox::new(std::path::Path::new("."));
+        tools.add(Echo);
+        let agent = Agent::new(provider.clone(), "m", None, tools);
+        let saves = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = saves.clone();
+        agent.set_checkpoint(Some(Checkpoint::new(move |_: &[Message]| if counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 { Ok(()) } else { Err("gone".to_owned()) })));
+        let mut history = user("go");
+        assert!(agent.run(&mut history, &tx, Thinking::default()).await.is_err());
+        assert_eq!(provider.calls(), 1);
+        assert!(history.iter().all(|m| m.role != Role::Tool), "no tool ran, so there is no result: {history:?}");
+    }
+
+    #[tokio::test]
+    async fn without_a_place_to_save_nothing_is_asked_of_anyone() {
+        let provider = Scripted::new(vec![vec![ChatEvent::Text("hi".into()), ChatEvent::Done]]);
+        let agent = Agent::new(provider, "m", None, toolbox());
+        let (tx, _rx) = unbounded_channel();
+        let mut history = user("go");
+        agent.run(&mut history, &tx, Thinking::default()).await.expect("runs");
+    }
+
+    #[tokio::test]
+    async fn a_resumed_conversation_is_back_in_the_directory_it_had_moved_to_and_the_model_is_told() {
+        let root = std::fs::canonicalize(std::env::temp_dir()).expect("tmp").join(format!("viv-resume-cwd-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(root.join("sub")).expect("dirs");
+        let toolbox = Toolbox::coding(&root);
+        let provider = Scripted::new(vec![vec![ChatEvent::Text("ok".into()), ChatEvent::Done]]);
+        let agent = Agent::new(provider.clone(), "m", Some("DIRECTIVE".to_owned()), toolbox);
+        let mut history = vec![
+            Message::new(Role::User, "go into sub"),
+            Message::assistant(String::new(), vec![ToolCall { id: "w".into(), name: "working_directory".into(), args: json!({ "path": "sub" }) }]),
+            Message::tool_result("w", "Working directory: x".to_owned()),
+            Message::assistant("done".to_owned(), Vec::new()),
+            Message::new(Role::User, "now what"),
+        ];
+        let (tx, _rx) = unbounded_channel();
+        agent.run(&mut history, &tx, Thinking::default()).await.expect("runs");
+        assert!(agent.tools.working_directory().moved());
+        let system = provider.seen.lock().unwrap()[0].system.clone().unwrap_or_default();
+        assert!(system.contains("Current working directory:") && system.contains("sub"), "{system}");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[tokio::test]

@@ -74,11 +74,22 @@ impl RunCode {
         )
     }
 
+    /// Programs that read in `root` and start from the working directory the agent has moved to.
+    #[must_use]
+    pub fn with_directory(root: &Path, directory: crate::workdir::WorkingDirectory) -> Self {
+        let persistent = std::env::var(STATE_ENV).is_ok_and(|v| v.eq_ignore_ascii_case("persistent"));
+        Self::build(root, if persistent { ExecutionMode::Persistent } else { ExecutionMode::PerCall }, directory)
+    }
+
     /// With the execution mode chosen outright (a test's choice).
     #[must_use]
     pub fn with_mode(root: &Path, mode: ExecutionMode) -> Self {
+        Self::build(root, mode, crate::workdir::WorkingDirectory::new(root))
+    }
+
+    fn build(root: &Path, mode: ExecutionMode, directory: crate::workdir::WorkingDirectory) -> Self {
         let cwd = root.to_string_lossy().into_owned();
-        let mut inner = Toolbox::new(root);
+        let mut inner = Toolbox::with_directory(root, directory);
         inner.add(builtin::ReadTool::new(cwd.clone()));
         inner.add(builtin::LsTool::new(cwd.clone()));
         inner.add(builtin::GrepTool::new(cwd.clone()));

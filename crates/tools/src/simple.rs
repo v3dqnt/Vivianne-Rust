@@ -241,7 +241,9 @@ impl SimpleTool for Shell {
             .unwrap_or(DEFAULT_TIMEOUT_SECS)
             .clamp(5, MAX_TIMEOUT_SECS);
         let mut cmd = shell_command(command);
-        cmd.current_dir(self.workspace.root())
+        // Where the command starts: the working directory the toolbox gave it, if that is inside the project.
+        let start = args["cwd"].as_str().and_then(|dir| self.workspace.resolve(dir).ok()).filter(|dir| dir.is_dir());
+        cmd.current_dir(start.as_deref().unwrap_or_else(|| self.workspace.root()))
             .stdin(Stdio::null())
             .kill_on_drop(true);
         let run = tokio::time::timeout(Duration::from_secs(secs), cmd.output());
