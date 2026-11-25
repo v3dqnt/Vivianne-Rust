@@ -28,6 +28,7 @@ pub mod sections;
 pub mod session;
 pub mod store;
 pub mod thread_tools;
+pub mod thread_refs;
 pub mod title;
 pub mod workspace_context;
 

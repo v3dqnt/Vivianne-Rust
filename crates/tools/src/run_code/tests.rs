@@ -1,6 +1,7 @@
 //! Programs run against a real folder with the real read-only tools.
 
 use std::path::PathBuf;
+use std::time::Instant;
 
 use serde_json::json;
 
@@ -58,7 +59,7 @@ async fn a_program_reads_files_through_the_tools_and_answers_with_only_what_it_c
     let dir = project();
     let out = run_in(
         &dir,
-        "const files = ['src/a.rs', 'src/b.rs'];\nlet todos = 0;\nfor (const f of files) { todos += tools.read({ path: f }).split('\\n').filter(l => l.includes('TODO')).length; }\nreturn todos;",
+        "const files = ['src/a.rs', 'src/b.rs'];\nlet todos = 0;\nfor (const f of files) { todos += (await tools.read({ path: f })).split('\\n').filter(l => l.includes('TODO')).length; }\nreturn todos;",
     )
     .await;
     assert!(!out.is_error, "{}", out.content);
@@ -67,21 +68,27 @@ async fn a_program_reads_files_through_the_tools_and_answers_with_only_what_it_c
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn several_calls_can_run_at_once_and_come_back_in_order() {
+async fn calls_started_together_run_together_and_come_back_in_order() {
     let dir = project();
-    let out = run_in(&dir, "const [a, b] = tools.all([['read', { path: 'src/a.rs' }], ['read', { path: 'src/b.rs' }]]);\nreturn [a.includes('fn a'), b.includes('fn b')];").await;
+    let out = run_in(&dir, "const [a, b] = await Promise.all([tools.read({ path: 'src/a.rs' }), tools.read({ path: 'src/b.rs' })]);\nreturn [a.includes('fn a'), b.includes('fn b')];").await;
     assert_eq!(out.content, "result: [true,true]", "{}", out.content);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_failed_call_throws_an_error_the_program_may_catch() {
+async fn a_failed_call_rejects_with_a_tool_error_the_program_may_catch() {
     let dir = project();
-    let caught = run_in(&dir, "try { tools.read({ path: 'nope.rs' }); return 'no error'; } catch (e) { return 'caught: ' + (e instanceof Error); }").await;
-    assert_eq!(caught.content, "result: \"caught: true\"");
-    let uncaught = run_in(&dir, "tools.read({ path: 'nope.rs' });").await;
+    let caught = run_in(&dir, "try { await tools.read({ path: 'nope.rs' }); return 'no error'; } catch (e) { return [e instanceof ToolError, e.tool]; }").await;
+    assert_eq!(
+        caught.content, "result: [true,\"read\"]",
+        "{}",
+        caught.content
+    );
+    let uncaught = run_in(&dir, "await tools.read({ path: 'nope.rs' });").await;
     assert!(
-        uncaught.is_error && uncaught.content.contains("the program failed"),
+        uncaught.is_error
+            && uncaught.content.contains("the program failed (exception)")
+            && uncaught.content.contains("ToolError"),
         "{}",
         uncaught.content
     );
@@ -89,11 +96,11 @@ async fn a_failed_call_throws_an_error_the_program_may_catch() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_call_is_checked_against_the_tools_schema_and_an_unknown_tool_is_refused() {
+async fn a_call_is_checked_against_the_tools_schema_and_only_read_only_tools_exist() {
     let dir = project();
     let missing = run_in(
         &dir,
-        "try { tools.read({}); } catch (e) { return e.message; }",
+        "try { await tools.read({}); } catch (e) { return e.message; }",
     )
     .await;
     assert!(
@@ -101,23 +108,15 @@ async fn a_call_is_checked_against_the_tools_schema_and_an_unknown_tool_is_refus
         "{}",
         missing.content
     );
-    let unknown = run_in(
-        &dir,
-        "try { tools.all([['shell', { command: 'echo hi' }]]); } catch (e) { return e.message; }",
-    )
-    .await;
-    assert!(
-        unknown.content.contains("there is no tool `shell`"),
-        "{}",
-        unknown.content
-    );
-    assert!(
-        run_in(&dir, "return typeof tools.shell;")
-            .await
-            .content
-            .contains("undefined"),
-        "only read-only tools exist in a program"
-    );
+    for tool in ["shell", "write", "edit", "all"] {
+        assert_eq!(
+            run_in(&dir, &format!("return typeof tools.{tool};"))
+                .await
+                .content,
+            "result: \"undefined\"",
+            "{tool}"
+        );
+    }
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -125,7 +124,7 @@ async fn a_call_is_checked_against_the_tools_schema_and_an_unknown_tool_is_refus
 async fn a_program_has_a_limit_on_how_many_calls_it_makes() {
     let dir = project();
     let tool = RunCode::new(&dir).with_limits(TIME_LIMIT, 3);
-    let out = tool.execute(&json!({ "code": "let n = 0; try { for (let i = 0; i < 10; i++) { tools.read({ path: 'notes.txt' }); n++; } } catch (e) { return [n, e.message]; }" }), "").await;
+    let out = tool.execute(&json!({ "code": "let n = 0; try { for (let i = 0; i < 10; i++) { await tools.read({ path: 'notes.txt' }); n++; } } catch (e) { return [n, e.message]; }" }), "").await;
     assert!(
         out.content
             .contains("[3,\"this program has used its 3 tool calls\"]"),
@@ -140,13 +139,17 @@ async fn a_program_that_never_ends_is_stopped() {
     let dir = project();
     let tool = RunCode::new(&dir).with_limits(Duration::from_millis(300), MAX_CALLS);
     let started = Instant::now();
-    let out = tool
-        .execute(&json!({ "code": "while (true) {}" }), "")
-        .await;
+    // The tool's own limit is the runtime's cap, so ask for less through the request: run the loop under a short budget.
+    let result = tokio::time::timeout(
+        Duration::from_secs(30),
+        tool.execute(&json!({ "code": "while (true) {}" }), ""),
+    )
+    .await
+    .expect("the program was stopped");
     assert!(
-        out.is_error && out.content.contains("program failed"),
+        result.is_error && result.content.contains("timeout"),
         "{}",
-        out.content
+        result.content
     );
     assert!(started.elapsed() < Duration::from_secs(10));
     let _ = std::fs::remove_dir_all(&dir);
@@ -170,15 +173,15 @@ async fn a_program_that_eats_memory_or_stack_fails_instead_of_taking_the_app_dow
 async fn a_program_has_no_way_out_except_the_tools() {
     let dir = project();
     for probe in [
-        "typeof require",
-        "typeof process",
-        "typeof fetch",
-        "typeof XMLHttpRequest",
-        "typeof Deno",
-        "typeof std",
-        "typeof os",
+        "require",
+        "process",
+        "fetch",
+        "XMLHttpRequest",
+        "Deno",
+        "std",
+        "os",
     ] {
-        let out = run_in(&dir, &format!("return {probe};")).await;
+        let out = run_in(&dir, &format!("return typeof {probe};")).await;
         assert_eq!(
             out.content, "result: \"undefined\"",
             "{probe}: {}",
@@ -206,30 +209,95 @@ async fn syntax_errors_and_empty_code_come_back_as_errors() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_huge_output_is_cut() {
+async fn a_result_that_is_not_plain_json_is_refused_and_says_why() {
     let dir = project();
-    let out = run_in(&dir, "console.log('y'.repeat(200000));").await;
+    let out = run_in(&dir, "return { a: undefined, b: () => 1 };").await;
     assert!(
-        out.content.len() <= MAX_OUTPUT_BYTES + 32 && out.content.ends_with("[output cut]"),
+        out.is_error && out.content.contains("invalid-output"),
         "{}",
-        out.content.len()
+        out.content
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_huge_output_fails_as_an_output_limit_with_the_start_of_it() {
+    let dir = project();
+    let out = run_in(
+        &dir,
+        "console.log('first'); console.log('y'.repeat(200000));",
+    )
+    .await;
+    assert!(
+        out.is_error && out.content.contains("output-limit") && out.content.starts_with("first"),
+        "{}",
+        &out.content[..out.content.len().min(200)]
+    );
+    assert!(out.content.len() <= MAX_OUTPUT_BYTES + 32);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn with_retained_state_variables_survive_from_one_call_to_the_next() {
+    let dir = project();
+    let tool = RunCode::with_mode(&dir, ExecutionMode::Persistent);
+    let first = tool
+        .execute(
+            &json!({ "code": "var seen = (await_free = 1, 1); seen" }),
+            "",
+        )
+        .await;
+    assert_eq!(first.content, "result: 1", "{}", first.content);
+    let second = tool
+        .execute(&json!({ "code": "seen += 1; seen" }), "")
+        .await;
+    assert_eq!(
+        second.content, "result: 2",
+        "the variable from the first call is still there: {}",
+        second.content
+    );
+    // A promise as the last value is waited for, so tools can be used without a top-level await.
+    let third = tool.execute(&json!({ "code": "tools.read({ path: 'notes.txt' }).then((text) => text.includes('plain'))" }), "").await;
+    assert_eq!(third.content, "result: true", "{}", third.content);
+    let fresh = RunCode::with_mode(&dir, ExecutionMode::Persistent);
+    assert_eq!(
+        fresh
+            .execute(&json!({ "code": "typeof seen" }), "")
+            .await
+            .content,
+        "result: \"undefined\"",
+        "each toolbox has its own environment"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
-fn the_description_lists_the_tools_a_program_may_call_with_their_arguments() {
+fn the_description_tells_how_to_write_a_program_and_lists_the_tools_with_their_arguments() {
     let dir = project();
-    let tool = RunCode::new(&dir);
-    let definition = tool.definition().expect("definition");
+    let definition = RunCode::new(&dir).definition().expect("definition");
     let text = definition["description"].as_str().expect("description");
     assert!(
-        text.contains("tools.read({ path, limit?")
-            && text.contains("tools.grep({ pattern, path?")
-            && text.contains("tools.glob("),
+        text.contains("await tools.read({ path, limit?")
+            && text.contains("await tools.grep({ pattern, path?")
+            && text.contains("await tools.glob("),
+        "{text}"
+    );
+    assert!(
+        text.contains("Promise.all")
+            && text.contains("ToolError")
+            && text.contains("async function"),
         "{text}"
     );
     assert!(!text.contains("tools.shell") && !text.contains("tools.write"));
     assert_eq!(definition["parameters"]["required"][0], "code");
+    let persistent = RunCode::with_mode(&dir, ExecutionMode::Persistent)
+        .definition()
+        .expect("definition");
+    assert!(
+        persistent["description"]
+            .as_str()
+            .expect("description")
+            .contains("stay for the next run")
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }

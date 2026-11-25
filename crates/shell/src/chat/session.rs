@@ -95,6 +95,18 @@ impl Session {
         }
     }
 
+    /// Says something to a run that is going: the agent adds it before its next model call. `false` for a coding agent
+    /// that runs its own loop, which cannot be steered.
+    pub fn steer(&self, text: &str) -> bool {
+        match &self.engine {
+            Engine::Own(agent) => {
+                agent.steer(text);
+                true
+            }
+            Engine::Harness { .. } => false,
+        }
+    }
+
     /// The project folder.
     #[must_use]
     pub fn folder(&self) -> &std::path::Path {
@@ -167,9 +179,23 @@ impl Session {
     pub fn send(&mut self, text: String, thinking: Thinking) -> Option<Run> {
         let mut history = self.history.take()?;
         let text = begin_task(&self.thread, &self.folder, text);
+        // A mention of another conversation becomes plain text, with a hidden snapshot of that conversation after it.
+        let (text, snapshot) = match vivianne_runtime::thread_refs::prepare_message(
+            &self.thread,
+            &self.folder.display().to_string(),
+            &text,
+            None,
+        ) {
+            Ok(prepared) => prepared,
+            Err(why) => (
+                format!("{text}\n\n(The conversation mentioned above could not be read: {why})"),
+                None,
+            ),
+        };
         let request = text.clone();
         self.before_run = Some(history.clone());
         history.push(Message::new(Role::User, text.clone()));
+        history.extend(snapshot);
         let (events_tx, events) = mpsc::unbounded_channel();
         let (done_tx, done) = oneshot::channel();
         match &self.engine {

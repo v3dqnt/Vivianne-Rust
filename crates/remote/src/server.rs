@@ -392,12 +392,22 @@ fn start_run(
             return;
         }
     };
-    let agent = Arc::new(Agent::new(
+    let settings = vivianne_runtime::config::resolve(&workdir, None);
+    let mut built = Agent::new(
         provider,
         &request.model,
         Some(coding_system_prompt(&workdir)),
         Toolbox::coding(&workdir),
-    ));
+    )
+    .with_max_steps(settings.max_agent_steps.value)
+    // The project's instruction files, the clock and the terminal's place, as the app adds them.
+    .with_instructions(vec![workdir.display().to_string()]);
+    if let Ok(recorder) =
+        vivianne_runtime::changes::Recorder::new(&workdir, settings.change_limits())
+    {
+        built = built.with_changes(Arc::new(recorder));
+    }
+    let agent = Arc::new(built);
     agent.set_mode(mode_of(&request.mode));
     let cancel = CancellationToken::new();
     shared

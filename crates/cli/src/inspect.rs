@@ -3,7 +3,7 @@
 //! to stdout, problems to stderr. A usage error exits 2.
 
 use serde_json::{Value, json};
-use vivianne_runtime::{config, profiles, store};
+use vivianne_runtime::{config, profiles, session, store, thread_refs};
 
 /// A usage error: printed, and the process exits 2.
 pub struct Usage(pub String);
@@ -301,4 +301,67 @@ pub fn profiles_cmd(mut args: Vec<String>) -> Result<(), Usage> {
         out
     });
     Ok(())
+}
+
+/// `viv thread list|events|fork|mention`: this project's saved conversations as numbered events, branched at a turn, or
+/// named in a message.
+///
+/// - `viv thread list [--json]`
+/// - `viv thread events <id> [--from N] [--to M] [--json]`
+/// - `viv thread fork <id> --before <turn> [--json]`
+/// - `viv thread mention <id>`
+pub fn thread_cmd(mut args: Vec<String>) -> Result<(), Usage> {
+    let json_out = take_switch(&mut args, "--json");
+    let from = take_value(&mut args, "--from")?;
+    let to = take_value(&mut args, "--to")?;
+    let before = take_value(&mut args, "--before")?;
+    let number = |what: &str, text: Option<String>| -> Result<Option<usize>, Usage> {
+        text.map(|t| t.parse::<usize>().map_err(|_| Usage(format!("{what} needs a whole number, got `{t}`")))).transpose()
+    };
+    let (from, to, before) = (number("--from", from)?, number("--to", to)?, number("--before", before)?);
+    let folder = workspace().display().to_string();
+    let id = |args: &[String]| args.get(1).cloned().ok_or_else(|| Usage("this thread command needs a thread id".to_owned()));
+    match args.first().map(String::as_str) {
+        Some("list") => {
+            let rows: Vec<Value> = store::list(&folder).into_iter().map(|t| json!({"id": t.id, "title": t.title, "updated_at": t.updated_at})).collect();
+            print(json_out, &json!({"threads": rows}), |s| {
+                s["threads"].as_array().into_iter().flatten().map(|t| format!("{}  {}\n", t["id"].as_str().unwrap_or_default(), t["title"].as_str().unwrap_or_default())).collect()
+            });
+            Ok(())
+        }
+        Some("events") => {
+            let id = id(&args)?;
+            let thread = store::load(&id).filter(|t| t.workspace == folder).ok_or_else(|| Usage(format!("there is no saved thread {id} in this project")))?;
+            let events = session::range(&thread.history, from.unwrap_or(0), to.unwrap_or(usize::MAX));
+            let rows = serde_json::to_value(&events).unwrap_or(Value::Null);
+            print(json_out, &json!({"turns": session::turn_count(&thread.history), "events": rows}), |s| {
+                s["events"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|e| {
+                        let text = e["text"].as_str().unwrap_or_default().replace('\n', " ");
+                        let shown: String = text.chars().take(80).collect();
+                        format!("{:>4}  turn {}  {}  {shown}\n", e["seq"], e["turn"], e["type"].as_str().unwrap_or_default())
+                    })
+                    .collect()
+            });
+            Ok(())
+        }
+        Some("fork") => {
+            let id = id(&args)?;
+            let before = before.ok_or_else(|| Usage("fork needs --before <turn>".to_owned()))?;
+            store::load(&id).filter(|t| t.workspace == folder).ok_or_else(|| Usage(format!("there is no saved thread {id} in this project")))?;
+            let forked = store::fork(&id, before).map_err(Usage)?;
+            print(json_out, &json!({"id": forked.id, "title": forked.title, "messages": forked.history.len()}), |s| format!("{}\n", s["id"].as_str().unwrap_or_default()));
+            Ok(())
+        }
+        Some("mention") => {
+            let id = id(&args)?;
+            let mention = thread_refs::mention_of(&id, &folder).ok_or_else(|| Usage(format!("there is no saved thread {id} in this project")))?;
+            print(json_out, &json!({"mention": mention}), |s| format!("{}\n", s["mention"].as_str().unwrap_or_default()));
+            Ok(())
+        }
+        other => Err(Usage(format!("thread needs `list`, `events`, `fork` or `mention`, got `{}`", other.unwrap_or("nothing")))),
+    }
 }
