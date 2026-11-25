@@ -22,7 +22,7 @@ pub fn render_item(
 ) -> AnyElement {
     match item {
         Item::User(text) => user(text),
-        Item::Assistant(text) => assistant(index, text),
+        Item::Assistant(text) => assistant_with_quote(index, text, cx),
         // A tool call shows one line until it is opened; a failure shows its output, since that is what to read.
         Item::Tool(tool) => {
             toolcalls::render(tool, !folded.contains(&tool.id) && !tool.is_error, cx)
@@ -141,6 +141,31 @@ fn notice(text: &str) -> AnyElement {
                 .child(text.to_owned()),
         )
         .child(rule())
+        .into_any_element()
+}
+
+/// A reply with a quiet "Quote" under it, which puts the reply into the composer as a Markdown blockquote.
+fn assistant_with_quote(index: usize, text: &str, cx: &mut Context<ChatView>) -> AnyElement {
+    let reply = assistant(index, text);
+    if text.trim().is_empty() {
+        return reply;
+    }
+    let quoted = text.to_owned();
+    div()
+        .flex()
+        .flex_col()
+        .items_start()
+        .gap(px(2.0))
+        .child(reply)
+        .child(
+            Button::new(SharedString::from(format!("quote-{index}")))
+                .label("Quote")
+                .ghost()
+                .small()
+                .on_click(cx.listener(move |chat, _event, window, cx| {
+                    chat.quote_into_composer(&quoted, window, cx)
+                })),
+        )
         .into_any_element()
 }
 

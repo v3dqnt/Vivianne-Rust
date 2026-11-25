@@ -55,6 +55,10 @@ pub struct Session {
     mode: Mode,
     /// The project folder the agent works in: what is checkpointed around each run.
     folder: PathBuf,
+    /// The right to write this conversation, held while a run works (another Vivianne process is refused it).
+    lease: Option<vivianne_runtime::lease::Lease>,
+    /// Why the last send was not started, for the person.
+    refused: Option<String>,
 }
 
 /// A started run: events as they happen, then the final state.
@@ -83,6 +87,8 @@ impl Session {
             approvals: Approvals::default(),
             mode: Mode::default(),
             folder,
+            lease: None,
+            refused: None,
         }
     }
 
@@ -93,6 +99,11 @@ impl Session {
             Engine::Own(agent) => agent.changes().cloned(),
             Engine::Harness { .. } => None,
         }
+    }
+
+    /// Why the last [`send`](Self::send) did not start, once: another Vivianne is writing this conversation.
+    pub fn take_refusal(&mut self) -> Option<String> {
+        self.refused.take()
     }
 
     /// Says something to a run that is going: the agent adds it before its next model call. `false` for a coding agent
@@ -177,6 +188,19 @@ impl Session {
 
     /// Start answering `text`. `None` if a run is already going.
     pub fn send(&mut self, text: String, thinking: Thinking) -> Option<Run> {
+        if self.history.is_none() {
+            return None;
+        }
+        // One writer per conversation: another Vivianne working on this one must finish first.
+        if self.lease.is_none() {
+            match vivianne_runtime::store::lease(&self.thread) {
+                Ok(lease) => self.lease = Some(lease),
+                Err(why) => {
+                    self.refused = Some(why.to_string());
+                    return None;
+                }
+            }
+        }
         let mut history = self.history.take()?;
         let text = begin_task(&self.thread, &self.folder, text);
         // A mention of another conversation becomes plain text, with a hidden snapshot of that conversation after it.
@@ -205,6 +229,20 @@ impl Session {
                     watch_turn(self.runtime.handle(), self.thread.clone(), events_tx);
                 let (folder, thread) = (self.folder.display().to_string(), self.thread.clone());
                 let (provider, model) = agent.primary();
+                // The conversation is saved before every model request and before a step's tools run, so a crash
+                // loses at most the step in flight and nothing happens in the world that was not saved first.
+                {
+                    let (thread, workspace, saved_provider, saved_model, mode) = (
+                        self.thread.clone(),
+                        self.folder.display().to_string(),
+                        provider.clone(),
+                        model.clone(),
+                        self.mode,
+                    );
+                    agent.set_checkpoint(Some(vivianne_runtime::Checkpoint::new(move |history| {
+                        vivianne_runtime::store::checkpoint(&thread, &workspace, &saved_provider, &saved_model, mode, history)
+                    })));
+                }
                 let model = ModelRef {
                     id: model.clone(),
                     name: model,
@@ -317,7 +355,17 @@ impl Session {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clear();
+        self.lease = None;
         if let Some(before) = self.before_run.take() {
+            // The run saved itself as it went; what the stopped run added is taken back out of the saved copy too.
+            if matches!(self.engine, Engine::Own(_)) {
+                let saved = if before.is_empty() {
+                    vivianne_runtime::store::delete(&self.thread)
+                } else {
+                    vivianne_runtime::store::checkpoint(&self.thread, &self.folder.display().to_string(), "", "", self.mode, &before)
+                };
+                let _ = saved;
+            }
             self.history = Some(before);
         }
     }
@@ -338,6 +386,7 @@ impl Session {
     /// The run ended without reporting (its task panicked). The conversation goes back to before the run, and the
     /// session can be used again.
     pub fn lost(&mut self) -> String {
+        self.lease = None;
         self.task = None;
         self.stop = None;
         self.approvals
@@ -359,6 +408,7 @@ impl Session {
 
     /// Take back the history after a run.
     pub fn finish(&mut self, finished: Finished) -> Option<String> {
+        self.lease = None;
         self.history = Some(finished.history);
         self.before_run = None;
         self.task = None;

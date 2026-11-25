@@ -187,12 +187,14 @@ mod tests {
 
     #[test]
     fn a_missing_required_property_and_wrong_types_are_each_named_by_their_path() {
-        let found = violations(
+        let mut found = violations(
             &read_schema(),
             &json!({ "offset": "5", "limit": 2.5, "ocr": "yes" }),
             "",
         );
-        // Properties are walked in name order, so the same call always reads the same.
+        // Each problem is named once. Their order follows the schema's, which depends on how the JSON library was built
+        // (a build that keeps insertion order differs from one that sorts), so the order is not what is checked.
+        found[1..].sort();
         assert_eq!(
             found,
             [

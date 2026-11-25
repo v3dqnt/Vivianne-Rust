@@ -584,7 +584,12 @@ impl ChatView {
         if text.trim().is_empty() && files.is_empty() {
             return;
         }
-        let Some(run) = session.send(compose_message(&text, files), self.composer.thinking) else {
+        let started = session.send(compose_message(&text, files), self.composer.thinking);
+        let Some(run) = started else {
+            let refusal = session.take_refusal();
+            if let Some(why) = refusal {
+                self.push_item(Item::Notice(why), cx);
+            }
             return;
         };
         let shown = display_message(&text, files);
@@ -1186,6 +1191,16 @@ impl ChatView {
                         }),
                     )),
             )
+    }
+
+    /// Puts `text` in front of what is already in the composer, as a Markdown blockquote the person can answer under.
+    fn quote_into_composer(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let quoted = vivianne_runtime::quotes::quote(text);
+        if quoted.is_empty() {
+            return;
+        }
+        let written = self.composer.input.read(cx).value().to_string();
+        self.prefill(&format!("{quoted}{written}"), window, cx);
     }
 
     fn prefill(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {

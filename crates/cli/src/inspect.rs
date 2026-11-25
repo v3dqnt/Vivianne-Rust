@@ -3,7 +3,7 @@
 //! to stdout, problems to stderr. A usage error exits 2.
 
 use serde_json::{Value, json};
-use vivianne_runtime::{config, profiles, session, store, thread_refs};
+use vivianne_runtime::{config, export, profiles, session, session_stats, store, thread_refs};
 
 /// A usage error: printed, and the process exits 2.
 pub struct Usage(pub String);
@@ -113,6 +113,17 @@ pub fn doctor(mut args: Vec<String>) -> Result<bool, Usage> {
         ),
         Err(why) => check("model", false, why),
     });
+    // Saved conversations that cannot be read: damaged, or written by a newer Vivianne. Never deleted or rewritten.
+    let unreadable = store::problems();
+    checks.push(check(
+        "saved conversations",
+        unreadable.is_empty(),
+        if unreadable.is_empty() {
+            "all readable".to_owned()
+        } else {
+            unreadable.iter().map(|p| format!("{}: {}", p.file, p.why)).collect::<Vec<_>>().join("; ")
+        },
+    ));
     let (_, problems) = profiles::list(&ws);
     checks.push(check(
         "agent profiles",
@@ -309,16 +320,22 @@ pub fn profiles_cmd(mut args: Vec<String>) -> Result<(), Usage> {
 /// - `viv thread list [--json]`
 /// - `viv thread events <id> [--from N] [--to M] [--json]`
 /// - `viv thread fork <id> --before <turn> [--json]`
+/// - `viv thread stats <id> [--json]`, `viv thread outline <id> [--json]`
+/// - `viv thread export <id> [--out FILE] [--after N] [--raw]`: the conversation as a session log, one JSON object per line
+/// - `viv thread generations <id> [--json]`: the earlier states kept when the conversation was condensed or rewound
 /// - `viv thread mention <id>`
 pub fn thread_cmd(mut args: Vec<String>) -> Result<(), Usage> {
     let json_out = take_switch(&mut args, "--json");
     let from = take_value(&mut args, "--from")?;
     let to = take_value(&mut args, "--to")?;
     let before = take_value(&mut args, "--before")?;
+    let after = take_value(&mut args, "--after")?;
+    let out_file = take_value(&mut args, "--out")?;
+    let raw = take_switch(&mut args, "--raw");
     let number = |what: &str, text: Option<String>| -> Result<Option<usize>, Usage> {
         text.map(|t| t.parse::<usize>().map_err(|_| Usage(format!("{what} needs a whole number, got `{t}`")))).transpose()
     };
-    let (from, to, before) = (number("--from", from)?, number("--to", to)?, number("--before", before)?);
+    let (from, to, before, after) = (number("--from", from)?, number("--to", to)?, number("--before", before)?, number("--after", after)?);
     let folder = workspace().display().to_string();
     let id = |args: &[String]| args.get(1).cloned().ok_or_else(|| Usage("this thread command needs a thread id".to_owned()));
     match args.first().map(String::as_str) {
@@ -356,12 +373,67 @@ pub fn thread_cmd(mut args: Vec<String>) -> Result<(), Usage> {
             print(json_out, &json!({"id": forked.id, "title": forked.title, "messages": forked.history.len()}), |s| format!("{}\n", s["id"].as_str().unwrap_or_default()));
             Ok(())
         }
+        Some("stats") => {
+            let id = id(&args)?;
+            let thread = store::load(&id).filter(|t| t.workspace == folder).ok_or_else(|| Usage(format!("there is no saved thread {id} in this project")))?;
+            // Folded from the saved state when there is one, so a long conversation is not read from the start each time.
+            let snapshot = vivianne_runtime::projection::project(&id, &thread.history)
+                .and_then(|p| p.views.get("stats").cloned())
+                .unwrap_or_else(|| serde_json::to_value(session_stats::stats(&thread.history)).unwrap_or(Value::Null));
+            print(json_out, &snapshot, |s| {
+                ["turns", "steps", "tool_calls", "failed_tool_calls", "context_messages", "llm_ms", "tool_ms", "first_token_ms", "decode_ms", "timed_steps"].iter().map(|k| format!("{k:<18} {}\n", s[*k])).collect()
+            });
+            Ok(())
+        }
+        Some("outline") => {
+            let id = id(&args)?;
+            let thread = store::load(&id).filter(|t| t.workspace == folder).ok_or_else(|| Usage(format!("there is no saved thread {id} in this project")))?;
+            let rows = vivianne_runtime::projection::project(&id, &thread.history)
+                .and_then(|p| p.views.get("outline").cloned())
+                .unwrap_or_else(|| serde_json::to_value(session_stats::outline(&thread.history)).unwrap_or(Value::Null));
+            print(json_out, &json!({"turns": rows}), |s| {
+                s["turns"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|t| format!("{:>3}  {}\n       {}\n", t["turn"], t["prompt"].as_str().unwrap_or_default(), t["response"].as_str().unwrap_or_default()))
+                    .collect()
+            });
+            Ok(())
+        }
+        Some("export") => {
+            let id = id(&args)?;
+            let thread = store::load(&id).filter(|t| t.workspace == folder).ok_or_else(|| Usage(format!("there is no saved thread {id} in this project")))?;
+            let options = export::Options { redact: !raw, after: after.unwrap_or(0) };
+            let written = match out_file {
+                Some(file) => {
+                    let mut handle = std::fs::File::create(&file).map_err(|e| Usage(format!("cannot write {file}: {e}")))?;
+                    export::write_to(&mut handle, &thread, options).map_err(Usage)?
+                }
+                None => export::write_to(&mut std::io::stdout().lock(), &thread, options).map_err(Usage)?,
+            };
+            eprintln!("{written} lines{}", if raw { " (not redacted)" } else { "" });
+            Ok(())
+        }
+        Some("generations") => {
+            let id = id(&args)?;
+            store::load(&id).filter(|t| t.workspace == folder).ok_or_else(|| Usage(format!("there is no saved thread {id} in this project")))?;
+            let rows: Vec<Value> = store::generations(&id)
+                .into_iter()
+                .map(|g| json!({"generation": g, "messages": store::load_generation(&id, g).ok().flatten().map(|t| t.history.len())}))
+                .collect();
+            print(json_out, &json!({"generations": rows}), |s| {
+                s["generations"].as_array().into_iter().flatten().map(|g| format!("g{}  {} messages
+", g["generation"], g["messages"])).collect()
+            });
+            Ok(())
+        }
         Some("mention") => {
             let id = id(&args)?;
             let mention = thread_refs::mention_of(&id, &folder).ok_or_else(|| Usage(format!("there is no saved thread {id} in this project")))?;
             print(json_out, &json!({"mention": mention}), |s| format!("{}\n", s["mention"].as_str().unwrap_or_default()));
             Ok(())
         }
-        other => Err(Usage(format!("thread needs `list`, `events`, `fork` or `mention`, got `{}`", other.unwrap_or("nothing")))),
+        other => Err(Usage(format!("thread needs `list`, `events`, `stats`, `outline`, `fork`, `export`, `generations` or `mention`, got `{}`", other.unwrap_or("nothing")))),
     }
 }

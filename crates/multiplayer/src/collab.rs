@@ -61,7 +61,7 @@ pub struct ActivityEntry {
     pub files: Vec<FileTouch>,
     #[serde(default)]
     pub commands: Vec<CommandRun>,
-    /// Other tools used, by name and count ("web_search ×2").
+    /// Other tools used, by name and count ("`web_search` ×2").
     #[serde(default)]
     pub other: Vec<String>,
     #[serde(default)]
@@ -461,6 +461,7 @@ pub fn sanitize_usage(days: BTreeMap<String, DayUsage>) -> BTreeMap<String, DayU
 }
 
 /// Records an entry the partner sent. Returns true when it was new.
+#[must_use]
 pub fn record_peer_entry(project_id: &str, entry: ActivityEntry) -> bool {
     let entry = sanitize_peer_entry(entry);
     with_store(project_id, |s| {
@@ -676,6 +677,7 @@ mod tests {
                 attachments: vec![],
                 context: None,
                 at: None,
+                timing: None,
             },
         ];
         let e = summarise_run("Ana", "fix the parser\nplease", &messages, "/w");

@@ -1,11 +1,15 @@
-//! Threads kept on disk, one JSON file each under `~/.viv/agent/threads/`, so a conversation survives closing the
-//! app. A thread belongs to the project folder it was started in.
+//! Threads kept on disk under `~/.viv/agent/threads/`, so a conversation survives closing the app. A thread belongs to the
+//! project folder it was started in. Each is an append-only log, `<id>.jsonl` (see [`crate::log`]); a thread an older
+//! build saved as `<id>.json` is carried forward on first read and its source kept beside it.
 
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use vivianne_core::{Message, Mode};
+
+use crate::{formats, log};
 
 /// One conversation as saved.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -99,19 +103,163 @@ fn save_in(dir: &Path, thread: &SavedThread) -> Result<(), String> {
         return Err(format!("not a thread id: {}", thread.id));
     }
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    // A file written by a newer Vivianne is not written over by an older one: that would drop what only it knows.
+    let legacy = legacy_path(dir, &thread.id);
+    let has_log = log::path_of(dir, &thread.id).exists();
+    if !has_log
+        && let Some(Ok(value)) = std::fs::read_to_string(&legacy).ok().map(|t| serde_json::from_str::<Value>(&t))
+        && let formats::Classification::Unsupported { version } = formats::classify(&value)
+    {
+        return Err(formats::FormatError::Unsupported { version }.to_string());
+    }
     // What the desktop showed is not kept.
     let kept = SavedThread {
         history: crate::history::without_desktop_content(&thread.history),
         ..thread.clone()
     };
-    vivianne_ai::paths::write_json_atomic(&dir.join(format!("{}.json", thread.id)), &kept)
+    log::write(dir, &kept)?;
+    if !has_log {
+        retire_legacy(dir, &thread.id, 1);
+    }
+    Ok(())
+}
+
+fn legacy_path(dir: &Path, id: &str) -> PathBuf {
+    dir.join(format!("{id}.json"))
+}
+
+/// The one-file form an older build wrote is kept as `<id>.v<N>.bak` once the log holds the thread.
+fn retire_legacy(dir: &Path, id: &str, from: u32) {
+    let legacy = legacy_path(dir, id);
+    let backup = dir.join(format!("{id}.v{from}.bak"));
+    if backup.exists() {
+        let _ = std::fs::remove_file(&legacy);
+    } else {
+        let _ = std::fs::rename(&legacy, &backup);
+    }
+}
+
+/// The ids of the threads in `dir`: every `<id>.jsonl` and every older `<id>.json`, each once.
+fn ids_in(dir: &Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let ids: std::collections::BTreeSet<String> = entries
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "json" || x == "jsonl"))
+        .filter_map(|p| Some(p.file_stem()?.to_str()?.to_owned()))
+        // `<id>.proj.json` and the like are not threads.
+        .filter(|id| valid_id(id))
+        .collect();
+    ids.into_iter().collect()
+}
+
+/// The generations kept for a thread (the older states of its log), oldest first.
+#[must_use]
+pub fn generations(id: &str) -> Vec<u32> {
+    default_dir().map(|dir| log::generations(&dir, id)).unwrap_or_default()
+}
+
+/// A kept generation, as the thread stood when it was condensed or rewound.
+pub fn load_generation(id: &str, generation: u32) -> Result<Option<SavedThread>, String> {
+    if !valid_id(id) {
+        return Ok(None);
+    }
+    log::read_generation(&default_dir()?, id, generation)
+}
+
+/// Why a saved file was not read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Problem {
+    pub file: String,
+    pub why: String,
+}
+
+/// Reads one saved thread, carrying an older format forward (the original file is kept beside it as `<id>.v<N>.bak`
+/// the first time) and saying why when it cannot be read. `Ok(None)` when there is no such file.
+fn read_in(dir: &Path, id: &str) -> Result<Option<SavedThread>, String> {
+    if !valid_id(id) {
+        return Ok(None);
+    }
+    if let Some(read) = log::read(dir, id)? {
+        return Ok(Some(read.thread));
+    }
+    let path = legacy_path(dir, id);
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e.to_string()),
+    };
+    let parsed: Value = serde_json::from_str(&text).map_err(|e| format!("not valid JSON: {e}"))?;
+    let restored = formats::restore(parsed).map_err(|e| e.to_string())?;
+    let thread: SavedThread = serde_json::from_value(restored.value.clone()).map_err(|e| format!("not a saved conversation: {e}"))?;
+    // Carried forward on disk too, as a log, with the source kept: nothing is lost if the new form turns out wrong.
+    let from = restored.migrated_from.unwrap_or(1);
+    let backup = dir.join(format!("{id}.v{from}.bak"));
+    if !backup.exists() {
+        let _ = std::fs::write(&backup, &text);
+    }
+    if log::write(dir, &thread).is_ok() {
+        retire_legacy(dir, id, from);
+    }
+    Ok(Some(thread))
 }
 
 fn load_in(dir: &Path, id: &str) -> Option<SavedThread> {
+    read_in(dir, id).ok().flatten()
+}
+
+/// The saved files that cannot be read, each with the reason: damaged, or written by a newer Vivianne. They are never
+/// deleted or rewritten, only reported (`viv doctor`).
+#[must_use]
+pub fn problems() -> Vec<Problem> {
+    default_dir().map(|dir| problems_in(&dir)).unwrap_or_default()
+}
+
+fn problems_in(dir: &Path) -> Vec<Problem> {
+    let mut found: Vec<Problem> = ids_in(dir)
+        .into_iter()
+        .filter_map(|id| {
+            let file = if log::path_of(dir, &id).exists() { format!("{id}.jsonl") } else { format!("{id}.json") };
+            read_in(dir, &id).err().map(|why| Problem { file, why })
+        })
+        .collect();
+    found.sort_by(|a, b| a.file.cmp(&b.file));
+    found
+}
+
+/// The right to write `id` while a run works on it; another process that asks is refused until this is dropped.
+pub fn lease(id: &str) -> Result<crate::lease::Lease, crate::lease::LeaseError> {
     if !valid_id(id) {
-        return None;
+        return Err(crate::lease::LeaseError::Io(format!("not a thread id: {id}")));
     }
-    serde_json::from_str(&std::fs::read_to_string(dir.join(format!("{id}.json"))).ok()?).ok()
+    let dir = default_dir().map_err(crate::lease::LeaseError::Io)?;
+    crate::lease::Lease::take(&dir, id)
+}
+
+/// Makes the conversation as it stands durable, in the middle of a run: the history is written now, so a crash loses
+/// at most the step in flight. An existing thread keeps its title and settings; a first checkpoint makes the thread.
+pub fn checkpoint(id: &str, workspace: &str, provider: &str, model: &str, mode: Mode, history: &[Message]) -> Result<(), String> {
+    checkpoint_in(&default_dir()?, id, workspace, provider, model, mode, history)
+}
+
+fn checkpoint_in(dir: &Path, id: &str, workspace: &str, provider: &str, model: &str, mode: Mode, history: &[Message]) -> Result<(), String> {
+    let thread = match read_in(dir, id)? {
+        Some(existing) => SavedThread { history: history.to_vec(), updated_at: now(), ..existing },
+        None => SavedThread {
+            id: id.to_owned(),
+            workspace: workspace.to_owned(),
+            title: crate::title::first_ask(history).map_or_else(|| "New conversation".to_owned(), crate::title::fallback_title),
+            title_source: "auto".to_owned(),
+            provider: provider.to_owned(),
+            model: model.to_owned(),
+            mode,
+            updated_at: now(),
+            history: history.to_vec(),
+        },
+    };
+    save_in(dir, &thread)
 }
 
 /// Every saved thread, with the project folder it was started in, newest first. For a remote client that does not
@@ -121,13 +269,9 @@ pub fn list_everywhere() -> Vec<(String, Summary)> {
     let Ok(dir) = default_dir() else {
         return Vec::new();
     };
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return Vec::new();
-    };
-    let mut found: Vec<(String, Summary)> = entries
-        .filter_map(Result::ok)
-        .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
-        .filter_map(|e| load_in(&dir, e.path().file_stem()?.to_str()?))
+    let mut found: Vec<(String, Summary)> = ids_in(&dir)
+        .into_iter()
+        .filter_map(|id| load_in(&dir, &id))
         .filter(|t| !t.history.is_empty())
         .map(|t| {
             (
@@ -149,13 +293,9 @@ pub fn list_everywhere() -> Vec<(String, Summary)> {
 }
 
 fn list_in(dir: &Path, workspace: &str) -> Vec<Summary> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    let mut found: Vec<Summary> = entries
-        .filter_map(Result::ok)
-        .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
-        .filter_map(|e| load_in(dir, e.path().file_stem()?.to_str()?))
+    let mut found: Vec<Summary> = ids_in(dir)
+        .into_iter()
+        .filter_map(|id| load_in(dir, &id))
         .filter(|t| t.workspace == workspace && !t.history.is_empty())
         .map(|t| Summary {
             id: t.id,
@@ -175,7 +315,9 @@ fn delete_in(dir: &Path, id: &str) -> Result<(), String> {
     if !valid_id(id) {
         return Err(format!("not a thread id: {id}"));
     }
-    match std::fs::remove_file(dir.join(format!("{id}.json"))) {
+    log::remove(dir, id)?;
+    crate::projection::forget(dir, id);
+    match std::fs::remove_file(legacy_path(dir, id)) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e.to_string()),
@@ -187,6 +329,128 @@ mod tests {
     use vivianne_core::Role;
 
     use super::*;
+
+    fn fresh_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("viv-store-{name}-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir).expect("dir");
+        dir
+    }
+
+    const ID: &str = "22222222-2222-2222-2222-222222222222";
+
+    fn write_raw(dir: &Path, id: &str, json: &str) {
+        std::fs::write(dir.join(format!("{id}.json")), json).expect("raw file");
+    }
+
+    #[test]
+    fn what_is_saved_says_which_format_it_is() {
+        let dir = fresh_dir("stamp");
+        save_in(&dir, &thread(ID, "/w", 1)).expect("saved");
+        let first_line = std::fs::read_to_string(dir.join(format!("{ID}.jsonl"))).expect("file");
+        let header: Value = serde_json::from_str(first_line.lines().next().expect("a header")).expect("json");
+        assert_eq!((header["type"].as_str(), header["version"].as_u64()), (Some("header"), Some(u64::from(formats::CURRENT))));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_thread_saved_before_formats_had_versions_is_carried_forward_and_its_source_is_kept() {
+        let dir = fresh_dir("migrate");
+        let old = format!(r#"{{"id":"{ID}","workspace":"/w","title":"Old","title_source":"auto","provider":"p","model":"m","updated_at":7,"history":[{{"role":"user","text":"hi"}}]}}"#);
+        write_raw(&dir, ID, &old);
+        let loaded = load_in(&dir, ID).expect("an older file still opens");
+        assert_eq!((loaded.title.as_str(), loaded.history.len()), ("Old", 1));
+        assert!(dir.join(format!("{ID}.jsonl")).exists() && !dir.join(format!("{ID}.json")).exists(), "kept as a log now");
+        assert_eq!(std::fs::read_to_string(dir.join(format!("{ID}.v0.bak"))).expect("the source is kept"), old);
+        // A second read changes nothing and does not touch the kept source.
+        assert!(load_in(&dir, ID).is_some());
+        assert_eq!(std::fs::read_to_string(dir.join(format!("{ID}.v0.bak"))).expect("backup"), old);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_thread_from_a_newer_vivianne_is_neither_read_nor_written_over_and_is_reported() {
+        let dir = fresh_dir("newer");
+        let newer = format!(r#"{{"id":"{ID}","workspace":"/w","history":[],"version":99,"only_the_future_knows":true}}"#);
+        write_raw(&dir, ID, &newer);
+        assert!(load_in(&dir, ID).is_none());
+        let refusal = save_in(&dir, &thread(ID, "/w", 1)).unwrap_err();
+        assert!(refusal.contains("newer Vivianne"), "{refusal}");
+        assert_eq!(std::fs::read_to_string(dir.join(format!("{ID}.json"))).expect("file"), newer, "left exactly as it was");
+        let found = problems_in(&dir);
+        assert_eq!(found.len(), 1);
+        assert!(found[0].file.starts_with(ID) && found[0].why.contains("newer Vivianne"), "{found:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_damaged_file_is_reported_by_name_and_does_not_hide_the_others() {
+        let dir = fresh_dir("damaged");
+        write_raw(&dir, "33333333-3333-3333-3333-333333333333", "{ not json");
+        write_raw(&dir, "44444444-4444-4444-4444-444444444444", r#"{"id":"x"}"#);
+        let mut fine = thread(ID, "/w", 5);
+        fine.history = vec![Message::new(Role::User, "hi")];
+        save_in(&dir, &fine).expect("saved");
+        let found = problems_in(&dir);
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert!(found.iter().any(|p| p.why.contains("not valid JSON")) && found.iter().any(|p| p.why.contains("workspace") || p.why.contains("history")));
+        assert_eq!(list_in(&dir, "/w").len(), 1, "the readable thread is still listed");
+        assert!(read_in(&dir, "nobody").expect("no file is not an error").is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_thread_an_earlier_build_saved_as_one_file_opens_and_becomes_a_log() {
+        let dir = fresh_dir("one-file");
+        let current = format!(r#"{{"id":"{ID}","workspace":"/w","title":"T","title_source":"auto","provider":"p","model":"m","updated_at":3,"history":[{{"role":"user","text":"hi"}}],"version":1}}"#);
+        write_raw(&dir, ID, &current);
+        assert_eq!(load_in(&dir, ID).expect("opens").history.len(), 1);
+        assert!(dir.join(format!("{ID}.jsonl")).exists() && dir.join(format!("{ID}.v1.bak")).exists());
+        assert_eq!(list_in(&dir, "/w").len(), 1, "listed once, not as both forms");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn deleting_a_thread_removes_its_log_and_every_kept_generation() {
+        let dir = fresh_dir("delete-all");
+        let mut long = thread(ID, "/w", 1);
+        long.history = (0..4).map(|i| Message::new(Role::User, format!("m{i}"))).collect();
+        save_in(&dir, &long).expect("saved");
+        save_in(&dir, &thread(ID, "/w", 2)).expect("condensed");
+        assert_eq!(log::generations(&dir, ID), [1]);
+        delete_in(&dir, ID).expect("deleted");
+        assert!(log::generations(&dir, ID).is_empty() && load_in(&dir, ID).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_checkpoint_makes_the_thread_then_updates_it_without_touching_its_title() {
+        let dir = fresh_dir("checkpoint");
+        let first = vec![Message::new(Role::User, "fix the parser please")];
+        checkpoint_in(&dir, ID, "/w", "p", "m", Mode::Auto, &first).expect("the first checkpoint makes the thread");
+        let made = load_in(&dir, ID).expect("exists");
+        assert_eq!((made.workspace.as_str(), made.history.len(), made.model.as_str()), ("/w", 1, "m"));
+        assert!(made.title.to_lowercase().contains("parser"), "{}", made.title);
+        let mut renamed = made.clone();
+        renamed.title = "My name for it".to_owned();
+        renamed.title_source = "user".to_owned();
+        save_in(&dir, &renamed).expect("saved");
+        let more = vec![first[0].clone(), Message::assistant("done".to_owned(), Vec::new())];
+        checkpoint_in(&dir, ID, "/elsewhere", "other", "other", Mode::Plan, &more).expect("updates");
+        let updated = load_in(&dir, ID).expect("exists");
+        assert_eq!((updated.history.len(), updated.title.as_str(), updated.title_source.as_str()), (2, "My name for it", "user"));
+        assert_eq!((updated.workspace.as_str(), updated.model.as_str()), ("/w", "m"), "an existing thread keeps its own settings");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_checkpoint_never_writes_over_a_thread_it_cannot_read() {
+        let dir = fresh_dir("checkpoint-newer");
+        let newer = format!(r#"{{"id":"{ID}","workspace":"/w","history":[],"version":99}}"#);
+        write_raw(&dir, ID, &newer);
+        assert!(checkpoint_in(&dir, ID, "/w", "p", "m", Mode::Auto, &[Message::new(Role::User, "hi")]).is_err());
+        assert_eq!(std::fs::read_to_string(dir.join(format!("{ID}.json"))).expect("file"), newer);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn a_fork_is_a_new_thread_with_the_earlier_turns_and_the_original_is_untouched() {

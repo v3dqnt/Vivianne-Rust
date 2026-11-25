@@ -429,6 +429,36 @@ fn start_run(
     let shared = shared.clone();
     tokio::spawn(async move {
         let thread_id = request.thread_id.clone();
+        // One writer per conversation: a run is refused while another Vivianne is writing this one.
+        let _lease = match store::lease(&thread_id) {
+            Ok(lease) => lease,
+            Err(why) => {
+                let _ = shared.events.send(ServerMessage::RunEvent {
+                    thread_id: thread_id.clone(),
+                    event: WireEvent::Failed { message: why.to_string() },
+                });
+                shared.set_state(&thread_id, AgentState::Idle);
+                shared
+                    .runs
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .remove(&thread_id);
+                return;
+            }
+        };
+        // Saved before every model request and before a step's tools run, so a crash loses at most the step in flight.
+        {
+            let (id, workspace, provider, model, mode) = (
+                thread_id.clone(),
+                request.workspace.clone(),
+                request.provider.clone(),
+                request.model.clone(),
+                mode_of(&request.mode),
+            );
+            agent.set_checkpoint(Some(vivianne_runtime::Checkpoint::new(move |history| {
+                store::checkpoint(&id, &workspace, &provider, &model, mode, history)
+            })));
+        }
         let mut history = store::load(&thread_id)
             .map(|t| t.history)
             .unwrap_or_default();
