@@ -14,6 +14,8 @@ pub mod browser;
 pub mod computer;
 pub mod git;
 pub mod present;
+pub mod run_code;
+pub mod validate;
 #[rustfmt::skip]
 pub mod code;
 #[rustfmt::skip]
@@ -45,10 +47,24 @@ pub struct ToolDef {
     pub parameters: Value,
 }
 
+/// What a condition on a tool can look at: the model the next step will ask.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StepInfo {
+    pub provider: String,
+    pub model: String,
+}
+
+/// Decides, for each model step, whether a tool is offered and callable.
+pub type Condition = std::sync::Arc<dyn Fn(&StepInfo) -> bool + Send + Sync>;
+
 /// The set of tools one agent may use, and the folder they work in.
 pub struct Toolbox {
     cwd: String,
     tools: Vec<Box<dyn Tool>>,
+    /// Tools that are offered only while their condition holds, by name.
+    conditions: std::collections::HashMap<String, Condition>,
+    /// The step the conditions are judged against, set by the loop before each model call.
+    step: std::sync::Mutex<StepInfo>,
 }
 
 impl std::fmt::Debug for Toolbox {
@@ -75,6 +91,8 @@ impl Toolbox {
         Self {
             cwd: cwd.to_string_lossy().into_owned(),
             tools: Vec::new(),
+            conditions: std::collections::HashMap::new(),
+            step: std::sync::Mutex::new(StepInfo::default()),
         }
     }
 
@@ -100,6 +118,7 @@ impl Toolbox {
         toolbox.add(simple::EditFile::new(workspace));
         toolbox.add(results::ReadToolResult);
         toolbox.add(present::Present::new(root));
+        toolbox.add(run_code::RunCode::new(root));
         // Only where a LibreOffice is installed: a tool that cannot work is not offered.
         if files::office_pdf::tool::available() {
             toolbox.add(files::office_pdf::tool::ConvertToPdf::new(root));
@@ -109,6 +128,33 @@ impl Toolbox {
 
     pub fn add(&mut self, tool: impl Tool + 'static) {
         self.tools.push(Box::new(tool));
+    }
+
+    /// Adds a tool that is offered, and callable, only on steps where `condition` holds (for a tool that suits one
+    /// model and not another).
+    pub fn add_when(&mut self, tool: impl Tool + 'static, condition: Condition) {
+        self.conditions.insert(tool.name().to_owned(), condition);
+        self.tools.push(Box::new(tool));
+    }
+
+    /// Says which step the conditions are judged against. The agent loop calls this before every model call.
+    pub fn set_step(&self, step: StepInfo) {
+        *self.step.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = step;
+    }
+
+    /// Whether `name` may be offered and called on the current step: no condition, or one that holds.
+    #[must_use]
+    pub fn is_active(&self, name: &str) -> bool {
+        self.conditions.get(name).is_none_or(|condition| {
+            let step = self.step.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+            condition(&step)
+        })
+    }
+
+    /// How long a call to `name` may run, when the tool says.
+    #[must_use]
+    pub fn timeout_of(&self, name: &str) -> Option<std::time::Duration> {
+        self.get(name)?.timeout()
     }
 
     #[must_use]
@@ -148,7 +194,7 @@ impl Toolbox {
             };
             return Some(capped(name, result));
         }
-        let tool = self.get(name)?;
+        let tool = self.get(name).filter(|tool| self.is_active(tool.name()))?;
         Some(capped(name, tool.execute(args, &self.cwd).await))
     }
 
@@ -166,6 +212,7 @@ impl Toolbox {
             });
         self.tools
             .iter()
+            .filter(|tool| self.is_active(tool.name()))
             .filter_map(|tool| {
                 let found = tool.definition().or_else(|| {
                     originals

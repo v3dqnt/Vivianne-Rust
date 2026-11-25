@@ -24,11 +24,13 @@ pub mod profiles;
 pub mod projects;
 mod prompt;
 pub mod resilience;
+pub mod sections;
+pub mod session;
 pub mod store;
 pub mod thread_tools;
 pub mod title;
 pub mod workspace_context;
 
-pub use agent::{Agent, AgentError, ContextSource, Target};
+pub use agent::{Agent, AgentError, ContextSource, ResultFilter, Target};
 pub use event::AgentEvent;
 pub use prompt::coding_system_prompt;

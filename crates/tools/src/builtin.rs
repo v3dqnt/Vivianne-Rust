@@ -36,6 +36,11 @@ pub trait Tool: Send + Sync {
         None
     }
     async fn execute(&self, args: &serde_json::Value, cwd: &str) -> ToolResult;
+    /// How long a call may run before the agent gives up on it and answers with an error; `None` leaves it to the
+    /// tool (a command has its own limit) and to the agent's default.
+    fn timeout(&self) -> Option<Duration> {
+        None
+    }
 }
 
 /// Factory for creating the default set of coding tools. Called fresh on

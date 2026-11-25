@@ -71,6 +71,29 @@ pub fn delete(id: &str) -> Result<(), String> {
     delete_in(&default_dir()?, id)
 }
 
+/// Starts a new thread from `id` as it was before its turn `before_turn` (1 is the whole conversation left out), to take
+/// the conversation another way. The original is untouched; the new thread is saved and returned.
+pub fn fork(id: &str, before_turn: usize) -> Result<SavedThread, String> {
+    fork_in(&default_dir()?, id, before_turn)
+}
+
+fn fork_in(dir: &Path, id: &str, before_turn: usize) -> Result<SavedThread, String> {
+    let original = load_in(dir, id).ok_or_else(|| format!("there is no saved thread {id}"))?;
+    let history = crate::session::fork_before(&original.history, before_turn)
+        .ok_or_else(|| format!("thread {id} has no turn {before_turn} to fork before"))?;
+    let forked = SavedThread {
+        id: uuid::Uuid::new_v4().to_string(),
+        title: format!("{} (fork)", original.title),
+        // A name the person did not choose would be replaced by a generated one; this one says what it is.
+        title_source: "user".to_owned(),
+        updated_at: now(),
+        history,
+        ..original
+    };
+    save_in(dir, &forked)?;
+    Ok(forked)
+}
+
 fn save_in(dir: &Path, thread: &SavedThread) -> Result<(), String> {
     if !valid_id(&thread.id) {
         return Err(format!("not a thread id: {}", thread.id));
@@ -164,6 +187,28 @@ mod tests {
     use vivianne_core::Role;
 
     use super::*;
+
+    #[test]
+    fn a_fork_is_a_new_thread_with_the_earlier_turns_and_the_original_is_untouched() {
+        let dir = std::env::temp_dir().join(format!("viv-fork-{}", uuid::Uuid::new_v4().simple()));
+        let mut original = thread("11111111-1111-1111-1111-111111111111", "/w", 5);
+        original.title = "Fix the parser".to_owned();
+        original.history = vec![
+            Message::new(Role::User, "one"),
+            Message::assistant("a".to_owned(), Vec::new()),
+            Message::new(Role::User, "two"),
+            Message::assistant("b".to_owned(), Vec::new()),
+        ];
+        save_in(&dir, &original).expect("saved");
+        let forked = fork_in(&dir, &original.id, 2).expect("forked");
+        assert_ne!(forked.id, original.id);
+        assert_eq!(forked.title, "Fix the parser (fork)");
+        assert_eq!(forked.history.len(), 2);
+        assert_eq!(load_in(&dir, &forked.id).expect("saved fork").history.len(), 2);
+        assert_eq!(load_in(&dir, &original.id).expect("original").history.len(), 4);
+        assert!(fork_in(&dir, &original.id, 3).is_err() && fork_in(&dir, "nope", 1).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     fn thread(id: &str, workspace: &str, updated_at: u64) -> SavedThread {
         SavedThread {

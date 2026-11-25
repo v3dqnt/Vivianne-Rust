@@ -40,6 +40,8 @@ A saved message may carry `context` (`{"kind": "agent-instructions" | "time-cont
 `dev` (line tables only, no debug info for dependencies), `debugging` (`dev` with full debug info: `cargo build --profile debugging`), `release` (thin LTO, one codegen unit, debug info stripped).
 
 ## Tools
+`run_code` (runs a JavaScript program that can call only the read-only tools: `read`, `ls`, `grep`, `code_search`, `glob`; argument `code`; limits 60 s, 64 MiB, 50 calls, 64 KiB of output; look-only, so it needs no approval and works in Plan mode).
+
 `convert_to_pdf` (converts a .doc/.docx/.xls/.xlsx/.ppt/.pptx in the project to a PDF with an installed LibreOffice; arguments `path`, `output?`, `overwrite?`; writes a file, so it asks in Ask mode and is refused in Plan mode; offered only when LibreOffice is found).
 
 `present` (declares up to 8 existing files as final deliverables; arguments `files: [{path, description?}]`; result lines `Presented <absolute path>`; look-only, so it needs no approval and works in Plan mode).

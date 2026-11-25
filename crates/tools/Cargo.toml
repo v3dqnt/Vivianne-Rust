@@ -23,6 +23,8 @@ keyring = { version = "3", features = ["windows-native", "apple-native", "sync-s
 base64 = "0.22.1"
 sha2 = "0.10.9"
 tokio-util = "0.7"
+# The model's run_code programs: a sandboxed JavaScript engine with no file, network or process access of its own (R6.1).
+rquickjs = { version = "0.8", default-features = false }
 image = "0.25"
 which = "7.0"
 dirs = "6.0.0"
