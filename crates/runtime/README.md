@@ -16,6 +16,8 @@ tools it asks for, feeds results back, and stops when the model answers without 
   token estimate (four characters), so the parts add up.
 - `workspace_context.rs`: what is added to a conversation before each model call: the AGENTS.md / CLAUDE.md files (rules in `vivianne-context`), the clock and the tmux pane, as durable messages; keeps the single-line `@import` of an instruction file.
 - `changes/`: what each run changed, per file with line counts, and each file's comparison (port of `workspace-changes`): private git snapshots at the start and end of a run, plus whole-file copies before each file-tool edit for what git does not cover. Separate from `checkpoints.rs`, which keeps hidden refs for rolling back.
+- `sections.rs`: the system prompt as named, ordered sections. `session.rs`: a thread as typed numbered events, and forking it before a turn (`store::fork`).
+- `agent.rs` also checks every call's arguments against the tool's schema (`tools::validate`) and overlaps runs of read-only tools (`core::is_parallel_safe`). The gaps against the original `core` group are in `docs/core-package-gaps.md`.
 - `deliverables.rs`: the files the model declared with the `present` tool, read back from the saved history.
 - `store.rs`: threads kept on disk (`~/.viv/agent/threads/<id>.json`), listed per project folder.
 - `title.rs`: a thread's title: the cleaned first sentence, replaced by a model-written one (`Agent::title`); a

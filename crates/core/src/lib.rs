@@ -64,7 +64,7 @@ pub enum Mode {
 
 /// Tools that only look. Anything not named here (a new tool, an editing one such as `lsp_edit`) counts as one that
 /// changes things: a list of what is safe fails closed, a list of what is dangerous fails open.
-const LOOK_ONLY_TOOLS: [&str; 20] = [
+const LOOK_ONLY_TOOLS: [&str; 21] = [
     "debug",
     "read",
     "ls",
@@ -88,6 +88,8 @@ const LOOK_ONLY_TOOLS: [&str; 20] = [
     "read_tool_result",
     // Declares files for the user to open; nothing is changed or copied.
     "present",
+    // Runs a program that can call only the tools that read.
+    "run_code",
 ];
 
 /// The tools of the `computer` MCP server (agent-desktop), by public name: `mcp__computer__desktop_<tool>`.
@@ -170,6 +172,30 @@ fn computer_tool(name: &str) -> Option<&str> {
 #[must_use]
 pub fn is_computer_tool(name: &str) -> bool {
     computer_tool(name).is_some()
+}
+
+/// Tools that only read and keep no state between calls, so a run of them in one step may overlap. Everything else (a
+/// tool that changes something, one that holds a session such as `debug`, or one this list does not know) runs alone,
+/// in the order the model gave it.
+const PARALLEL_SAFE_TOOLS: [&str; 12] = [
+    "read",
+    "ls",
+    "grep",
+    "code_search",
+    "glob",
+    "diagnostics",
+    "repo_overview",
+    "recall",
+    "reflect",
+    "list_threads",
+    "read_thread",
+    "read_tool_result",
+];
+
+/// Whether a call to this tool may overlap with its neighbours in a step.
+#[must_use]
+pub fn is_parallel_safe(name: &str) -> bool {
+    PARALLEL_SAFE_TOOLS.contains(&name)
 }
 
 /// Whether a tool only looks.
@@ -340,6 +366,23 @@ impl Message {
             tool_call_id: Some(call_id.into()),
             ..Self::new(Role::Tool, text)
         }
+    }
+}
+
+#[cfg(test)]
+mod parallel_tests {
+    use super::*;
+
+    #[test]
+    fn only_tools_that_read_and_keep_no_state_may_overlap() {
+        for name in ["read", "grep", "glob", "ls", "read_thread"] {
+            assert!(is_parallel_safe(name), "{name}");
+        }
+        for name in ["write", "edit", "shell", "debug", "task", "lsp", "present", "mcp__x__y", "unknown"] {
+            assert!(!is_parallel_safe(name), "{name}");
+        }
+        // Whatever may overlap also only looks: a call that needs approval is never one of them.
+        assert!(PARALLEL_SAFE_TOOLS.iter().all(|name| is_look_only(name)));
     }
 }
 
