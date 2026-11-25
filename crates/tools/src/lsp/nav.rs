@@ -11,7 +11,7 @@
 use async_trait::async_trait;
 use serde_json::Value;
 
-use super::builtin::{Tool, ToolResult};
+use crate::builtin::{Tool, ToolResult};
 
 const MAX_LOCATIONS: usize = 100;
 const MAX_CHARS: usize = 16_000;
@@ -127,9 +127,9 @@ const MAX_GLOB_FILES: usize = 15;
 
 /// Files under `root` matching `pattern` (as the `glob` tool reads it), in walk order, at most `cap`; the second number is how many matched.
 fn expand_glob(root: &std::path::Path, pattern: &str, cap: usize) -> Result<(Vec<std::path::PathBuf>, usize), String> {
-    let matcher = super::builtin::glob_to_regex(pattern).map_err(|e| format!("invalid glob pattern '{pattern}': {e}"))?;
+    let matcher = crate::builtin::glob_to_regex(pattern).map_err(|e| format!("invalid glob pattern '{pattern}': {e}"))?;
     let (mut found, mut total) = (Vec::new(), 0usize);
-    super::builtin::walk_files(root, usize::MAX, |p| {
+    crate::builtin::walk_files(root, usize::MAX, |p| {
         let rel = p.strip_prefix(root).unwrap_or(p).to_string_lossy().replace('\\', "/");
         if matcher.is_match(&rel) {
             total += 1;
@@ -156,7 +156,7 @@ async fn glob_diagnostics(cwd: &str, pattern: &str) -> String {
     }
     let (mut out, mut clean, mut unknown) = (Vec::new(), 0usize, 0usize);
     for f in &files {
-        let shown = super::builtin::display_path(f, &root);
+        let shown = crate::builtin::display_path(f, &root);
         match crate::lsp::manager::report(&f.display().to_string(), cwd, std::time::Duration::from_secs(6)).await {
             Report::Published(items) if items.is_empty() => clean += 1,
             Report::NoServer | Report::NotReported => unknown += 1,
@@ -220,7 +220,7 @@ impl Tool for LspTool {
         if op == "diagnostics" && path.contains(['*', '?', '[', '{']) {
             return ok(glob_diagnostics(&self.cwd, path).await);
         }
-        let full = super::builtin::resolve_path(&self.cwd, path);
+        let full = crate::builtin::resolve_path(&self.cwd, path);
         if !full.is_file() {
             return fail(format!("{path} is not a file"));
         }
@@ -351,7 +351,7 @@ impl Tool for LspEditTool {
         if path.is_empty() {
             return fail("'path' is required".into());
         }
-        let full = super::builtin::resolve_path(&self.cwd, path).display().to_string();
+        let full = crate::builtin::resolve_path(&self.cwd, path).display().to_string();
         let shown = |lines: Vec<String>| ok(lines.join("\n"));
         match action {
             "rename" => {
@@ -365,7 +365,7 @@ impl Tool for LspEditTool {
             }
             "rename_file" => {
                 let Some(to) = args["new_path"].as_str().filter(|t| !t.is_empty()) else { return fail("'new_path' is required".into()) };
-                let to_full = super::builtin::resolve_path(&self.cwd, to).display().to_string();
+                let to_full = crate::builtin::resolve_path(&self.cwd, to).display().to_string();
                 crate::lsp::manager::rename_file(&full, &to_full, &self.cwd).await.map(shown).unwrap_or_else(fail)
             }
             "code_actions" => {

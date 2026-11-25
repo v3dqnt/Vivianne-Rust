@@ -17,6 +17,7 @@ pub mod client;
 pub mod edits;
 pub mod ledger;
 pub mod manager;
+pub mod nav;
 pub mod servers;
 pub mod uri;
 

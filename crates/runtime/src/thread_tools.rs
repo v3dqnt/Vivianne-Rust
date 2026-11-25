@@ -42,22 +42,6 @@ impl ReadThread {
     }
 }
 
-fn ok(content: String) -> ToolResult {
-    ToolResult {
-        content,
-        is_error: false,
-        details: None,
-    }
-}
-
-fn failed(content: impl Into<String>) -> ToolResult {
-    ToolResult {
-        content: content.into(),
-        is_error: true,
-        details: None,
-    }
-}
-
 #[async_trait]
 impl Tool for ListThreads {
     fn name(&self) -> &str {
@@ -75,13 +59,17 @@ impl Tool for ListThreads {
     async fn execute(&self, _args: &Value, _cwd: &str) -> ToolResult {
         let threads = store::list(&self.workspace);
         if threads.is_empty() {
-            return ok("There are no other saved conversations in this project.".to_owned());
+            return ToolResult::ok(
+                "There are no other saved conversations in this project.".to_owned(),
+            );
         }
-        ok(threads
-            .iter()
-            .map(|t| format!("- {} (id {})", t.title, t.id))
-            .collect::<Vec<_>>()
-            .join("\n"))
+        ToolResult::ok(
+            threads
+                .iter()
+                .map(|t| format!("- {} (id {})", t.title, t.id))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
     }
 }
 
@@ -107,7 +95,7 @@ impl Tool for ReadThread {
         let id = args["id"].as_str().unwrap_or_default();
         // Only this project's conversations: an id from another project reads as if there were none.
         let Some(thread) = store::load(id).filter(|t| t.workspace == self.workspace) else {
-            return failed(format!(
+            return ToolResult::error(format!(
                 "There is no saved conversation {id} in this project."
             ));
         };
@@ -130,7 +118,7 @@ impl Tool for ReadThread {
         }
         // The newest part is what carries on from where it was left.
         let skip = out.chars().count().saturating_sub(MAX_READ_CHARS);
-        ok(if skip > 0 {
+        ToolResult::ok(if skip > 0 {
             format!(
                 "(the earlier part is left out)\n{}",
                 out.chars().skip(skip).collect::<String>()

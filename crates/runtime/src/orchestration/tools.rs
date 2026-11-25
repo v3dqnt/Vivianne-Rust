@@ -12,22 +12,6 @@ use super::profiles::{self, Profile};
 use super::subagents::{self, Registry, Start};
 use super::{AgentSpec, caller, spawner};
 
-fn ok(content: impl Into<String>) -> ToolResult {
-    ToolResult {
-        content: content.into(),
-        is_error: false,
-        details: None,
-    }
-}
-
-fn failed(content: impl Into<String>) -> ToolResult {
-    ToolResult {
-        content: format!("Error: {}", content.into()),
-        is_error: true,
-        details: None,
-    }
-}
-
 fn text<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
     args.get(key)
         .and_then(Value::as_str)
@@ -79,13 +63,13 @@ impl Tool for Task {
 
     async fn execute(&self, args: &Value, _cwd: &str) -> ToolResult {
         let (Some(caller), Some(spawner)) = (caller(), spawner()) else {
-            return failed("task works inside a conversation's own agent.");
+            return ToolResult::failure("task works inside a conversation's own agent.");
         };
         if caller.depth >= 1 {
-            return failed("you are a subagent already: do the work yourself.");
+            return ToolResult::failure("you are a subagent already: do the work yourself.");
         }
         let Some(description) = text(args, "description") else {
-            return failed("'description' is required.");
+            return ToolResult::failure("'description' is required.");
         };
         let kind = text(args, "subagent_type").unwrap_or("general-purpose");
         // A name that matches no profile is just a label: the work is general-purpose.
@@ -99,7 +83,7 @@ impl Tool for Task {
         });
         let context = text(args, "context");
         let Some(base) = text(args, "prompt").or(profile.default_prompt.as_deref()) else {
-            return failed(format!(
+            return ToolResult::failure(format!(
                 "no 'prompt' was given and '{kind}' has no preset task. Say what to do, or pick a kind with one (list_subagent_profiles)."
             ));
         };
@@ -107,12 +91,12 @@ impl Tool for Task {
         let registry = Registry::global();
         let name = match text(args, "name") {
             Some(n) if !subagents::valid_name(n) => {
-                return failed(format!(
+                return ToolResult::failure(format!(
                     "'{n}' is not a valid name: use lower-case letters, digits and dashes, starting with a letter, up to 32 characters, and not 'lead'."
                 ));
             }
             Some(n) if registry.get(&caller.thread, n).is_some() => {
-                return failed(format!(
+                return ToolResult::failure(format!(
                     "a subagent called '{n}' exists already in this conversation."
                 ));
             }
@@ -140,7 +124,7 @@ impl Tool for Task {
         };
         let handle = match subagents::start(spawner.as_ref(), &caller, request) {
             Ok(handle) => handle,
-            Err(why) => return failed(why),
+            Err(why) => return ToolResult::failure(why),
         };
         if args
             .get("run_in_background")
@@ -152,13 +136,13 @@ impl Tool for Task {
             } else {
                 "able to change files"
             };
-            return ok(format!(
+            return ToolResult::ok(format!(
                 "Started {} ({}), {reading}: {description}. It works in the background: collect its answer with task_output or wait_tasks.",
                 handle.name, handle.id
             ));
         }
         handle.wait(Duration::from_secs(MAX_WAIT_SECS)).await;
-        ok(handle.report())
+        ToolResult::ok(handle.report())
     }
 }
 
@@ -190,16 +174,16 @@ impl Tool for TaskOutput {
 
     async fn execute(&self, args: &Value, _cwd: &str) -> ToolResult {
         let Some(caller) = caller() else {
-            return failed("no conversation to look in.");
+            return ToolResult::failure("no conversation to look in.");
         };
         let id = text(args, "task_id").unwrap_or_default();
         let Some(handle) = Registry::global().get(&caller.thread, id) else {
-            return failed(format!("no subagent '{id}' in this conversation."));
+            return ToolResult::failure(format!("no subagent '{id}' in this conversation."));
         };
         if args.get("wait").and_then(Value::as_bool).unwrap_or(false) {
             handle.wait(wait_of(args, DEFAULT_WAIT_SECS)).await;
         }
-        ok(format!("{}\n\n{}", handle.summary(), handle.report()))
+        ToolResult::ok(format!("{}\n\n{}", handle.summary(), handle.report()))
     }
 }
 
@@ -229,7 +213,7 @@ impl Tool for WaitTasks {
 
     async fn execute(&self, args: &Value, _cwd: &str) -> ToolResult {
         let Some(caller) = caller() else {
-            return failed("no conversation to look in.");
+            return ToolResult::failure("no conversation to look in.");
         };
         let registry = Registry::global();
         let named: Vec<String> = args
@@ -253,21 +237,27 @@ impl Tool for WaitTasks {
             for id in &named {
                 match registry.get(&caller.thread, id) {
                     Some(h) => found.push(h),
-                    None => return failed(format!("no subagent '{id}' in this conversation.")),
+                    None => {
+                        return ToolResult::failure(format!(
+                            "no subagent '{id}' in this conversation."
+                        ));
+                    }
                 }
             }
             found
         };
         if handles.is_empty() {
-            return ok("Nothing is working.");
+            return ToolResult::ok("Nothing is working.");
         }
         let limit = wait_of(args, DEFAULT_WAIT_SECS);
         futures::future::join_all(handles.iter().map(|h| h.wait(limit))).await;
-        ok(handles
-            .iter()
-            .map(|h| format!("## {}\n{}", h.summary(), h.report()))
-            .collect::<Vec<_>>()
-            .join("\n\n"))
+        ToolResult::ok(
+            handles
+                .iter()
+                .map(|h| format!("## {}\n{}", h.summary(), h.report()))
+                .collect::<Vec<_>>()
+                .join("\n\n"),
+        )
     }
 }
 
@@ -298,16 +288,16 @@ impl Tool for KillTask {
 
     async fn execute(&self, args: &Value, _cwd: &str) -> ToolResult {
         let Some(caller) = caller() else {
-            return failed("no conversation to look in.");
+            return ToolResult::failure("no conversation to look in.");
         };
         let id = text(args, "task_id").unwrap_or_default();
         let Some(handle) = Registry::global().get(&caller.thread, id) else {
-            return failed(format!("no subagent '{id}' in this conversation."));
+            return ToolResult::failure(format!("no subagent '{id}' in this conversation."));
         };
         if handle.kill(text(args, "reason").map(str::to_owned)) {
-            ok(format!("Stopped {}.", handle.name))
+            ToolResult::ok(format!("Stopped {}.", handle.name))
         } else {
-            ok(format!("{} had finished already.", handle.name))
+            ToolResult::ok(format!("{} had finished already.", handle.name))
         }
     }
 }
@@ -331,22 +321,24 @@ impl Tool for ListSubagentProfiles {
     }
 
     async fn execute(&self, _args: &Value, _cwd: &str) -> ToolResult {
-        ok(profiles::profiles()
-            .iter()
-            .map(|p| {
-                format!(
-                    "- {}{}{}: {}",
-                    p.name,
-                    if p.read_only { " (read-only)" } else { "" },
-                    if p.default_prompt.is_some() {
-                        " (has a preset task)"
-                    } else {
-                        ""
-                    },
-                    p.description
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n"))
+        ToolResult::ok(
+            profiles::profiles()
+                .iter()
+                .map(|p| {
+                    format!(
+                        "- {}{}{}: {}",
+                        p.name,
+                        if p.read_only { " (read-only)" } else { "" },
+                        if p.default_prompt.is_some() {
+                            " (has a preset task)"
+                        } else {
+                            ""
+                        },
+                        p.description
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
     }
 }

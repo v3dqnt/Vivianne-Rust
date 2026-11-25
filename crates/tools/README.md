@@ -13,7 +13,7 @@ The model-facing definitions are the original `schemas.rs` entries (`src/schemas
 | `src/builtin.rs` | `agent/tools/builtin.rs` (the `Tool` trait, helpers, Grep, CodeSearch, Glob, Diagnostics, gitignore helper, Read, Ls) |
 | `src/code/repo_tools.rs`, `semantic_index.rs`, `checkers.rs` | `agent/tools/code/` |
 | `src/files/documents.rs`, `doc_design.rs` | `agent/tools/files/` (what `read` parses PDFs, Word, slides and sheets with) |
-| `src/lsp/`, `src/lsp_nav.rs`, `src/proc.rs`, `src/code/sandbox.rs`, `src/files/guard.rs` | the 0901 backend: the older `viv-main-gui-exp` copy has no `lsp` tool |
+| `src/lsp/` (including `lsp/nav.rs`), `src/proc.rs`, `src/code/sandbox.rs`, `src/files/guard.rs` | the 0901 backend: the older `viv-main-gui-exp` copy has no `lsp` tool |
 
 Copied files keep their text and carry a header saying where from; they are marked `rustfmt::skip` in
 `lib.rs` so formatting never changes them.
