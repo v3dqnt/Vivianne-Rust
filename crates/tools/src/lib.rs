@@ -17,6 +17,8 @@ pub mod present;
 pub mod ptc;
 pub mod run_code;
 pub mod validate;
+#[cfg(test)]
+mod testing;
 #[rustfmt::skip]
 pub mod code;
 #[rustfmt::skip]
@@ -28,8 +30,6 @@ pub mod connections;
 pub mod dap;
 #[rustfmt::skip]
 mod lsp;
-#[rustfmt::skip]
-mod lsp_nav;
 pub mod schemas;
 
 mod simple;
@@ -113,7 +113,7 @@ impl Toolbox {
         toolbox.add(builtin::DiagnosticsTool::new(cwd.clone()));
         toolbox.add(dap::DebugTool::new(cwd.clone(), false));
         toolbox.add(dap::DebugTool::new(cwd.clone(), true));
-        toolbox.add(lsp_nav::LspTool::new(cwd));
+        toolbox.add(lsp::nav::LspTool::new(cwd));
         toolbox.add(simple::Shell::new(workspace.clone()));
         toolbox.add(simple::WriteFile::new(workspace.clone()));
         toolbox.add(simple::EditFile::new(workspace));
@@ -233,10 +233,11 @@ impl Toolbox {
     }
 }
 
-pub mod dev_server;
 pub mod host;
 pub mod mcp;
-pub mod open_apps;
+pub mod project;
+// Where they were before `project/` existed, so callers keep their paths.
+pub use project::{dev_server, open_apps};
 #[rustfmt::skip]
 pub mod proc;
 pub mod results;

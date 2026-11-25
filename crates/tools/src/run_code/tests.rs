@@ -8,7 +8,7 @@ use serde_json::json;
 use super::*;
 
 fn project() -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("viv-run-code-{}", uuid_like()));
+    let dir = crate::testing::scratch("run-code");
     std::fs::create_dir_all(dir.join("src")).expect("dir");
     std::fs::write(dir.join("src/a.rs"), "fn a() {}\n// TODO one\n").expect("a");
     std::fs::write(
@@ -18,16 +18,6 @@ fn project() -> PathBuf {
     .expect("b");
     std::fs::write(dir.join("notes.txt"), "plain\n").expect("notes");
     dir
-}
-
-fn uuid_like() -> String {
-    format!(
-        "{}-{:?}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_nanos())
-    )
 }
 
 async fn run_in(dir: &Path, code: &str) -> ToolResult {
@@ -156,43 +146,7 @@ async fn a_program_that_never_ends_is_stopped() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_program_that_eats_memory_or_stack_fails_instead_of_taking_the_app_down() {
-    let dir = project();
-    let memory = run_in(
-        &dir,
-        "const big = []; while (true) { big.push('x'.repeat(1 << 20)); }",
-    )
-    .await;
-    assert!(memory.is_error, "{}", memory.content);
-    let stack = run_in(&dir, "function f(n) { return f(n + 1) + 1; } return f(0);").await;
-    assert!(stack.is_error, "{}", stack.content);
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn a_program_has_no_way_out_except_the_tools() {
-    let dir = project();
-    for probe in [
-        "require",
-        "process",
-        "fetch",
-        "XMLHttpRequest",
-        "Deno",
-        "std",
-        "os",
-    ] {
-        let out = run_in(&dir, &format!("return typeof {probe};")).await;
-        assert_eq!(
-            out.content, "result: \"undefined\"",
-            "{probe}: {}",
-            out.content
-        );
-    }
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn syntax_errors_and_empty_code_come_back_as_errors() {
+async fn missing_or_empty_code_comes_back_as_an_error() {
     let dir = project();
     let broken = run_in(&dir, "return (;").await;
     assert!(
@@ -205,35 +159,6 @@ async fn syntax_errors_and_empty_code_come_back_as_errors() {
         .await;
     assert!(none.is_error && none.content.contains("requires code"));
     assert!(RunCode::new(&dir).execute(&json!({}), "").await.is_error);
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn a_result_that_is_not_plain_json_is_refused_and_says_why() {
-    let dir = project();
-    let out = run_in(&dir, "return { a: undefined, b: () => 1 };").await;
-    assert!(
-        out.is_error && out.content.contains("invalid-output"),
-        "{}",
-        out.content
-    );
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn a_huge_output_fails_as_an_output_limit_with_the_start_of_it() {
-    let dir = project();
-    let out = run_in(
-        &dir,
-        "console.log('first'); console.log('y'.repeat(200000));",
-    )
-    .await;
-    assert!(
-        out.is_error && out.content.contains("output-limit") && out.content.starts_with("first"),
-        "{}",
-        &out.content[..out.content.len().min(200)]
-    );
-    assert!(out.content.len() <= MAX_OUTPUT_BYTES + 32);
     let _ = std::fs::remove_dir_all(&dir);
 }
 

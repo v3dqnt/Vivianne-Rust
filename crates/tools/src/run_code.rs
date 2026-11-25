@@ -205,14 +205,6 @@ fn cut(mut text: String) -> String {
     text
 }
 
-fn failed(content: String) -> ToolResult {
-    ToolResult {
-        content,
-        is_error: true,
-        details: None,
-    }
-}
-
 #[async_trait]
 impl Tool for RunCode {
     fn name(&self) -> &str {
@@ -243,7 +235,7 @@ impl Tool for RunCode {
             .and_then(Value::as_str)
             .filter(|c| !c.trim().is_empty())
         else {
-            return failed("run_code requires code".into());
+            return ToolResult::error("run_code requires code");
         };
         let request = RunRequest {
             program: code.to_owned(),
@@ -254,11 +246,15 @@ impl Tool for RunCode {
         };
         let spec = match self.runtime.resolve(request) {
             Ok(spec) => spec,
-            Err(message) => return failed(format!("the program could not run: {message}")),
+            Err(message) => {
+                return ToolResult::error(format!("the program could not run: {message}"));
+            }
         };
         let result = match self.runtime.run(spec).await {
             Ok(result) => result,
-            Err(message) => return failed(format!("the program could not run: {message}")),
+            Err(message) => {
+                return ToolResult::error(format!("the program could not run: {message}"));
+            }
         };
         let mut text = result.logs.join("\n");
         if let Some(error) = &result.error {
@@ -270,7 +266,7 @@ impl Tool for RunCode {
                 error.kind.as_str(),
                 error.message.trim_end()
             );
-            return failed(cut(text));
+            return ToolResult::error(cut(text));
         }
         if let Some(value) = &result.value {
             if !text.is_empty() {

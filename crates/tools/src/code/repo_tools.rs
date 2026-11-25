@@ -22,9 +22,7 @@ const DEPENDENCY_FILES: &[&str] = &[
     "build.gradle.kts", "pom.xml", "composer.json",
 ];
 
-fn err(msg: impl Into<String>) -> ToolResult {
-    ToolResult { content: format!("Error: {}", msg.into()), is_error: true, details: None }
-}
+use crate::builtin::err;
 
 /// Turn a repository reference (full git URL, `owner/repo` GitHub shorthand,
 /// or `host/owner/repo`) into a clone URL and a filesystem-safe cache key.

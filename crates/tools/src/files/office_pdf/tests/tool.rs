@@ -7,11 +7,7 @@ use crate::Tool;
 use crate::files::office_pdf::tool::ConvertToPdf;
 
 fn folder() -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "viv-convert-tool-{}",
-        uuid::Uuid::new_v4().simple()
-    ));
-    std::fs::create_dir_all(&dir).expect("dir");
+    let dir = crate::testing::scratch("convert-tool");
     std::fs::canonicalize(&dir).expect("canonical")
 }
 

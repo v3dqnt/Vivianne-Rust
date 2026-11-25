@@ -12,22 +12,6 @@ use vivianne_tools::{Tool, ToolResult};
 use super::{Delivered, MAX_HOPS, caller, child_depth, hub, next_hop, record_depth};
 use crate::store;
 
-fn ok(content: impl Into<String>) -> ToolResult {
-    ToolResult {
-        content: content.into(),
-        is_error: false,
-        details: None,
-    }
-}
-
-fn failed(content: impl Into<String>) -> ToolResult {
-    ToolResult {
-        content: format!("Error: {}", content.into()),
-        is_error: true,
-        details: None,
-    }
-}
-
 fn text<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
     args.get(key)
         .and_then(Value::as_str)
@@ -83,31 +67,31 @@ impl Tool for MessageThread {
 
     async fn execute(&self, args: &Value, _cwd: &str) -> ToolResult {
         let (Some(caller), Some(hub)) = (caller(), hub()) else {
-            return failed("no other conversations can be reached from here.");
+            return ToolResult::failure("no other conversations can be reached from here.");
         };
         let (Some(to), Some(body)) = (text(args, "id"), text(args, "text")) else {
-            return failed("'id' and 'text' are required.");
+            return ToolResult::failure("'id' and 'text' are required.");
         };
         if to == caller.thread {
-            return failed("that is this conversation.");
+            return ToolResult::failure("that is this conversation.");
         }
         let hop = match next_hop(&caller.thread, to) {
             Ok(hop) => hop,
-            Err(why) => return failed(why),
+            Err(why) => return ToolResult::failure(why),
         };
         match hub
             .deliver(to, frame(&caller.thread, hop, body, false))
             .await
         {
-            Ok(Delivered::Woke) => ok(format!(
+            Ok(Delivered::Woke) => ToolResult::ok(format!(
                 "Sent. \"{}\" was idle and has started on it.",
                 title_of(to)
             )),
-            Ok(Delivered::Queued) => ok(format!(
+            Ok(Delivered::Queued) => ToolResult::ok(format!(
                 "Sent. \"{}\" is busy: it will do this next.",
                 title_of(to)
             )),
-            Err(why) => failed(why),
+            Err(why) => ToolResult::failure(why),
         }
     }
 }
@@ -140,17 +124,17 @@ impl Tool for AskThread {
 
     async fn execute(&self, args: &Value, _cwd: &str) -> ToolResult {
         let (Some(caller), Some(hub)) = (caller(), hub()) else {
-            return failed("no other conversations can be reached from here.");
+            return ToolResult::failure("no other conversations can be reached from here.");
         };
         let (Some(to), Some(body)) = (text(args, "id"), text(args, "text")) else {
-            return failed("'id' and 'text' are required.");
+            return ToolResult::failure("'id' and 'text' are required.");
         };
         if to == caller.thread {
-            return failed("that is this conversation.");
+            return ToolResult::failure("that is this conversation.");
         }
         let hop = match next_hop(&caller.thread, to) {
             Ok(hop) => hop,
-            Err(why) => return failed(why),
+            Err(why) => return ToolResult::failure(why),
         };
         let wait = Duration::from_secs(
             args.get("timeout_secs")
@@ -162,8 +146,8 @@ impl Tool for AskThread {
             .ask(to, frame(&caller.thread, hop, body, true), wait)
             .await
         {
-            Ok(reply) => ok(format!("\"{}\" replied:\n\n{reply}", title_of(to))),
-            Err(why) => failed(why),
+            Ok(reply) => ToolResult::ok(format!("\"{}\" replied:\n\n{reply}", title_of(to))),
+            Err(why) => ToolResult::failure(why),
         }
     }
 }
@@ -196,26 +180,26 @@ impl Tool for SpawnThread {
 
     async fn execute(&self, args: &Value, _cwd: &str) -> ToolResult {
         let (Some(caller), Some(hub)) = (caller(), hub()) else {
-            return failed("no other conversations can be started from here.");
+            return ToolResult::failure("no other conversations can be started from here.");
         };
         let Some(prompt) = text(args, "prompt") else {
-            return failed("'prompt' is required.");
+            return ToolResult::failure("'prompt' is required.");
         };
         let depth = match child_depth(&caller.thread) {
             Ok(depth) => depth,
-            Err(why) => return failed(why),
+            Err(why) => return ToolResult::failure(why),
         };
         let title = text(args, "title").map(str::to_owned);
         let agent = text(args, "agent").map(str::to_owned);
         match hub.spawn(title, prompt.to_owned(), agent).await {
             Ok(thread) => {
                 record_depth(&thread.id, depth);
-                ok(format!(
+                ToolResult::ok(format!(
                     "Started \"{}\" (id {}). It is working. Use ask_thread to wait for its answer, or read_thread to see how it is going.",
                     thread.title, thread.id
                 ))
             }
-            Err(why) => failed(why),
+            Err(why) => ToolResult::failure(why),
         }
     }
 }

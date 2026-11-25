@@ -69,14 +69,6 @@ impl Present {
     }
 }
 
-fn failed(content: impl Into<String>) -> ToolResult {
-    ToolResult {
-        content: content.into(),
-        is_error: true,
-        details: None,
-    }
-}
-
 #[async_trait]
 impl Tool for Present {
     fn name(&self) -> &str {
@@ -110,19 +102,19 @@ impl Tool for Present {
 
     async fn execute(&self, args: &Value, _cwd: &str) -> ToolResult {
         let Some(files) = args.get("files").and_then(Value::as_array) else {
-            return failed("present requires a files array");
+            return ToolResult::error("present requires a files array");
         };
         if files.is_empty() || files.len() > MAX_FILES {
-            return failed(format!("present accepts 1 to {MAX_FILES} files"));
+            return ToolResult::error(format!("present accepts 1 to {MAX_FILES} files"));
         }
         let mut presented = Vec::new();
         for file in files {
             let Some(path) = file.get("path").and_then(Value::as_str) else {
-                return failed("present requires a path for every file");
+                return ToolResult::error("present requires a path for every file");
             };
             let absolute = match self.check(path) {
                 Ok(absolute) => absolute,
-                Err(message) => return failed(message),
+                Err(message) => return ToolResult::error(message),
             };
             let mut entry = json!({ "path": absolute.to_string_lossy() });
             if let Some(description) = file.get("description").and_then(Value::as_str) {
@@ -149,19 +141,7 @@ mod tests {
     use super::*;
 
     fn folder(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("viv-present-{name}-{}", uuid_like()));
-        std::fs::create_dir_all(&dir).expect("dir");
-        dir
-    }
-
-    fn uuid_like() -> String {
-        format!(
-            "{}-{:?}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |d| d.as_nanos())
-        )
+        crate::testing::scratch(&format!("present-{name}"))
     }
 
     async fn call(tool: &Present, args: Value) -> ToolResult {

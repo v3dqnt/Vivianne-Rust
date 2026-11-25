@@ -61,14 +61,6 @@ impl ConvertToPdf {
     }
 }
 
-fn failed(content: impl Into<String>) -> ToolResult {
-    ToolResult {
-        content: content.into(),
-        is_error: true,
-        details: None,
-    }
-}
-
 /// What to tell the model about a failed conversion: the class, never the engine's own words.
 fn reason(error: &Error) -> String {
     match error.code {
@@ -119,7 +111,7 @@ impl Tool for ConvertToPdf {
             .and_then(Value::as_str)
             .filter(|p| !p.trim().is_empty())
         else {
-            return failed("convert_to_pdf requires a path");
+            return ToolResult::error("convert_to_pdf requires a path");
         };
         let overwrite = args
             .get("overwrite")
@@ -127,7 +119,7 @@ impl Tool for ConvertToPdf {
             .unwrap_or(false);
         let input = match self.workspace.resolve(path) {
             Ok(input) => input,
-            Err(error) => return failed(error.to_string()),
+            Err(error) => return ToolResult::error(error.to_string()),
         };
         let output = match args
             .get("output")
@@ -136,23 +128,23 @@ impl Tool for ConvertToPdf {
         {
             Some(output) => match self.workspace.resolve(output) {
                 Ok(output) => output,
-                Err(error) => return failed(error.to_string()),
+                Err(error) => return ToolResult::error(error.to_string()),
             },
             None => input.with_extension("pdf"),
         };
         let shown = self.workspace.display(&output);
         if !shown.to_ascii_lowercase().ends_with(".pdf") {
-            return failed("the output path must end in .pdf");
+            return ToolResult::error("the output path must end in .pdf");
         }
         // Checked before converting so a refused overwrite costs nothing.
         if output.exists() && !overwrite {
-            return failed(format!(
+            return ToolResult::error(format!(
                 "{shown} already exists; choose another output or set overwrite to true"
             ));
         }
         let service = match self.converter() {
             Ok(service) => service,
-            Err(error) => return failed(format!("cannot convert: {}", reason(&error))),
+            Err(error) => return ToolResult::error(format!("cannot convert: {}", reason(&error))),
         };
         let rendered = match service
             .render_file(&input, Priority::Foreground, &CancellationToken::new())
@@ -160,15 +152,17 @@ impl Tool for ConvertToPdf {
         {
             Ok(rendered) => rendered,
             // The engine's own words stay in `error.detail`; the model gets the class.
-            Err(error) => return failed(format!("cannot convert {path}: {}", reason(&error))),
+            Err(error) => {
+                return ToolResult::error(format!("cannot convert {path}: {}", reason(&error)));
+            }
         };
         if let Some(folder) = output.parent()
             && let Err(error) = tokio::fs::create_dir_all(folder).await
         {
-            return failed(format!("cannot write {shown}: {error}"));
+            return ToolResult::error(format!("cannot write {shown}: {error}"));
         }
         if let Err(error) = tokio::fs::write(&output, &rendered.pdf).await {
-            return failed(format!("cannot write {shown}: {error}"));
+            return ToolResult::error(format!("cannot write {shown}: {error}"));
         }
         let mut content = format!(
             "Converted {path} to {shown} ({} KB).",

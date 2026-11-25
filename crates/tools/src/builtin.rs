@@ -17,6 +17,30 @@ pub struct ToolResult {
     pub details: Option<serde_json::Value>,
 }
 
+impl ToolResult {
+    /// A result that worked.
+    pub fn ok(content: impl Into<String>) -> Self {
+        Self { content: content.into(), is_error: false, details: None }
+    }
+
+    /// A result that failed, said as it is.
+    pub fn error(content: impl Into<String>) -> Self {
+        Self { content: content.into(), is_error: true, details: None }
+    }
+
+    /// A result that failed, in the older tools' form: `Error: <what>`.
+    pub fn failure(content: impl Into<String>) -> Self {
+        Self::error(format!("Error: {}", content.into()))
+    }
+
+    /// The same result with what a UI may show beside the text.
+    #[must_use]
+    pub fn with_details(mut self, details: serde_json::Value) -> Self {
+        self.details = Some(details);
+        self
+    }
+}
+
 /// Trait for tool implementations.
 ///
 /// Deliberately just `name` + `execute` — this used to also carry
@@ -414,10 +438,10 @@ impl Tool for CodeSearchTool {
 const MAX_GLOB_RESULTS: usize = 100;
 
 pub(crate) fn err(msg: impl Into<String>) -> ToolResult {
-    ToolResult { content: format!("Error: {}", msg.into()), is_error: true, details: None }
+    ToolResult::failure(msg)
 }
 fn ok(content: impl Into<String>) -> ToolResult {
-    ToolResult { content: content.into(), is_error: false, details: None }
+    ToolResult::ok(content)
 }
 
 // ── glob ───────────────────────────────────────────────────────────────────

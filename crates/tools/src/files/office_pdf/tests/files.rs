@@ -56,9 +56,7 @@ fn only_office_extensions_are_accepted_whatever_their_case_or_folder() {
 }
 
 fn temp_file(name: &str, content: &str) -> std::path::PathBuf {
-    let dir =
-        std::env::temp_dir().join(format!("viv-office-test-{}", uuid::Uuid::new_v4().simple()));
-    std::fs::create_dir_all(&dir).expect("dir");
+    let dir = crate::testing::scratch("office-test");
     let path = dir.join(name);
     std::fs::write(&path, content).expect("write");
     path

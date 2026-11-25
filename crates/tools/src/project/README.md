@@ -1,0 +1,1 @@
+The project's own helpers: `dev_server` (start, watch and stop the project's dev server) and `open_apps` (the editors and browsers a file or a link can be opened in). Callers still say `vivianne_tools::dev_server` and `::open_apps`; `lib.rs` re-exports them.

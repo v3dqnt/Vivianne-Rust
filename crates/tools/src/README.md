@@ -1,9 +1,18 @@
 # tools/src
 
-- `lib.rs`: `Toolbox`, the tool list the model sees.
-- `builtin.rs`: the `Tool` trait and the read-and-search tools. `schemas.rs`: the model-facing definitions.
-- `shell.rs`, `files_simple.rs`, `simple.rs`, `workspace.rs`: shell, write and edit, kept inside the project folder.
-- `host.rs`: what the copied tools need from the old app (`~/.viv` paths, settings, trust, current thread).
-- `proc.rs`: starting programs without a console window, and ending a process tree.
-- `results.rs`, `open_apps.rs`, `dev_server.rs`: oversized results, "open in" editors, the project's dev server.
-- Folders: `browser`, `code`, `computer`, `connections`, `dap`, `files`, `git`, `lsp`, `mcp`; each has a README.
+What the agent's tools are made of, by domain.
+
+**The tool box**
+- `lib.rs`: `Toolbox`, the list of tools the model sees (and which are offered on a given step).
+- `builtin.rs`: the `Tool` trait, `ToolResult` (`ok`, `error`, `failure`), and the read-and-search tools. `schemas.rs`: the model-facing definitions of those. `validate.rs`: arguments are checked against a tool's schema before it runs.
+- `simple.rs`: `shell`, `write` and `edit`, kept inside the project folder.
+- `results.rs`: a result too big for the model is kept aside and read back in pieces.
+- `present.rs` (hand files to the user), `run_code.rs` (programs that call the read-only tools) and `ptc/` (the program runtime under it).
+
+**Platform glue**
+- `host.rs`: what the tools need from the app (`~/.viv` paths, settings, trust, current thread). `proc.rs`: starting programs without a console window, and ending a process tree.
+- `project/`: the project's dev server, and "open in" editors and browsers.
+
+**Folders by domain** (each has a README): `browser`, `computer` (the two MCP servers for the web and the desktop), `code` (repository tools, checks, semantic search), `connections` and `mcp` (apps and servers the agent can use, and their sign-in), `dap` (debugging), `lsp` (language servers: navigation in `lsp/nav.rs`, diagnostics, edits), `files` (documents, the document designer, the write guard, Office to PDF), `git`.
+
+**Tests**: next to what they test. `testing.rs` holds the one helper the tests share (a fresh scratch folder).

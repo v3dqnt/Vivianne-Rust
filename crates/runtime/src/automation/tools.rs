@@ -8,22 +8,6 @@ use vivianne_tools::{Tool, ToolResult};
 
 use super::{New, Step};
 
-fn ok(content: impl Into<String>) -> ToolResult {
-    ToolResult {
-        content: content.into(),
-        is_error: false,
-        details: None,
-    }
-}
-
-fn failed(content: impl Into<String>) -> ToolResult {
-    ToolResult {
-        content: format!("Error: {}", content.into()),
-        is_error: true,
-        details: None,
-    }
-}
-
 fn text<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
     args.get(key)
         .and_then(Value::as_str)
@@ -91,19 +75,19 @@ impl Tool for CreateAutomation {
             glob: text(args, "glob").map(str::to_owned),
         };
         match super::create(new) {
-            Ok(a) if a.folder.is_some() => ok(format!(
+            Ok(a) if a.folder.is_some() => ToolResult::ok(format!(
                 "Created automation '{}' (id: {}). It fires when a file is new or changed in {}.",
                 a.name,
                 a.id,
                 a.folder.unwrap_or_default()
             )),
-            Ok(a) => ok(format!(
+            Ok(a) => ToolResult::ok(format!(
                 "Created automation '{}' (id: {}). Next run: {}. It is enabled and shown in Settings.",
                 a.name,
                 a.id,
                 when(a.next_run)
             )),
-            Err(why) => failed(why),
+            Err(why) => ToolResult::failure(why),
         }
     }
 }
@@ -128,26 +112,28 @@ impl Tool for ListAutomations {
     async fn execute(&self, _args: &Value, _cwd: &str) -> ToolResult {
         let items = super::list();
         if items.is_empty() {
-            return ok("No automations.");
+            return ToolResult::ok("No automations.");
         }
-        ok(items
-            .iter()
-            .map(|a| {
-                let trigger = a.folder.as_ref().map_or_else(
-                    || format!("cron `{}`, next {}", a.cron, when(a.next_run)),
-                    |f| format!("folder {f}"),
-                );
-                format!(
-                    "- \"{}\" (id: {}) {}; {}; last run {}",
-                    a.name,
-                    a.id,
-                    if a.enabled { "on" } else { "off" },
-                    trigger,
-                    when(a.last_run)
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n"))
+        ToolResult::ok(
+            items
+                .iter()
+                .map(|a| {
+                    let trigger = a.folder.as_ref().map_or_else(
+                        || format!("cron `{}`, next {}", a.cron, when(a.next_run)),
+                        |f| format!("folder {f}"),
+                    );
+                    format!(
+                        "- \"{}\" (id: {}) {}; {}; last run {}",
+                        a.name,
+                        a.id,
+                        if a.enabled { "on" } else { "off" },
+                        trigger,
+                        when(a.last_run)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
     }
 }
 
@@ -170,12 +156,12 @@ impl Tool for DeleteAutomation {
 
     async fn execute(&self, args: &Value, _cwd: &str) -> ToolResult {
         let Some(id) = text(args, "id") else {
-            return failed("'id' is required.");
+            return ToolResult::failure("'id' is required.");
         };
         if super::delete(id) {
-            ok(format!("Deleted automation {id}."))
+            ToolResult::ok(format!("Deleted automation {id}."))
         } else {
-            failed(format!("no automation with id {id}."))
+            ToolResult::failure(format!("no automation with id {id}."))
         }
     }
 }
@@ -206,15 +192,15 @@ impl Tool for SetAutomationEnabled {
             text(args, "id"),
             args.get("enabled").and_then(Value::as_bool),
         ) else {
-            return failed("'id' and 'enabled' are required.");
+            return ToolResult::failure("'id' and 'enabled' are required.");
         };
         match super::set_enabled(id, enabled) {
-            Ok(a) => ok(format!(
+            Ok(a) => ToolResult::ok(format!(
                 "Automation '{}' is now {}.",
                 a.name,
                 if a.enabled { "on" } else { "off" }
             )),
-            Err(why) => failed(why),
+            Err(why) => ToolResult::failure(why),
         }
     }
 }

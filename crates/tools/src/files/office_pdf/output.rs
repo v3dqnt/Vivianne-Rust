@@ -82,10 +82,7 @@ mod tests {
     use super::*;
 
     fn dir() -> std::path::PathBuf {
-        let dir =
-            std::env::temp_dir().join(format!("viv-pdf-out-{}", uuid::Uuid::new_v4().simple()));
-        std::fs::create_dir_all(&dir).expect("dir");
-        dir
+        crate::testing::scratch("pdf-out")
     }
 
     const GOOD: &[u8] = b"%PDF-1.7\n1 0 obj\n<<>>\nendobj\ntrailer\n%%EOF\n";
