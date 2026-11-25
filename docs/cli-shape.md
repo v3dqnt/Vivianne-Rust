@@ -10,6 +10,10 @@ Every command, flag, setting, environment variable, file and exit code `viv` exp
 - `viv sessions [--limit N] [--json]`: saved threads, newest first.
 - `viv session <id> [--tail N] [--json]`: one saved thread.
 - `viv profiles [--json]`: agent profiles (user, repository, built-in).
+- `viv thread list [--json]`: this project's saved conversations.
+- `viv thread events <id> [--from N] [--to M] [--json]`: one conversation as numbered, typed events (user, context, assistant, tool-result, checkpoint) with their turns.
+- `viv thread fork <id> --before <turn> [--json]`: a new conversation made of the earlier turns of `<id>` (the original is untouched); prints the new id.
+- `viv thread mention <id>`: the text that mentions a conversation in a message (`@[title](viv-session:...)`).
 - `viv machine add <target> [--label L] [--remote-session S]`, `list`, `status`, `reconnect <m>`, `rename <m> <label>`, `enable <m>`, `disable <m>`, `remove <m>`, `install <m> [--yes]` (all take `--json` where they print).
 - `viv --machine <m> --workspace <dir> [--auto|--plan] <prompt>`: run a prompt on a machine.
 - `viv [--session S] server run|start|stop|status|sessions|delete <name>`: this machine's server.
@@ -22,7 +26,7 @@ Every command, flag, setting, environment variable, file and exit code `viv` exp
 0 success; 1 failure (a failed check, a failed run); 2 usage error.
 
 ## Environment
-`VIV_SOFFICE` (the LibreOffice executable used to convert Office files to PDF; otherwise `PATH` and the usual install places are searched), `VIV_AGENTS_HOME` (replaces `~/.agents`, the shared agents folder whose `AGENTS.md` is read as the user's instructions), `VIV_HOME` (replaces `~/.viv`; must be an absolute folder that is not a root or the home folder), `VIV_SESSION`, `VIV_SSH` (the ssh program), `VIV_MODEL`, `VIV_PROVIDER`, `VIV_MAX_AGENT_STEPS`, `VIV_MAX_TOOL_RESULT_BYTES`, `VIV_REMOTE_BINARY` (a file to install on a machine), `VIV_RELEASE_BASE` (an https folder with `viv-<os>-<arch>` and its `.sha256`).
+`VIV_RUN_CODE_STATE` (`persistent` keeps a REPL environment for `run_code` programs within a conversation; anything else, or unset, gives each program a fresh one), `VIV_SOFFICE` (the LibreOffice executable used to convert Office files to PDF; otherwise `PATH` and the usual install places are searched), `VIV_AGENTS_HOME` (replaces `~/.agents`, the shared agents folder whose `AGENTS.md` is read as the user's instructions), `VIV_HOME` (replaces `~/.viv`; must be an absolute folder that is not a root or the home folder), `VIV_SESSION`, `VIV_SSH` (the ssh program), `VIV_MODEL`, `VIV_PROVIDER`, `VIV_MAX_AGENT_STEPS`, `VIV_MAX_TOOL_RESULT_BYTES`, `VIV_REMOTE_BINARY` (a file to install on a machine), `VIV_RELEASE_BASE` (an https folder with `viv-<os>-<arch>` and its `.sha256`).
 
 ## Files
 `~/.viv/AGENTS.md` and `~/.agents/AGENTS.md` (the user's own instructions; `AGENTS.local.md` and `CLAUDE.md` / `CLAUDE.local.md` beside any `AGENTS.md` in the project or here are read too), `~/.viv/agent/settings.json`, `~/.viv/agent/threads/<id>.json`, `~/.viv/agent/tool-results/<id>.txt`, `~/.viv/client/machines.json`, `~/.viv/client/machine-metadata.json`, `~/.viv/client/ssh/`, `~/.viv/server/sessions/<name>/` (`session.json`, `session-snapshots/`, `session-backups/`), `~/.viv/agents/<name>/` and `<repo>/.viv/agents/<name>/` (`profile.json`, `prompt.md`), `<repo>/.viv.json` (repo-safe settings only), `~/.viv/agent-detection/<agent>.toml`.
@@ -34,13 +38,14 @@ Every command, flag, setting, environment variable, file and exit code `viv` exp
 A saved message may carry `context` (`{"kind": "agent-instructions" | "time-context" | "tmux-context" | "session-reference", ...}`: the app added it for the model, so it is not shown in the transcript or counted as something the person typed) and `at` (milliseconds since the epoch when it was added). Both are optional; an unknown `kind` reads as absent, so an older build still opens the thread.
 
 ## Message syntax
+Sending a message while the agent is working steers the run: the agent reads it before its next model call, and a reply that was about to end goes on to answer it. A coding agent that runs its own loop cannot be steered, and says so.
 `@path` and `@"path with spaces"` name a file or folder in the prompt; `@[label](viv-session:<id>)` names another saved conversation (at most 3 per message), whose typed messages and replies are quoted to the model as an untrusted snapshot.
 
 ## Build profiles
 `dev` (line tables only, no debug info for dependencies), `debugging` (`dev` with full debug info: `cargo build --profile debugging`), `release` (thin LTO, one codegen unit, debug info stripped).
 
 ## Tools
-`run_code` (runs a JavaScript program that can call only the read-only tools: `read`, `ls`, `grep`, `code_search`, `glob`; argument `code`; limits 60 s, 64 MiB, 50 calls, 64 KiB of output; look-only, so it needs no approval and works in Plan mode).
+`run_code` (runs a JavaScript program that can call only the read-only tools: `read`, `ls`, `grep`, `code_search`, `glob`, as async functions; argument `code`; limits 60 s, 64 MiB, 50 calls, 64 KiB of output; look-only, so it needs no approval and works in Plan mode). With `VIV_RUN_CODE_STATE=persistent` its programs are REPL programs and top-level variables survive from one call to the next within a conversation.
 
 `convert_to_pdf` (converts a .doc/.docx/.xls/.xlsx/.ppt/.pptx in the project to a PDF with an installed LibreOffice; arguments `path`, `output?`, `overwrite?`; writes a file, so it asks in Ask mode and is refused in Plan mode; offered only when LibreOffice is found).
 

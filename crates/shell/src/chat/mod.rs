@@ -547,8 +547,33 @@ impl ChatView {
         self.send(window, cx);
     }
 
+    /// Sending while the agent is working says it to the run: the agent reads it before its next step, and a reply that
+    /// was about to end goes on to answer it.
+    fn steer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let text = self.composer.input.read(cx).value().to_string();
+        if text.trim().is_empty() {
+            return;
+        }
+        let Ok(session) = self.session.as_ref() else {
+            return;
+        };
+        if !session.steer(&text) {
+            self.push_item(
+                Item::Notice("This coding agent cannot be steered while it works; send it again when it has finished.".to_owned()),
+                cx,
+            );
+            return;
+        }
+        self.push_item(Item::User(text), cx);
+        self.composer
+            .input
+            .update(cx, |input, cx| input.clean(window, cx));
+        cx.notify();
+    }
+
     fn send(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.running {
+            self.steer(window, cx);
             return;
         }
         let Ok(session) = self.session.as_mut() else {

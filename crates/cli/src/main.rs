@@ -47,6 +47,7 @@ async fn run() -> Result<(), String> {
         Some("sessions") => Some(inspect::sessions(rest()).map(|()| true)),
         Some("session") => Some(inspect::session(rest()).map(|()| true)),
         Some("profiles") => Some(inspect::profiles_cmd(rest()).map(|()| true)),
+        Some("thread") => Some(inspect::thread_cmd(rest()).map(|()| true)),
         _ => None,
     };
     match inspected {
@@ -70,19 +71,24 @@ async fn run() -> Result<(), String> {
 async fn chat_here(args: Vec<String>) -> Result<(), String> {
     let model = env::model()?;
     let workdir = std::env::current_dir().map_err(|e| e.to_string())?;
-    let max_steps = vivianne_runtime::config::resolve(&workdir, None)
-        .max_agent_steps
-        .value;
-    let agent = Agent::new(
+    let settings = vivianne_runtime::config::resolve(&workdir, None);
+    vivianne_tools::results::set_limit(settings.max_tool_result_bytes.value);
+    let mut agent = Agent::new(
         env::provider()?,
         &model,
         Some(coding_system_prompt(&workdir)),
         Toolbox::coding(&workdir),
     )
-    .with_max_steps(max_steps);
+    .with_max_steps(settings.max_agent_steps.value)
+    // The project's instruction files, the clock and the terminal's place, as the app adds them.
+    .with_instructions(vec![workdir.display().to_string()]);
+    // What each run changed, per file with line counts.
+    if let Ok(recorder) =
+        vivianne_runtime::changes::Recorder::new(&workdir, settings.change_limits())
+    {
+        agent = agent.with_changes(std::sync::Arc::new(recorder));
+    }
     let mut history = Vec::new();
-    let settings = vivianne_runtime::config::resolve(&workdir, None);
-    vivianne_tools::results::set_limit(settings.max_tool_result_bytes.value);
 
     let prompt = args.join(" ");
     if !prompt.is_empty() {
