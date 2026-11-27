@@ -70,6 +70,12 @@ impl Confinement {
     }
 }
 
+/// Lets this program run confined commands on Windows, where it is its own sandbox runner. Call it first in `main`:
+/// a start that asks for the runner does that and exits.
+pub fn run_sandbox_helper_if_asked() {
+    vivianne_sandbox::runner::run_if_asked();
+}
+
 /// A configured mode by name. A name that is not a mode means the person meant to restrict: read-only, with why.
 #[must_use]
 pub fn mode_from_setting(value: Option<&str>) -> (Mode, Option<String>) {

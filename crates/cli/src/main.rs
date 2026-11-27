@@ -18,6 +18,7 @@ use vivianne_tools::Toolbox;
 
 #[tokio::main]
 async fn main() {
+    vivianne_tools::confinement::run_sandbox_helper_if_asked();
     if let Err(message) = run().await {
         eprintln!("viv: {message}");
         std::process::exit(1);

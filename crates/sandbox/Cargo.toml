@@ -14,14 +14,30 @@ tokio = { workspace = true, features = ["process", "io-util", "time", "sync", "r
 tokio-util = "0.7"
 # Finds a program on a given PATH, as the tools crate already does.
 which = "7.0"
+# Derives the Windows capability SID of a writable folder from its path (pure Rust, already in the tree).
+sha2 = "0.10"
 
 # Job objects, restricted tokens and the other calls confinement needs on Windows (already in the tree).
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_Security"] }
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_JobObjects",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
+] }
 
 # Signals to a process group on Unix (already in the tree).
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+# The runner as its own program, for the tests; applications run it as themselves (see `runner.rs`).
+[[bin]]
+name = "viv-sandbox-run"
+path = "src/bin/viv-sandbox-run.rs"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

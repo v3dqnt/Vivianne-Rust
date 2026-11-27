@@ -1,6 +1,6 @@
-//! Turning a command into a confined one. Linux uses `bwrap`, macOS `sandbox-exec` (Seatbelt). Windows has no backend
-//! here yet, so a confined mode there is refused rather than run unconfined: a command never runs with more than the
-//! mode says.
+//! Turning a command into a confined one. Linux uses `bwrap`, macOS `sandbox-exec` (Seatbelt), Windows a restricted
+//! token through this program's own runner (`runner.rs`). Where none is usable the mode is refused rather than run
+//! unconfined: a command never runs with more than the mode says.
 
 use std::path::PathBuf;
 
@@ -17,6 +17,8 @@ pub enum Enforcement {
 pub enum Backend {
     Bwrap,
     Seatbelt,
+    /// Writes and deletes only; reads and the network stay open.
+    WindowsAcl,
 }
 
 /// A command rewritten to run confined.
@@ -33,7 +35,7 @@ pub struct Confined {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ConfineError {
     #[error(
-        "sandbox mode \"{0}\" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. Install bubblewrap (Linux) or check sandbox-exec (macOS); Windows has no backend yet. Otherwise choose danger-full-access."
+        "sandbox mode \"{0}\" is requested but no sandbox backend is usable on this host; refusing to run the command unconfined. Install bubblewrap (Linux) or check sandbox-exec (macOS); on Windows this program cannot act as the runner. Otherwise choose danger-full-access."
     )]
     Unavailable(&'static str),
     #[error("{0}")]
@@ -103,6 +105,11 @@ pub fn confine_with(
     if policy.mode == Mode::DangerFullAccess {
         return Err(ConfineError::NotConfinedMode);
     }
+    if backend == Backend::WindowsAcl {
+        let helper =
+            crate::runner::helper().ok_or(ConfineError::Unavailable(policy.mode.as_str()))?;
+        return windows_acl(helper, argv, policy);
+    }
     let (program, profile, denial_signatures, failure_signatures): (
         _,
         _,
@@ -115,6 +122,7 @@ pub fn confine_with(
             &["read-only file system"],
             &["bwrap: "],
         ),
+        Backend::WindowsAcl => return Err(ConfineError::Unavailable(policy.mode.as_str())),
         Backend::Seatbelt => (
             "sandbox-exec",
             seatbelt_args(policy)?,
@@ -134,9 +142,43 @@ pub fn confine_with(
     })
 }
 
+/// `argv` run through the program at `helper` acting as the Windows runner.
+fn windows_acl(
+    helper: &std::path::Path,
+    argv: &[String],
+    policy: &Policy,
+) -> Result<Confined, ConfineError> {
+    let mut out = vec![
+        text(helper),
+        crate::runner::ARGUMENT.to_owned(),
+        "--mode".to_owned(),
+        policy.mode.as_str().to_owned(),
+    ];
+    for root in policy.workspace_roots()? {
+        out.extend(["--writable".to_owned(), text(&root)]);
+    }
+    out.push("--".to_owned());
+    out.extend(argv.iter().cloned());
+    Ok(Confined {
+        argv: out,
+        enforcement: Enforcement::Partial,
+        denial_signatures: &[
+            "access is denied",
+            "is denied.",
+            "permission denied",
+            "viv-sandbox-run: ",
+        ],
+        failure_signatures: &["viv-sandbox-run: "],
+    })
+}
+
 /// The backend this machine can use: the platform's runner, once it has actually run a trivial command confined.
 #[must_use]
 pub fn usable_backend() -> Option<Backend> {
+    if cfg!(windows) {
+        // Nothing to probe: a runner that cannot confine says so and runs nothing.
+        return crate::runner::helper().map(|_| Backend::WindowsAcl);
+    }
     let (backend, program) = if cfg!(target_os = "linux") {
         (Backend::Bwrap, "bwrap")
     } else if cfg!(target_os = "macos") {

@@ -54,7 +54,7 @@ Sending a message while the agent is working steers the run: the agent reads it 
 ## Tools
 `run_code` (runs a JavaScript program that can call only the read-only tools: `read`, `ls`, `grep`, `code_search`, `glob`, as async functions; argument `code`; limits 60 s, 64 MiB, 50 calls, 64 KiB of output; look-only, so it needs no approval and works in Plan mode). With `VIV_RUN_CODE_STATE=persistent` its programs are REPL programs and top-level variables survive from one call to the next within a conversation.
 
-While a sandbox mode is standing, `write` and `edit` refuse under `read-only`, `shell` runs confined (and is refused where the mode cannot be enforced, which today is all of Windows) and takes `sandbox_permissions` with `justification` to ask for one strictly wider mode, which asks the user in every approval mode.
+While a sandbox mode is standing, `write` and `edit` refuse under `read-only`, `shell` runs confined (and is refused where the mode cannot be enforced). On Windows `viv` and the app restart themselves with the hidden first argument `--viv-sandbox-run` to run it; `workspace-write` there permanently changes the project folder's access list and integrity label (`crates/sandbox/src/windows/README.md`) and takes `sandbox_permissions` with `justification` to ask for one strictly wider mode, which asks the user in every approval mode.
 
 `search_threads` (words and "quoted phrases" in this project's conversations; look-only), `list_threads`, `read_thread`, and `schedule_create`, `schedule_list`, `schedule_view`, `schedule_edit` are offered by the app, `viv` and the remote server alike; scheduled tasks are delivered only by the open app.
 

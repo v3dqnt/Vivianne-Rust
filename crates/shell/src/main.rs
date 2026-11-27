@@ -32,6 +32,8 @@ use tokio::runtime::Runtime;
 use app::AppView;
 
 fn main() {
+    // Before anything else: a start as the sandbox runner does only that.
+    vivianne_tools::confinement::run_sandbox_helper_if_asked();
     // First, so a panic anywhere after this leaves a crash record.
     vivianne_telemetry::install_panic_hook(env!("CARGO_PKG_VERSION"));
     // The agent and its HTTP calls need tokio; the UI runs on GPUI's own executor.
