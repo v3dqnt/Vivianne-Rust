@@ -13,6 +13,7 @@ mod chat;
 mod demo;
 mod git;
 mod home;
+mod icons;
 mod notify;
 mod pair;
 mod perf;
@@ -57,7 +58,7 @@ fn main() {
         }
     };
 
-    // Kit's icon set (Lucide) is looked up by path, so the app must register it.
+    // Icons are looked up by path (Iconoir over the Kit's set), so the app must register the source.
     // Every icon of the catalog: the Files tab picks one per file type.
     let assets = assets::Assets::new();
     gpui_kit::application().with_assets(assets).run(move |cx| {
