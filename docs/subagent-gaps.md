@@ -27,10 +27,11 @@ The `claude-code` and `codex` one-shot providers (reach those agents through `ag
 
 ## Limits to know
 
-- **A subagent's model calls are not recorded** in usage or cost, and run limits do not count them.
+- A subagent's usage is recorded under the thread that started it. A run limit is checked when the parent's own usage arrives, so subagents can overshoot it while the parent waits.
+- Stopping a turn stops every subagent the thread still has working, including ones started in earlier turns.
 - Subagents end with the process; a one-shot `viv` that does not wait loses them.
 - A coding agent runs its own tools: Vivianne's sandbox, change records and checkpoints do not cover what it does beyond the checkpoint around the whole turn.
 
 ## Tests
 
-Covered: refusal outside Auto mode; finished, stopped and cut-off turns with a stand-in agent; Vivianne's ACP client driving `viv acp` in memory (allow writes, reject does not). Checked once by hand: the built `viv` running its own subagent against a stand-in model. **Never run with a real third-party coding agent.** Not covered: the sandbox refusal, a stop during startup, the original's other cases (its tests were not translated).
+Covered: refusal outside Auto mode and under a sandbox mode; a stopped turn stopping its subagent; finished, stopped and cut-off turns with a stand-in agent; Vivianne's ACP client driving `viv acp` in memory (allow writes, reject does not). Checked once by hand: the built `viv` running its own subagent against a stand-in model. **Never run with a real third-party coding agent.** The real delegation path (`Installed`) has never run. Not covered: usage recording, a stop during startup, the original's other cases (its tests were not translated).

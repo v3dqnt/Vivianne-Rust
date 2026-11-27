@@ -14,6 +14,7 @@ use vivianne_providers::acp::{
     Acp, AcpEvent, DELEGATED, Outcome, PromptPart, TurnEnd, TurnRequest,
 };
 
+use super::metering;
 use super::subagents::{self, Handle, Status};
 
 /// How long a stopped agent gets to end its turn before it is dropped, process and all.
@@ -109,6 +110,7 @@ pub(super) async fn drive(agents: Arc<dyn CodingAgents>, job: CodingJob, handle:
             match event {
                 AcpEvent::Permission(request) => request.answer(allow),
                 AcpEvent::ToolStart { .. } => handle.count_tool_call(),
+                AcpEvent::Usage(spent) => metering::record(&handle.thread, &spent).await,
                 _ => {}
             }
         }
@@ -177,6 +179,8 @@ mod tests {
             mode: Mode::Auto,
             folder: std::env::temp_dir(),
             model: None,
+            provider: None,
+            confined: false,
             depth: 0,
         }
     }

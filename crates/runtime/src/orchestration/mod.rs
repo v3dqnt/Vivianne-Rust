@@ -7,6 +7,7 @@
 //! no tool has to be built per thread.
 
 mod coding;
+mod metering;
 mod profiles;
 mod spawner;
 mod subagents;
@@ -21,13 +22,15 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use vivianne_core::Mode;
+use vivianne_providers::Provider;
 
 use crate::Agent;
 
 pub use coding::{CodingAgents, CodingJob, Installed};
 pub use profiles::{Profile, profiles};
 pub use spawner::Standard as StandardSpawner;
-pub use subagents::{Handle, Registry, Status};
+pub(crate) use subagents::stop_all;
+pub use subagents::{Handle, Registry, Status, start_coding};
 pub use threads::{AskThread, MessageThread, SpawnThread};
 pub use tools::{KillTask, ListSubagentProfiles, Task, TaskOutput, WaitTasks};
 
@@ -45,6 +48,10 @@ pub struct Caller {
     pub folder: PathBuf,
     /// The provider and model the thread answers with, which a subagent uses too.
     pub model: Option<(String, String)>,
+    /// The connection that model is reached over, keys and all: a subagent uses the same one.
+    pub provider: Option<ParentProvider>,
+    /// A sandbox mode is standing.
+    pub confined: bool,
     /// How many agents deep: 0 is a thread's own agent, 1 a subagent it started.
     pub depth: usize,
 }
@@ -70,6 +77,18 @@ pub struct AgentSpec {
     pub system: String,
     /// The model of the thread that asked, to use unless something else is chosen.
     pub model: Option<(String, String)>,
+    /// The parent's connection to it; `None` looks one up by the provider's id.
+    pub provider: Option<ParentProvider>,
+}
+
+/// A parent's provider, handed to what it starts.
+#[derive(Clone)]
+pub struct ParentProvider(pub Arc<dyn Provider>);
+
+impl std::fmt::Debug for ParentProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("ParentProvider").field(&self.0.id()).finish()
+    }
 }
 
 /// Builds the agent a subagent runs as. The shell implements it, because it knows the keys and the models.

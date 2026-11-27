@@ -155,6 +155,7 @@ impl Tool for Task {
             mode,
             system: profile.system.clone(),
             model: caller.model.clone(),
+            provider: caller.provider.clone(),
         };
         let request = Start {
             name,
@@ -199,13 +200,8 @@ fn may_delegate(caller: &Caller) -> Result<(), String> {
     if caller.mode != Mode::Auto {
         return Err("a coding agent can only be started in Auto mode; ask the user to switch, or use a subagent without 'agent'.".to_owned());
     }
-    let settings = crate::config::resolve(&caller.folder, None);
-    let (mode, _) = vivianne_tools::confinement::mode_from_setting(settings.sandbox.value.as_deref());
-    if mode.as_str() != "danger-full-access" {
-        return Err(format!(
-            "a coding agent cannot be held to the '{}' sandbox mode, so it is not started; use a subagent without 'agent'.",
-            mode.as_str()
-        ));
+    if caller.confined {
+        return Err("a coding agent cannot be held to a sandbox mode, so it is not started while one is set; use a subagent without 'agent'.".to_owned());
     }
     Ok(())
 }
@@ -385,25 +381,38 @@ impl Tool for ListSubagentProfiles {
     }
 
     async fn execute(&self, _args: &Value, _cwd: &str) -> ToolResult {
-        ToolResult::ok(
-            profiles::profiles()
-                .iter()
-                .map(|p| {
-                    format!(
-                        "- {}{}{}: {}",
-                        p.name,
-                        if p.read_only { " (read-only)" } else { "" },
-                        if p.default_prompt.is_some() {
-                            " (has a preset task)"
-                        } else {
-                            ""
-                        },
-                        p.description
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("\n"),
-        )
+        // What `task`'s `agent` may name: only what is set up here.
+        let ready: Vec<String> = vivianne_providers::acp::harnesses()
+            .await
+            .into_iter()
+            .filter(|h| h.available && !h.needs_setup())
+            .map(|h| h.id)
+            .collect();
+        let agents = if ready.is_empty() {
+            "none".to_owned()
+        } else {
+            ready.join(", ")
+        };
+        let kinds = profiles::profiles()
+            .iter()
+            .map(|p| {
+                format!(
+                    "- {}{}{}: {}",
+                    p.name,
+                    if p.read_only { " (read-only)" } else { "" },
+                    if p.default_prompt.is_some() {
+                        " (has a preset task)"
+                    } else {
+                        ""
+                    },
+                    p.description
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        ToolResult::ok(format!(
+            "{kinds}\n\nCoding agents set up here (task's agent): {agents}"
+        ))
     }
 }
 
@@ -414,20 +423,39 @@ mod delegate_tests {
     use super::*;
     use crate::orchestration::scope;
 
+    async fn refused(mode: Mode, confined: bool, thread: &str) -> String {
+        let caller = Caller {
+            thread: thread.to_owned(),
+            mode,
+            folder: std::env::temp_dir(),
+            model: None,
+            provider: None,
+            confined,
+            depth: 0,
+        };
+        let args = json!({ "description": "d", "prompt": "p", "agent": "claude-acp" });
+        let out = scope(caller, Task.execute(&args, "")).await;
+        assert!(out.is_error, "{}", out.content);
+        assert!(Registry::global().of(thread).is_empty());
+        out.content
+    }
+
     #[tokio::test]
     async fn a_coding_agent_is_not_started_unless_the_person_acts_without_asking() {
-        for mode in [Mode::Ask, Mode::Plan] {
-            let caller = Caller {
-                thread: format!("delegate-refused-{mode:?}"),
-                mode,
-                folder: std::env::temp_dir(),
-                model: None,
-                depth: 0,
-            };
-            let args = json!({ "description": "d", "prompt": "p", "agent": "claude-acp" });
-            let out = scope(caller.clone(), Task.execute(&args, "")).await;
-            assert!(out.is_error && out.content.contains("Auto mode"), "{}", out.content);
-            assert!(Registry::global().of(&caller.thread).is_empty());
-        }
+        assert!(
+            refused(Mode::Ask, false, "d-ask")
+                .await
+                .contains("Auto mode")
+        );
+        assert!(
+            refused(Mode::Plan, false, "d-plan")
+                .await
+                .contains("Auto mode")
+        );
+        assert!(
+            refused(Mode::Auto, true, "d-confined")
+                .await
+                .contains("sandbox mode")
+        );
     }
 }

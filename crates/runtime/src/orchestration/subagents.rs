@@ -9,8 +9,10 @@ use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 use vivianne_core::{Message, Role, Thinking};
+use vivianne_providers::Spent;
 
 use super::coding::{self, CodingAgents, CodingJob};
+use super::metering;
 use super::{AgentSpec, Caller, Spawner};
 use crate::{Agent, AgentEvent};
 
@@ -187,6 +189,13 @@ impl Registry {
     }
 }
 
+/// Stops every subagent `thread` still has working: what the person stopped does not go on behind their back.
+pub(crate) fn stop_all(thread: &str, reason: &str) {
+    for handle in Registry::global().of(thread) {
+        handle.kill(Some(reason.to_owned()));
+    }
+}
+
 /// A name the parent may choose: lower-case, starts with a letter, up to 32 characters, never `lead`.
 #[must_use]
 pub fn valid_name(name: &str) -> bool {
@@ -279,12 +288,33 @@ async fn drive(agent: Agent, prompt: String, handle: Arc<Handle>) {
     let mut history = vec![Message::new(Role::User, prompt)];
     let (events, mut seen) = mpsc::unbounded_channel();
     let counter = handle.clone();
+    let thread = handle.thread.clone();
     let agent = Arc::new(agent);
     let asker = agent.clone();
     let counting = tokio::spawn(async move {
         while let Some(event) = seen.recv().await {
             match event {
                 AgentEvent::ToolStart { .. } => counter.count_tool_call(),
+                AgentEvent::Usage {
+                    provider,
+                    model,
+                    input,
+                    output,
+                    cache_read,
+                    cache_write,
+                    cost,
+                } => {
+                    let spent = Spent {
+                        provider,
+                        model,
+                        input,
+                        output,
+                        cache_read,
+                        cache_write,
+                        cost,
+                    };
+                    metering::record(&thread, &spent).await;
+                }
                 // Nobody is watching to say yes: a subagent that would have to ask is told no.
                 AgentEvent::Approval { id, .. } => {
                     asker.answer(&id, false);

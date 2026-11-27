@@ -16,13 +16,16 @@ impl Spawner for Standard {
             .model
             .clone()
             .ok_or("there is no model to give the subagent")?;
-        // An OpenAI-compatible server at its own address answers as `local`, and is asked for as `openai`.
-        let id = if provider == "local" {
-            "openai"
-        } else {
-            &provider
+        // The parent's own connection when there is one, so a subagent bills and reaches exactly as its parent does.
+        let provider = match &spec.provider {
+            Some(parent) => parent.0.clone(),
+            // An OpenAI-compatible server at its own address answers as `local`, and is asked for as `openai`.
+            None => env::provider_for(if provider == "local" {
+                "openai"
+            } else {
+                &provider
+            })?,
         };
-        let provider = env::provider_for(id)?;
         let settings = crate::config::resolve(&spec.folder, None);
         let mut tools = Toolbox::coding(&spec.folder);
         // The same tools and sandbox mode, without the tools that start more agents.

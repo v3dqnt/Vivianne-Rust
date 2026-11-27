@@ -193,6 +193,17 @@ struct Opened {
 /// How many runs in a row background jobs may start without the person.
 const MAX_WAKES: u32 = 10;
 
+/// Stops the thread's subagents when dropped, unless disarmed.
+struct StopsSubagents(Option<String>);
+
+impl Drop for StopsSubagents {
+    fn drop(&mut self) {
+        if let Some(thread) = &self.0 {
+            crate::orchestration::stop_all(thread, "the turn was stopped");
+        }
+    }
+}
+
 type Inbox = Arc<Mutex<std::collections::VecDeque<String>>>;
 
 impl Agent {
@@ -257,6 +268,10 @@ impl Agent {
             mode: self.mode(),
             folder: self.tools.working_directory().root().to_path_buf(),
             model: Some(self.primary()),
+            provider: Some(crate::orchestration::ParentProvider(
+                self.targets[0].provider.clone(),
+            )),
+            confined: self.tools.confinement().is_confined(),
             depth: 0,
         })
     }
@@ -297,7 +312,7 @@ impl Agent {
             .unwrap_or_else(PoisonError::into_inner)
             .insert(call.id.clone(), tx);
         // What the person is asked to allow: what it runs, touches or types.
-        let detail = ["command", "path", "text", "signal", "sessionId", "job_id"]
+        let detail = ["command", "path", "text", "signal", "sessionId", "job_id", "task_id"]
             .iter()
             .find_map(|k| call.args[k].as_str())
             .unwrap_or_default();
@@ -641,7 +656,12 @@ impl Agent {
                 .start(vivianne_context::time::turn_of(history))
                 .await;
         }
+        // A turn the person stops, by the token or by dropping this future, takes its subagents with it.
+        let mut subagents = StopsSubagents(self.caller().map(|c| c.thread));
         let outcome = self.run_loop(history, events, thinking, cancel).await;
+        if !cancel.is_cancelled() {
+            subagents.0 = None;
+        }
         if let Some(recorder) = &self.changes {
             // However the run ended, what it changed so far is recorded.
             let _ = recorder.finish().await;
@@ -2295,6 +2315,50 @@ mod tests {
             .expect("runs");
         agent.steer("another ended");
         assert!(agent.take_waiting().is_some());
+    }
+
+    /// A coding agent that works until it is stopped.
+    struct Waiting;
+
+    #[async_trait]
+    impl crate::orchestration::CodingAgents for Waiting {
+        async fn run(
+            &self,
+            _thread: &str,
+            _job: &crate::orchestration::CodingJob,
+            _events: &tokio::sync::mpsc::UnboundedSender<vivianne_providers::acp::AcpEvent>,
+            cancel: &CancellationToken,
+        ) -> Result<vivianne_providers::acp::TurnEnd, String> {
+            cancel.cancelled().await;
+            Ok(vivianne_providers::acp::TurnEnd {
+                outcome: vivianne_providers::acp::Outcome::Stopped,
+                reply: String::new(),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn a_stopped_turn_stops_its_subagents_and_a_finished_one_leaves_them() {
+        let agent = Agent::new(Scripted::new(Vec::new()), "m", None, toolbox());
+        agent.set_thread("stop-subagents");
+        let caller = agent.caller().expect("a caller");
+        let job = crate::orchestration::CodingJob {
+            agent: "claude-acp".to_owned(),
+            folder: std::env::temp_dir(),
+            prompt: "work".to_owned(),
+            read_only: false,
+        };
+        let handle = crate::orchestration::start_coding(Arc::new(Waiting), &caller, "agent-1".into(), "works".into(), job)
+            .expect("started");
+        let (tx, _rx) = unbounded_channel();
+        let mut history = user("go");
+        agent.run(&mut history, &tx, Thinking::default()).await.expect("runs");
+        assert!(!handle.status().is_done(), "a turn that finished leaves it working");
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        history.push(Message::new(Role::User, "again"));
+        agent.run_until(&mut history, &tx, Thinking::default(), &cancel).await.expect("stops");
+        assert!(matches!(handle.status(), crate::orchestration::Status::Cancelled(_)), "{:?}", handle.status());
     }
 
     #[tokio::test]
