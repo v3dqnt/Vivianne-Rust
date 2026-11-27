@@ -2,6 +2,7 @@
 
 Several machines, one window: a port of herdr's multi-machine system. Each machine runs a Vivianne **server** (it owns the threads and agent runs, so work continues when the app closes or the network drops). This app is a **client** that reaches it over the system `ssh` through a small **bridge**, remembers machines in a **catalog**, reconnects by itself and shows what each is doing.
 
+- `acp/`: `viv acp`, the Agent Client Protocol server; see its README.
 - `catalog.rs`: the saved machines (`~/.viv/client/machines.json`): id, label, target, session, on/off. No password or key is ever stored; targets with a password or an option-like start are refused.
 - `ssh.rs`: the system `ssh` and its options (compression, a managed config that includes the user's first, keepalives, a private control socket off Windows, no prompts and strict host keys for background connections), the remote bridge command and ready marker, error classification (host key / auth / platform / protocol), remote platform detection.
 - `protocol.rs`: length-prefixed JSON frames, the messages, the handshake (endpoint generation plus capabilities, not build versions), and the rule that unknown messages are ignored.

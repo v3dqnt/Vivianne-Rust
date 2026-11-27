@@ -62,6 +62,8 @@ While a sandbox mode is standing, `write` and `edit` refuse under `read-only`, `
 
 `terminal_open`, `terminal_send`, `terminal_signal`, `terminal_close` (ask) and `terminal_read`, `terminal_list` (look-only) keep shells whose state survives between calls; they end with the agent that opened them.
 
+`viv acp` (no arguments) serves the Agent Client Protocol, version 1, on standard input and output: other programs create sessions in a folder, prompt them and answer permission requests. Standard output carries only protocol messages. The model is chosen as for `viv` itself.
+
 `working_directory` (reads the directory relative paths and commands start from, or moves it with `path`, to an existing directory inside the project; it can never leave the project, and a move is replayed from the saved conversation when it is resumed; look-only, so it needs no approval and works in Plan mode).
 
 `convert_to_pdf` (converts a .doc/.docx/.xls/.xlsx/.ppt/.pptx in the project to a PDF with an installed LibreOffice; arguments `path`, `output?`, `overwrite?`; writes a file, so it asks in Ask mode and is refused in Plan mode; offered only when LibreOffice is found).

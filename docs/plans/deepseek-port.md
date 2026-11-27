@@ -12,7 +12,7 @@ Source: `deepseek-harness/packages`. Asked for: `acp`, `subagent`, `team`, `guar
 DeepSeek's `acp/acp` is an ACP **server**: other programs drive its agent. So v3 is:
 
 1. the existing client, as it is;
-2. a new `viv acp` stdio server over the agent loop (not in `providers`; goes through `surface::prepare`; listed in `cli-shape.md`);
+2. **done:** `viv acp`, a stdio server over the agent loop in `crates/remote/src/acp` (gaps: `docs/acp-gaps.md`);
 3. a subagent backend that delegates to an ACP agent (`subagent-acp`).
 
 A permission request nobody answers is denied, never allowed (R4). Test the server by driving it with the existing client over an in-memory pipe.

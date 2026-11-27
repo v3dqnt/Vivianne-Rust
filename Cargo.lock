@@ -10091,6 +10091,8 @@ name = "vivianne-remote"
 version = "0.0.1"
 dependencies = [
  "alacritty_terminal",
+ "async-trait",
+ "futures",
  "regex",
  "reqwest",
  "serde",

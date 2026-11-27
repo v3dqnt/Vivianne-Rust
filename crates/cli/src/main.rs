@@ -64,10 +64,28 @@ async fn run() -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("machine") => return remote_cli::machine(args[1..].to_vec()).await,
         Some("server") => return remote_cli::server(&session, &args[1..]).await,
+        Some("acp") => return serve_acp(&args[1..]).await,
         Some("remote-client-bridge") => return remote_cli::bridge_host(&session, &args[1..]).await,
         _ => {}
     }
     chat_here(args).await
+}
+
+/// `viv acp`: serves the Agent Client Protocol on standard input and output until the client closes them.
+async fn serve_acp(rest: &[String]) -> Result<(), String> {
+    if !rest.is_empty() {
+        return Err("viv acp takes no arguments".to_owned());
+    }
+    let host = vivianne_remote::acp::Host {
+        build: std::sync::Arc::new(|folder: &std::path::Path| {
+            vivianne_remote::acp::standard_build(folder, coding_system_prompt(folder))
+        }),
+        threads: std::sync::Arc::new(vivianne_remote::acp::Standard),
+    };
+    let input = tokio::io::BufReader::new(tokio::io::stdin());
+    vivianne_remote::acp::serve(host, input, tokio::io::stdout())
+        .await
+        .map_err(|e| e.to_string())
 }
 
 async fn chat_here(args: Vec<String>) -> Result<(), String> {
