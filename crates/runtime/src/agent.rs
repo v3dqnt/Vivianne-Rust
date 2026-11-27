@@ -436,15 +436,18 @@ impl Agent {
         Some(said)
     }
 
+    /// The background jobs started by this agent's tools that have not ended, oldest first.
+    #[must_use]
+    pub fn background_jobs(&self) -> Vec<vivianne_tools::jobs::JobView> {
+        let mut jobs = self.tools.jobs().registry().list(None);
+        jobs.retain(|job| !job.status.is_terminal());
+        jobs
+    }
+
     /// Whether a background job started by this agent's tools has not ended yet.
     #[must_use]
     pub fn background_running(&self) -> bool {
-        self.tools
-            .jobs()
-            .registry()
-            .list(None)
-            .iter()
-            .any(|job| !job.status.is_terminal())
+        !self.background_jobs().is_empty()
     }
 
     /// Whether a steering message is waiting.

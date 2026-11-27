@@ -522,10 +522,10 @@ impl Render for AppView {
         if let Page::Thread(index) = self.page
             && let Some(thread) = self.threads.get(index)
         {
-            let (context, changes, summary) = {
+            let (jobs, changes, summary) = {
                 let chat = thread.chat.read(cx);
                 (
-                    chat.context(),
+                    chat.jobs(),
                     chat.changes().cloned(),
                     chat.change_summary().cloned(),
                 )
@@ -533,7 +533,7 @@ impl Render for AppView {
             let badge = self.views.git.read(cx).badge();
             self.views.rail.update(cx, |rail, cx| {
                 rail.set_badge(badge, cx);
-                rail.set_context(context, cx);
+                rail.set_jobs(jobs, cx);
                 rail.set_changes(changes, summary, cx);
             });
         }

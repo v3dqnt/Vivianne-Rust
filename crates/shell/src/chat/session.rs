@@ -20,7 +20,6 @@ use vivianne_providers::acp::{
     Acp, AcpEvent, Line, Outcome, PermissionRequest, PromptPart, TurnRequest,
 };
 use vivianne_runtime::checkpoints;
-use vivianne_runtime::context::Breakdown;
 use vivianne_runtime::{Agent, AgentEvent};
 
 /// What answers the conversation.
@@ -129,16 +128,6 @@ impl Session {
         self.mode = mode;
         if let Engine::Own(agent) = &self.engine {
             agent.set_mode(mode);
-        }
-    }
-
-    /// Where the context window goes, for our own agent (a coding agent keeps its own conversation).
-    /// `None` while a run owns the history.
-    #[must_use]
-    pub fn breakdown(&self) -> Option<Breakdown> {
-        match &self.engine {
-            Engine::Own(agent) => Some(agent.breakdown(self.history.as_deref()?)),
-            Engine::Harness { .. } => None,
         }
     }
 

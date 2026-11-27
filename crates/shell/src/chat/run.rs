@@ -39,6 +39,25 @@ impl ChatView {
         cx.notify();
     }
 
+    /// What the side panel lists as running. Empty for a coding agent, which runs its own.
+    #[must_use]
+    pub fn jobs(&self) -> Vec<crate::rail::JobRow> {
+        let Some(agent) = self.session.as_ref().ok().and_then(Session::agent) else {
+            return Vec::new();
+        };
+        let now = vivianne_runtime::automation::now_ms();
+        agent
+            .background_jobs()
+            .into_iter()
+            .map(|job| crate::rail::JobRow {
+                label: job.label,
+                kind: job.kind,
+                stopping: job.status == vivianne_tools::jobs::JobStatus::Stopping,
+                seconds: now.saturating_sub(job.started_at) / 1000,
+            })
+            .collect()
+    }
+
     /// While the thread is idle and has background jobs, wakes the agent when one ends. A run that starts meanwhile
     /// takes the notices itself, and watches again when it ends.
     fn watch_jobs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -53,6 +72,10 @@ impl ChatView {
             let mut quiet = 0;
             while quiet < 2 {
                 cx.background_executor().timer(JOB_CHECK).await;
+                // The side panel's list and its clock follow.
+                if this.update(cx, |_, cx| cx.notify()).is_err() {
+                    return;
+                }
                 if agent.has_steering() {
                     this.update_in(cx, |chat, window, cx| chat.wake(&agent, window, cx))
                         .ok();

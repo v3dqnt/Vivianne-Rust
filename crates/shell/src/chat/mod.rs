@@ -77,8 +77,6 @@ pub struct ChatView {
     folded_tools: HashSet<String>,
     /// What this thread has used, shown in the status row. Read again after each reply.
     thread_usage: Option<vivianne_ai::inference::usage_store::DayUsage>,
-    /// Where the context window goes, worked out when the history or the mode changes (not on every redraw).
-    context: Option<vivianne_runtime::context::Breakdown>,
     /// The thread's name and who gave it (`user` or `auto`); `None` until something has been said.
     title: Option<(String, &'static str)>,
     /// What the newest run changed in the project, for the side panel and for undoing it.
@@ -159,7 +157,6 @@ impl ChatView {
             }
         })
         .detach();
-        let context = session.as_ref().ok().and_then(Session::breakdown);
         Self {
             items: Vec::new(),
             composer,
@@ -174,7 +171,6 @@ impl ChatView {
             running: false,
             folded_tools: HashSet::new(),
             thread_usage: None,
-            context,
             title: None,
             changes: None,
             summary: None,
@@ -765,14 +761,11 @@ impl ChatView {
         );
     }
 
-    /// Works out where the context window goes. Kept as it was while a run owns the history.
+    /// Tells the agent how large the chosen model's window is, so it condenses before the window fills.
     fn refresh_context(&mut self) {
         let window = self.window();
         if let Ok(session) = &self.session {
             session.set_context_window(window);
-            if let Some(parts) = session.breakdown() {
-                self.context = Some(parts);
-            }
         }
     }
 
@@ -782,20 +775,6 @@ impl ChatView {
             .iter()
             .find(|m| m.provider == self.selection.provider && m.id == self.selection.model)
             .and_then(|m| m.context_window)
-    }
-
-    /// What the side panel shows about the window. `None` for a coding agent, which keeps its own conversation.
-    #[must_use]
-    pub fn context(&self) -> Option<crate::rail::ContextView> {
-        let window = self.window();
-        let own = self.selection.provider != models::AGENT_PROVIDER;
-        self.context
-            .filter(|_| own)
-            .map(|breakdown| crate::rail::ContextView {
-                breakdown,
-                window,
-                mode: self.composer.mode,
-            })
     }
 
     /// Reads what the thread has used so far, for the status row. Everything the turn spent was recorded before
