@@ -10196,6 +10196,7 @@ dependencies = [
 name = "vivianne-tools"
 version = "0.0.1"
 dependencies = [
+ "alacritty_terminal",
  "async-trait",
  "base64 0.22.1",
  "dirs 6.0.0",

@@ -7,6 +7,7 @@ What the agent's tools are made of, by domain.
 - `builtin.rs`: the `Tool` trait, `ToolResult` (`ok`, `error`, `failure`), and the read-and-search tools. `schemas.rs`: the model-facing definitions of those. `validate.rs`: arguments are checked against a tool's schema before it runs.
 - `simple.rs`: `shell`, `write` and `edit`, kept inside the project folder.
 - `results.rs`: a result too big for the model is kept aside and read back in pieces.
+- `terminal/`: persistent shells and the `terminal_*` tools; see its README.
 - `jobs/`: background jobs and the `job_*` tools; see its README.
 - `confinement.rs`: the standing sandbox mode `shell`, `write` and `edit` are held to.
 - `workdir.rs`: the directory relative paths and commands start from, shared by the toolbox, `shell` and `run_code`; moved with the `working_directory` tool and kept inside the project.

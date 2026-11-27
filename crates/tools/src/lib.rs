@@ -34,6 +34,7 @@ pub mod dap;
 #[rustfmt::skip]
 mod lsp;
 pub mod schemas;
+pub mod terminal;
 
 mod simple;
 
@@ -166,6 +167,10 @@ impl Toolbox {
         toolbox.add(present::Present::new(root));
         toolbox.add(run_code::RunCode::with_directory(root, toolbox.workdir.clone()));
         toolbox.add(workdir::WorkingDirectoryTool::new(toolbox.workdir.clone()));
+        let terminals = terminal::Terminals::new(root, toolbox.confinement.clone(), toolbox.jobs.clone());
+        for kind in terminal::Kind::ALL {
+            toolbox.add(terminal::TerminalTool(kind, terminals.clone()));
+        }
         // Only where a LibreOffice is installed: a tool that cannot work is not offered.
         if files::office_pdf::tool::available() {
             toolbox.add(files::office_pdf::tool::ConvertToPdf::new(root));
