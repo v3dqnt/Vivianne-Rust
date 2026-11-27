@@ -13,7 +13,13 @@ provider, and Win32 process bindings. Code here: `crates/sandbox` (`env`, `outpu
 | Linux `systemd` scopes (cgroup ranges) and their selector | none | **Not ported.** |
 | Process and shell-activity inspectors | none | **Not ported.** |
 | Control channel (`stdio.control`) for out-of-process subagents | none | **Not ported:** Vivianne runs subagents in-process. |
-| Terminal (PTY) process primitive | none | Belongs to the `terminal` port. |
-| Used by the shell tool, language servers, subagent backends | `tools::simple::Shell` | **Wired into `shell`** (so every agent: app, `viv`, remote, subagents), which now also gets the scrubbed environment and ends everything it started when it finishes. LSP and MCP still start processes their own way. |
+| Terminal (PTY) process primitive | `tools::terminal` | Ported separately on `alacritty_terminal`; see `terminal-gaps.md`. |
+| Used by the shell tool, language servers, subagent backends | `shell`, jobs, language servers, debug adapters | **Wired** into those: scrubbed environment, and the whole tree ends with its owner. MCP servers, coding agents (ACP), one-shot checkers, the dev server and document converters still start processes their own way. |
 
-Tested on Windows only. The Unix paths have not been compiled or run.
+One list now says what counts as a credential (`env::withheld`); the tools crate's check calls it, so MCP servers no longer receive `VIV_*` variables either.
+
+## Tests
+
+The original's tests (`subprocess` 10, `subprocess-local` 315, `win32-process` 51) were **not** translated. Here: the `env`, `output` and `spawn_tests.rs` tests in `crates/sandbox`, and the debug adapter tests that start a real adapter through it. A real language server has not been started through the new path.
+
+Tested on Windows only. The Unix paths have not been compiled or run: no Linux or macOS target is installed and CI runs on Windows.

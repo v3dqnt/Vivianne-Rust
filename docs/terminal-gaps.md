@@ -19,4 +19,4 @@ Original: `terminal/terminal`, `terminal/terminal-bash`, `experimental/tool-term
 
 ## Tests
 
-The original's tests were **not** translated. Here: four against a real PowerShell on a real pseudo terminal (state across sends, exit, refused requests, refused mode) and one run by hand for a confined `read-only` terminal. Not covered: timeout, background send, signals, concurrent sends. Windows only; never run on Linux or macOS.
+The original's tests (`terminal` 18, `terminal-bash` 109, `tool-terminal` 22) were **not** translated. Here: four against a real PowerShell on a real pseudo terminal (state across sends, exit, refused requests, refused mode) and one run by hand for a confined `read-only` terminal. Not covered: timeout, background send, signals, concurrent sends. Windows only; never run on Linux or macOS.

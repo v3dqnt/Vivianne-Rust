@@ -7,6 +7,7 @@
 //! Vivianne offers the adapter nothing it can ask for in return: no `runInTerminal` (the adapter starts the program itself, so nothing is
 //! run on the adapter's say-so) and no `startDebugging`. A request of the adapter's own gets a refusal, never silence.
 
+use vivianne_sandbox::spawn::{self, Handle, Input, Output, Spec};
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU16, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
@@ -26,18 +27,15 @@ const STDERR_LINES: usize = 30;
 /// Variables an adapter definition sets (`Some`) or unsets (`None`), on top of the filtered environment.
 pub type Env = std::collections::BTreeMap<String, Option<String>>;
 
-/// Apply `env` to a command: a value sets the variable, and `null` removes it (as the protocol says, which oh-my-pi gets wrong).
-pub fn apply_env(cmd: &mut tokio::process::Command, env: &Env) {
-    for (k, v) in env {
-        match v {
-            Some(v) => {
-                cmd.env(k, v);
-            }
-            None => {
-                cmd.env_remove(k);
-            }
-        }
-    }
+/// The process of an adapter, or of a program it asks for: `env` over the scrubbed environment (`null` removes a
+/// variable, as the protocol says, which oh-my-pi gets wrong), output and errors piped.
+pub(crate) fn adapter_spec(command: &str, args: &[String], cwd: &str, env: &Env) -> Spec {
+    let argv: Vec<&str> = std::iter::once(command).chain(args.iter().map(String::as_str)).collect();
+    let mut spec = Spec::new(argv, cwd);
+    spec.stdout = Output::Pipe;
+    spec.stderr = Output::Pipe;
+    spec.env = env.iter().map(|(k, v)| (k.into(), v.as_ref().map(Into::into))).collect();
+    spec
 }
 
 type Writer = Arc<Mutex<Box<dyn AsyncWrite + Unpin + Send>>>;
@@ -87,15 +85,13 @@ pub struct DapClient {
     pending: Pending,
     closed: Arc<AtomicBool>,
     stderr: Arc<StdMutex<VecDeque<String>>>,
-    child: Mutex<Option<tokio::process::Child>>,
+    child: Mutex<Option<Handle>>,
     /// The loopback port the adapter listens on, when it is reached over TCP (0 when it is not): a child session connects to the same one.
     port: AtomicU16,
     /// Whether the adapter's own `startDebugging` requests are passed on instead of refused.
     reverse: Arc<AtomicBool>,
     /// Whether the adapter's `runInTerminal` requests are passed on instead of refused.
     terminal: Arc<AtomicBool>,
-    /// Ends the adapter and whatever it started when the client is dropped.
-    _tree: Option<crate::proc::TreeKillOnDrop>,
 }
 
 /// One message, written whole. An adapter that stops reading its input (its pipe full) costs the caller a failure after this long, and does not
@@ -120,19 +116,9 @@ impl DapClient {
     /// Start `command args...` in `cwd` and connect to it. The adapter gets the filtered environment, not everything the app holds, and
     /// the whole tree it starts is ended when the client goes.
     pub async fn spawn(command: &str, args: &[String], cwd: &str, env: &Env) -> Result<(Arc<Self>, mpsc::UnboundedReceiver<AdapterEvent>), String> {
-        let mut cmd = crate::proc::quiet(command);
-        crate::code::sandbox::scrub_env(&mut cmd);
-        apply_env(&mut cmd, env);
-        crate::proc::own_group(&mut cmd);
-        let mut child = cmd
-            .args(args)
-            .current_dir(cwd)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|e| format!("failed to start {command}: {e}"))?;
+        let mut spec = adapter_spec(command, args, cwd, env);
+        spec.stdin = Input::Pipe;
+        let mut child = spawn::spawn(spec).map_err(|e| format!("failed to start {command}: {e}"))?;
         let stdin = child.stdin.take().ok_or("no stdin")?;
         let stdout = child.stdout.take().ok_or("no stdout")?;
         let stderr = child.stderr.take();
@@ -161,19 +147,8 @@ impl DapClient {
             probe.local_addr().map_err(|e| e.to_string())?.port()
         };
         let args: Vec<String> = args.iter().map(|a| a.replace("{port}", &port.to_string())).collect();
-        let mut cmd = crate::proc::quiet(command);
-        crate::code::sandbox::scrub_env(&mut cmd);
-        apply_env(&mut cmd, env);
-        crate::proc::own_group(&mut cmd);
-        let mut child = cmd
-            .args(&args)
-            .current_dir(cwd)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|e| format!("failed to start {command}: {e}"))?;
+        let spec = adapter_spec(command, &args, cwd, env);
+        let mut child = spawn::spawn(spec).map_err(|e| format!("failed to start {command}: {e}"))?;
         let tail: Arc<StdMutex<VecDeque<String>>> = Arc::new(StdMutex::new(VecDeque::new()));
         // Both streams are read, so the adapter never blocks on a full pipe; what it says is the tail shown when it fails.
         fn drain<R: AsyncRead + Unpin + Send + 'static>(r: Option<R>, tail: Arc<StdMutex<VecDeque<String>>>) {
@@ -197,7 +172,8 @@ impl DapClient {
             match tokio::net::TcpStream::connect(("127.0.0.1", port)).await {
                 Ok(s) => break s,
                 Err(e) => {
-                    if let Ok(Some(status)) = child.try_wait() {
+                    if let Some(ended) = child.outcome() {
+                        let status = ended.exit_code.map_or_else(|| "a signal".to_string(), |code| format!("code {code}"));
                         let said = tail.lock().unwrap_or_else(|e| e.into_inner()).iter().cloned().collect::<Vec<_>>().join(" | ");
                         return Err(format!("{command} exited ({status}) before it accepted a connection: {said}"));
                     }
@@ -216,7 +192,7 @@ impl DapClient {
     }
 
     /// A client over any pair of streams (the adapter's pipes, or a test's in-memory ones).
-    pub(crate) fn over(read: Box<dyn AsyncRead + Unpin + Send>, write: Box<dyn AsyncWrite + Unpin + Send>, child: Option<tokio::process::Child>) -> (Arc<Self>, mpsc::UnboundedReceiver<AdapterEvent>) {
+    pub(crate) fn over(read: Box<dyn AsyncRead + Unpin + Send>, write: Box<dyn AsyncWrite + Unpin + Send>, child: Option<Handle>) -> (Arc<Self>, mpsc::UnboundedReceiver<AdapterEvent>) {
         let writer: Writer = Arc::new(Mutex::new(write));
         let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
         let closed = Arc::new(AtomicBool::new(false));
@@ -233,7 +209,6 @@ impl DapClient {
             port: AtomicU16::new(0),
             reverse,
             terminal,
-            _tree: child.as_ref().map(|c| crate::proc::TreeKillOnDrop { pid: c.id() }),
             child: Mutex::new(child),
         });
         (client, rx)
@@ -336,10 +311,8 @@ impl DapClient {
     pub async fn dispose(&self) {
         self.closed.store(true, Ordering::SeqCst);
         if let Some(child) = self.child.lock().await.as_mut() {
-            if let Some(pid) = child.id() {
-                crate::proc::kill_tree(pid).await;
-            }
-            let _ = child.kill().await;
+            child.terminate();
+            child.wait_for_exit(std::time::Duration::from_secs(5)).await;
         }
         for (_, tx) in self.pending.lock().await.drain() {
             let _ = tx.send(Err(DapError::new("the debug session was ended")));

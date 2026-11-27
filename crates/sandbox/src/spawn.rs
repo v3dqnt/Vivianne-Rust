@@ -108,6 +108,7 @@ pub struct Handle {
     collected_err: Option<Shared>,
     stop: CancellationToken,
     done: watch::Receiver<Option<Outcome>>,
+    pid: Option<u32>,
 }
 
 /// Where `program` is, as the child would find it: an absolute or relative path is checked, a name is searched on the
@@ -179,6 +180,7 @@ pub fn spawn(spec: Spec) -> Result<Handle, SpawnError> {
         .as_ref()
         .map_or_else(CancellationToken::new, CancellationToken::child_token);
     let (finished, done) = watch::channel(None);
+    let pid = child.id();
     tokio::spawn(supervise(
         child,
         tree,
@@ -195,6 +197,7 @@ pub fn spawn(spec: Spec) -> Result<Handle, SpawnError> {
         collected_err,
         stop,
         done,
+        pid,
     })
 }
 
@@ -295,6 +298,12 @@ fn take(shared: Option<&Shared>) -> Option<Collected> {
 }
 
 impl Handle {
+    /// The process id, for a caller that has to name it to someone else.
+    #[must_use]
+    pub fn pid(&self) -> Option<u32> {
+        self.pid
+    }
+
     /// Asks the process and everything it started to stop, and kills them if they do not.
     pub fn terminate(&self) {
         self.stop.cancel();
