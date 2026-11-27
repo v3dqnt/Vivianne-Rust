@@ -1067,3 +1067,23 @@ mod tests {
         assert!(e.contains("panicked: oom"), "{e}");
     }
 }
+
+#[cfg(test)]
+mod real_server_tests {
+    use super::*;
+
+    /// `cargo test -p vivianne-tools a_real_language_server -- --ignored`, with `gopls` on PATH.
+    #[tokio::test]
+    #[ignore = "needs gopls"]
+    async fn a_real_language_server_starts_answers_and_stops() {
+        let dir = std::env::temp_dir().join(format!("viv-lsp-real-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("dir");
+        std::fs::write(dir.join("go.mod"), "module t\n\ngo 1.22\n").expect("go.mod");
+        let root = dir.to_string_lossy().into_owned();
+        let client = LspClient::spawn("gopls", &[], &root, &Value::Null, &Value::Null)
+            .await
+            .expect("started and initialised");
+        client.shutdown().await;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

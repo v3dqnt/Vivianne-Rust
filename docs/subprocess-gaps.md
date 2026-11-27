@@ -20,6 +20,6 @@ One list now says what counts as a credential (`env::withheld`); the tools crate
 
 ## Tests
 
-The original's tests (`subprocess` 10, `subprocess-local` 315, `win32-process` 51) were **not** translated. Here: the `env`, `output` and `spawn_tests.rs` tests in `crates/sandbox`, and the debug adapter tests that start a real adapter through it. A real language server has not been started through the new path.
+The original's tests (`subprocess` 10, `subprocess-local` 315, `win32-process` 51) were **not** translated. Here: the `env`, `output` and `spawn_tests.rs` tests in `crates/sandbox`, and the debug adapter tests that start a real adapter through it. A real language server (`gopls`) starts, initialises and stops through the new path (an ignored test in `lsp/client.rs`).
 
 Tested on Windows only. The Unix paths have not been compiled or run: no Linux or macOS target is installed and CI runs on Windows.
