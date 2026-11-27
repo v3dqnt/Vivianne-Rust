@@ -88,6 +88,11 @@ async fn serve_acp(rest: &[String]) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// A name for this run's conversation, which is not saved.
+fn uuid_like() -> String {
+    format!("cli-{}", std::process::id())
+}
+
 async fn chat_here(args: Vec<String>) -> Result<(), String> {
     let model = env::model()?;
     let workdir = std::env::current_dir().map_err(|e| e.to_string())?;
@@ -112,6 +117,7 @@ async fn chat_here(args: Vec<String>) -> Result<(), String> {
     {
         agent = agent.with_changes(std::sync::Arc::new(recorder));
     }
+    agent.set_thread(&uuid_like());
     let mut history = Vec::new();
 
     let prompt = args.join(" ");

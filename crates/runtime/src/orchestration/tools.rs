@@ -1,6 +1,7 @@
 //! The tools an agent uses to hand work to subagents and collect it: `task`, `task_output`, `wait_tasks`,
 //! `kill_task` and `list_subagent_profiles`.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -8,9 +9,10 @@ use serde_json::{Value, json};
 use vivianne_core::Mode;
 use vivianne_tools::{Tool, ToolResult};
 
+use super::coding::{CodingJob, Installed};
 use super::profiles::{self, Profile};
 use super::subagents::{self, Registry, Start};
-use super::{AgentSpec, caller, spawner};
+use super::{AgentSpec, Caller, caller, spawner};
 
 fn text<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
     args.get(key)
@@ -54,6 +56,7 @@ impl Tool for Task {
                     "subagent_type": { "type": "string", "description": "A kind from list_subagent_profiles. Default general-purpose." },
                     "name": { "type": "string", "description": "A name to call it by: lower-case letters, digits and dashes. Default agent-1, agent-2..." },
                     "context": { "type": "string", "description": "Extra facts added to the prompt." },
+                    "agent": { "type": "string", "description": "Have a coding agent installed on this machine do the work instead: its id in the Agent Client Protocol registry, such as claude-acp or codex-acp. Only in Auto mode, and not while a sandbox mode is set." },
                     "run_in_background": { "type": "boolean", "description": "Default true. False waits here for the answer." }
                 },
                 "required": ["description"]
@@ -62,7 +65,7 @@ impl Tool for Task {
     }
 
     async fn execute(&self, args: &Value, _cwd: &str) -> ToolResult {
-        let (Some(caller), Some(spawner)) = (caller(), spawner()) else {
+        let Some(caller) = caller() else {
             return ToolResult::failure("task works inside a conversation's own agent.");
         };
         if caller.depth >= 1 {
@@ -103,6 +106,44 @@ impl Tool for Task {
             Some(n) => n.to_owned(),
             None => registry.next_name(&caller.thread),
         };
+        let background = args
+            .get("run_in_background")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        if let Some(agent) = text(args, "agent") {
+            if let Err(why) = may_delegate(&caller) {
+                return ToolResult::failure(why);
+            }
+            let job = CodingJob {
+                agent: agent.to_owned(),
+                folder: caller.folder.clone(),
+                prompt: if profile.system.is_empty() {
+                    prompt
+                } else {
+                    format!("{}\n\n{prompt}", profile.system)
+                },
+                read_only: profile.read_only,
+            };
+            let reading = if job.read_only {
+                "asked only to look"
+            } else {
+                "able to change files"
+            };
+            let started = subagents::start_coding(
+                Arc::new(Installed),
+                &caller,
+                name,
+                description.to_owned(),
+                job,
+            );
+            return match started {
+                Ok(handle) => answer(&handle, background, reading, description).await,
+                Err(why) => ToolResult::failure(why),
+            };
+        }
+        let Some(spawner) = spawner() else {
+            return ToolResult::failure("subagents are not set up here.");
+        };
         // It may change files only when its parent is free to: anything less looks and reports.
         let mode = if profile.read_only || caller.mode != Mode::Auto {
             Mode::Plan
@@ -126,24 +167,47 @@ impl Tool for Task {
             Ok(handle) => handle,
             Err(why) => return ToolResult::failure(why),
         };
-        if args
-            .get("run_in_background")
-            .and_then(Value::as_bool)
-            .unwrap_or(true)
-        {
-            let reading = if mode == Mode::Plan {
-                "read-only"
-            } else {
-                "able to change files"
-            };
-            return ToolResult::ok(format!(
-                "Started {} ({}), {reading}: {description}. It works in the background: collect its answer with task_output or wait_tasks.",
-                handle.name, handle.id
-            ));
-        }
-        handle.wait(Duration::from_secs(MAX_WAIT_SECS)).await;
-        ToolResult::ok(handle.report())
+        let reading = if mode == Mode::Plan {
+            "read-only"
+        } else {
+            "able to change files"
+        };
+        answer(&handle, background, reading, description).await
     }
+}
+
+/// What `task` says once its subagent is going: where to collect it, or, when it was to wait, its answer.
+async fn answer(
+    handle: &subagents::Handle,
+    background: bool,
+    reading: &str,
+    description: &str,
+) -> ToolResult {
+    if background {
+        return ToolResult::ok(format!(
+            "Started {} ({}), {reading}: {description}. It works in the background: collect its answer with task_output or wait_tasks.",
+            handle.name, handle.id
+        ));
+    }
+    handle.wait(Duration::from_secs(MAX_WAIT_SECS)).await;
+    ToolResult::ok(handle.report())
+}
+
+/// A coding agent runs its own tools in its own process: nothing here holds it to a mode or asks for it. So it is
+/// started only when the person has said to act without asking, and never while a sandbox mode is set.
+fn may_delegate(caller: &Caller) -> Result<(), String> {
+    if caller.mode != Mode::Auto {
+        return Err("a coding agent can only be started in Auto mode; ask the user to switch, or use a subagent without 'agent'.".to_owned());
+    }
+    let settings = crate::config::resolve(&caller.folder, None);
+    let (mode, _) = vivianne_tools::confinement::mode_from_setting(settings.sandbox.value.as_deref());
+    if mode.as_str() != "danger-full-access" {
+        return Err(format!(
+            "a coding agent cannot be held to the '{}' sandbox mode, so it is not started; use a subagent without 'agent'.",
+            mode.as_str()
+        ));
+    }
+    Ok(())
 }
 
 /// Reads a subagent's answer, waiting for it if asked.
@@ -340,5 +404,30 @@ impl Tool for ListSubagentProfiles {
                 .collect::<Vec<_>>()
                 .join("\n"),
         )
+    }
+}
+
+#[cfg(test)]
+mod delegate_tests {
+    use serde_json::json;
+
+    use super::*;
+    use crate::orchestration::scope;
+
+    #[tokio::test]
+    async fn a_coding_agent_is_not_started_unless_the_person_acts_without_asking() {
+        for mode in [Mode::Ask, Mode::Plan] {
+            let caller = Caller {
+                thread: format!("delegate-refused-{mode:?}"),
+                mode,
+                folder: std::env::temp_dir(),
+                model: None,
+                depth: 0,
+            };
+            let args = json!({ "description": "d", "prompt": "p", "agent": "claude-acp" });
+            let out = scope(caller.clone(), Task.execute(&args, "")).await;
+            assert!(out.is_error && out.content.contains("Auto mode"), "{}", out.content);
+            assert!(Registry::global().of(&caller.thread).is_empty());
+        }
     }
 }

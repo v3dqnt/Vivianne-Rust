@@ -86,6 +86,7 @@ impl Sessions {
         let built = (self.host.build)(folder).map_err(Refused::internal)?;
         // The client decides what may happen: everything that needs a yes is asked of it.
         built.agent.set_mode(Mode::Ask);
+        built.agent.set_thread(id);
         lock(&self.table).insert(
             id.to_owned(),
             Session {

@@ -2,11 +2,13 @@
 //! the conversation tools, the schedule tools, and the standing sandbox mode from the settings.
 
 use std::path::Path;
+use std::sync::Arc;
 
 use vivianne_tools::Toolbox;
 use vivianne_tools::confinement::mode_from_setting;
 
 use crate::config::Resolved;
+use crate::orchestration;
 use crate::schedule::{store::Store, tools};
 use crate::thread_tools::{ListThreads, ReadThread, SearchThreads};
 
@@ -14,6 +16,22 @@ use crate::thread_tools::{ListThreads, ReadThread, SearchThreads};
 /// Scheduled tasks are delivered by the app while it is open; the other surfaces can still manage them.
 #[must_use]
 pub fn prepare(toolbox: &mut Toolbox, workspace: &Path, settings: &Resolved) -> Option<String> {
+    orchestration::set_spawner(Arc::new(orchestration::StandardSpawner));
+    toolbox.add(orchestration::Task);
+    toolbox.add(orchestration::TaskOutput);
+    toolbox.add(orchestration::WaitTasks);
+    toolbox.add(orchestration::KillTask);
+    toolbox.add(orchestration::ListSubagentProfiles);
+    prepare_child(toolbox, workspace, settings)
+}
+
+/// [`prepare`] for a subagent's toolbox: everything but the tools that start and collect subagents.
+#[must_use]
+pub fn prepare_child(
+    toolbox: &mut Toolbox,
+    workspace: &Path,
+    settings: &Resolved,
+) -> Option<String> {
     let folder = workspace.display().to_string();
     toolbox.add(ListThreads::new(&folder));
     toolbox.add(ReadThread::new(&folder));
@@ -54,6 +72,11 @@ mod tests {
             "schedule_list",
             "schedule_view",
             "schedule_edit",
+            "task",
+            "task_output",
+            "wait_tasks",
+            "kill_task",
+            "list_subagent_profiles",
         ] {
             assert_eq!(names.iter().filter(|n| *n == name).count(), 1, "{name}");
         }

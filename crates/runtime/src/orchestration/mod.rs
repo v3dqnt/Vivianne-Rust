@@ -6,7 +6,9 @@
 //! reaches the threads the user has open. A tool learns who is calling from [`Caller`], set around every turn, so
 //! no tool has to be built per thread.
 
+mod coding;
 mod profiles;
+mod spawner;
 mod subagents;
 mod threads;
 mod tools;
@@ -22,7 +24,9 @@ use vivianne_core::Mode;
 
 use crate::Agent;
 
+pub use coding::{CodingAgents, CodingJob, Installed};
 pub use profiles::{Profile, profiles};
+pub use spawner::Standard as StandardSpawner;
 pub use subagents::{Handle, Registry, Status};
 pub use threads::{AskThread, MessageThread, SpawnThread};
 pub use tools::{KillTask, ListSubagentProfiles, Task, TaskOutput, WaitTasks};

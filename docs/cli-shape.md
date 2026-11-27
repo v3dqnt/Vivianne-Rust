@@ -64,6 +64,8 @@ While a sandbox mode is standing, `write` and `edit` refuse under `read-only`, `
 
 `viv acp` (no arguments) serves the Agent Client Protocol, version 1, on standard input and output: other programs create sessions in a folder, prompt them and answer permission requests. Standard output carries only protocol messages. The model is chosen as for `viv` itself.
 
+`task`, `task_output`, `wait_tasks`, `kill_task` (asks) and `list_subagent_profiles` run subagents on every surface. A subagent is read-only unless the thread is in Auto mode. `task` takes `agent`, an Agent Client Protocol registry id, to have that coding agent do the work; this is refused outside Auto mode and while a sandbox mode is set.
+
 `working_directory` (reads the directory relative paths and commands start from, or moves it with `path`, to an existing directory inside the project; it can never leave the project, and a move is replayed from the saved conversation when it is resumed; look-only, so it needs no approval and works in Plan mode).
 
 `convert_to_pdf` (converts a .doc/.docx/.xls/.xlsx/.ppt/.pptx in the project to a PDF with an installed LibreOffice; arguments `path`, `output?`, `overwrite?`; writes a file, so it asks in Ask mode and is refused in Plan mode; offered only when LibreOffice is found).

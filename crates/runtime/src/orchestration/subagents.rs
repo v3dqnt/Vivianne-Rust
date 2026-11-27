@@ -10,6 +10,7 @@ use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 use vivianne_core::{Message, Role, Thinking};
 
+use super::coding::{self, CodingAgents, CodingJob};
 use super::{AgentSpec, Caller, Spawner};
 use crate::{Agent, AgentEvent};
 
@@ -46,7 +47,7 @@ pub struct Handle {
     started: Instant,
     status: Mutex<Status>,
     finished: watch::Sender<bool>,
-    cancel: CancellationToken,
+    pub(super) cancel: CancellationToken,
     tool_calls: AtomicU32,
 }
 
@@ -62,6 +63,17 @@ impl Handle {
     fn finish(&self, status: Status) {
         *self.status.lock().unwrap_or_else(PoisonError::into_inner) = status;
         self.finished.send_replace(true);
+    }
+
+    pub(super) fn count_tool_call(&self) {
+        self.tool_calls.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Settles it, unless a kill already did and said why.
+    pub(super) fn settle(&self, status: Status) {
+        if !self.status().is_done() {
+            self.finish(status);
+        }
     }
 
     /// Stops it, if it is still working. True when it was.
@@ -194,6 +206,37 @@ pub struct Start {
     pub spec: AgentSpec,
 }
 
+/// A new running entry for `caller`, if there is room for one.
+fn register(
+    caller: &Caller,
+    name: String,
+    description: String,
+    profile: String,
+) -> Result<Arc<Handle>, String> {
+    let registry = Registry::global();
+    let mut all = registry.all.lock().unwrap_or_else(PoisonError::into_inner);
+    if all.iter().filter(|h| !h.status().is_done()).count() >= MAX_ACTIVE {
+        return Err(format!(
+            "{MAX_ACTIVE} subagents are already working. Wait for some to finish (task_output, wait_tasks) or stop one (kill_task) first."
+        ));
+    }
+    let (finished, _) = watch::channel(false);
+    let handle = Arc::new(Handle {
+        id: uuid::Uuid::new_v4().to_string(),
+        name,
+        description,
+        profile,
+        thread: caller.thread.clone(),
+        started: Instant::now(),
+        status: Mutex::new(Status::Running),
+        finished,
+        cancel: CancellationToken::new(),
+        tool_calls: AtomicU32::new(0),
+    });
+    all.push(handle.clone());
+    Ok(handle)
+}
+
 /// Starts a subagent for the caller and returns at once; it works in the background.
 ///
 /// # Errors
@@ -203,31 +246,8 @@ pub fn start(
     caller: &Caller,
     request: Start,
 ) -> Result<Arc<Handle>, String> {
-    let registry = Registry::global();
-    if registry.active() >= MAX_ACTIVE {
-        return Err(format!(
-            "{MAX_ACTIVE} subagents are already working. Wait for some to finish (task_output, wait_tasks) or stop one (kill_task) first."
-        ));
-    }
     let agent = spawner.build(&request.spec)?;
-    let (finished, _) = watch::channel(false);
-    let handle = Arc::new(Handle {
-        id: uuid::Uuid::new_v4().to_string(),
-        name: request.name,
-        description: request.description,
-        profile: request.profile,
-        thread: caller.thread.clone(),
-        started: Instant::now(),
-        status: Mutex::new(Status::Running),
-        finished,
-        cancel: CancellationToken::new(),
-        tool_calls: AtomicU32::new(0),
-    });
-    registry
-        .all
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .push(handle.clone());
+    let handle = register(caller, request.name, request.description, request.profile)?;
     // One level down: what it calls sees itself as a subagent and cannot start more.
     let child = Caller {
         depth: caller.depth + 1,
@@ -239,14 +259,37 @@ pub fn start(
     Ok(handle)
 }
 
+/// [`start`] for a coding agent from the registry.
+///
+/// # Errors
+/// Too many are working.
+pub fn start_coding(
+    agents: Arc<dyn CodingAgents>,
+    caller: &Caller,
+    name: String,
+    description: String,
+    job: CodingJob,
+) -> Result<Arc<Handle>, String> {
+    let handle = register(caller, name, description, job.agent.clone())?;
+    tokio::spawn(coding::drive(agents, job, handle.clone()));
+    Ok(handle)
+}
+
 async fn drive(agent: Agent, prompt: String, handle: Arc<Handle>) {
     let mut history = vec![Message::new(Role::User, prompt)];
     let (events, mut seen) = mpsc::unbounded_channel();
     let counter = handle.clone();
+    let agent = Arc::new(agent);
+    let asker = agent.clone();
     let counting = tokio::spawn(async move {
         while let Some(event) = seen.recv().await {
-            if matches!(event, AgentEvent::ToolStart { .. }) {
-                counter.tool_calls.fetch_add(1, Ordering::Relaxed);
+            match event {
+                AgentEvent::ToolStart { .. } => counter.count_tool_call(),
+                // Nobody is watching to say yes: a subagent that would have to ask is told no.
+                AgentEvent::Approval { id, .. } => {
+                    asker.answer(&id, false);
+                }
+                _ => {}
             }
         }
     });
@@ -261,10 +304,7 @@ async fn drive(agent: Agent, prompt: String, handle: Arc<Handle>) {
         Some(Err(e)) => Status::Failed(e.to_string()),
         Some(Ok(())) => Status::Completed(last_answer(&history)),
     };
-    // A kill has already said why; its note stays.
-    if !handle.status().is_done() {
-        handle.finish(status);
-    }
+    handle.settle(status);
 }
 
 /// What the subagent last said, cut to what a parent's context can take.
@@ -275,8 +315,13 @@ fn last_answer(history: &[Message]) -> String {
         .find(|m| m.role == Role::Assistant && !m.text.trim().is_empty())
         .map(|m| m.text.trim().to_owned())
         .unwrap_or_default();
+    cut(&text)
+}
+
+/// `text`, no longer than a parent's context can take.
+pub(super) fn cut(text: &str) -> String {
     if text.chars().count() <= MAX_OUTPUT_CHARS {
-        return text;
+        return text.to_owned();
     }
     let cut: String = text.chars().take(MAX_OUTPUT_CHARS).collect();
     format!("{cut}\n… (the rest is left out)")

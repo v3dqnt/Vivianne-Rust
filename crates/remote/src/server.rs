@@ -412,6 +412,7 @@ fn start_run(
         built = built.with_changes(Arc::new(recorder));
     }
     let agent = Arc::new(built);
+    agent.set_thread(&request.thread_id);
     agent.set_mode(mode_of(&request.mode));
     let cancel = CancellationToken::new();
     shared

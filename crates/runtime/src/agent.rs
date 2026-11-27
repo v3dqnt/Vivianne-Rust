@@ -130,6 +130,8 @@ pub struct Agent {
     inbox: Inbox,
     /// Runs a surface started on its own since the person last said something.
     wakes: AtomicU32,
+    /// The conversation this agent answers, for the tools that need to know who calls.
+    thread: Mutex<Option<String>>,
     /// The message the last such run was started with.
     woke_with: Mutex<String>,
     /// Puts the end of a background job in the inbox, while this agent lives.
@@ -230,12 +232,33 @@ impl Agent {
             inbox,
             wakes: AtomicU32::new(0),
             woke_with: Mutex::default(),
+            thread: Mutex::default(),
             _notices: notices,
             checkpoint: Mutex::new(None),
             context_source: None,
             context: Mutex::new(None),
             attachments: None,
         }
+    }
+
+    /// Says which conversation this agent answers. Its subagent and schedule tools work only once it is said.
+    pub fn set_thread(&self, thread: &str) {
+        *self.thread.lock().unwrap_or_else(PoisonError::into_inner) = Some(thread.to_owned());
+    }
+
+    /// Who a tool is told is calling: nothing is changed inside a subagent, which has been told already.
+    fn caller(&self) -> Option<crate::orchestration::Caller> {
+        if crate::orchestration::caller().is_some() {
+            return None;
+        }
+        let thread = self.thread.lock().unwrap_or_else(PoisonError::into_inner).clone()?;
+        Some(crate::orchestration::Caller {
+            thread,
+            mode: self.mode(),
+            folder: self.tools.working_directory().root().to_path_buf(),
+            model: Some(self.primary()),
+            depth: 0,
+        })
     }
 
     /// Changes what the agent is for: its instructions and the tools it may use.
@@ -1038,7 +1061,14 @@ impl Agent {
                     recorder.capture(std::path::Path::new(&path)).await;
                 }
             }
-            let run = self.tools.execute(&call.name, &call.args);
+            let caller = self.caller();
+            let run = async {
+                let run = self.tools.execute(&call.name, &call.args);
+                match caller {
+                    Some(caller) => crate::orchestration::scope(caller, run).await,
+                    None => run.await,
+                }
+            };
             let limit = self.tools.timeout_of(&call.name).or(self.tool_timeout);
             let ran = match limit {
                 Some(limit) => match tokio::time::timeout(limit, run).await {

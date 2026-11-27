@@ -5,7 +5,7 @@ Source: `deepseek-harness/packages`. Asked for: `acp`, `subagent`, `team`, `guar
 ## What is already here
 
 - **ACP client.** `crates/providers/src/acp` (about 6 900 lines) has everything the old `agent/harness.rs` (931 lines) did: registry with cache and fallback, ready marks, install, debug, trace, reset, start-failure hints, plan and tool-call mapping. There is nothing to copy across, and the app exposes debug, trace, reset and install under Settings, Providers. `viv` does not.
-- **Subagents.** `crates/runtime/src/orchestration` has `task`, `task_output`, `wait_tasks`, `kill_task`, profiles and thread messaging. Extend it; do not add a second registry (R1.6).
+- **Subagents.** `crates/runtime/src/orchestration` has `task`, `task_output`, `wait_tasks`, `kill_task`, profiles and thread messaging; the thread tools are still unwired. Extend it; do not add a second registry (R1.6).
 
 ## What ACP v3 is
 
@@ -13,7 +13,7 @@ DeepSeek's `acp/acp` is an ACP **server**: other programs drive its agent. So v3
 
 1. the existing client, as it is;
 2. **done:** `viv acp`, a stdio server over the agent loop in `crates/remote/src/acp` (gaps: `docs/acp-gaps.md`);
-3. a subagent backend that delegates to an ACP agent (`subagent-acp`).
+3. **done, narrowed:** `task` with `agent` delegates to a registry coding agent (`orchestration/coding.rs`; gaps: `docs/subagent-gaps.md`).
 
 A permission request nobody answers is denied, never allowed (R4). Test the server by driving it with the existing client over an in-memory pipe.
 

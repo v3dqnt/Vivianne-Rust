@@ -25,4 +25,4 @@ Also: version 2 of the protocol is not served. A client that offers 2 is answere
 
 The original's `describe` blocks and ours: permission policy (covered: allow, reject, cancel, client leaving), bridge and prompt lifecycle (covered: one prompt at a time, cancel), codec (stop reasons only through the tests above), rich content (text and links; images refused), connection ownership and multi-session isolation (**not covered**), MCP mapping and model configuration (**not ported**), update projection (covered for the three kinds sent). The original's tests (about 3 500 lines) were not translated.
 
-Checked once by hand: the built `viv acp` against a local stand-in model, writing a file after being asked. No third-party ACP client has been connected to it, and **neither has Vivianne's own** (`providers/src/acp` only starts agents from the registry): that is the first thing to test when ACP delegation is built.
+Checked once by hand: the built `viv acp` against a local stand-in model, writing a file after being asked. Vivianne's own client drives it in a test (`vivianne_as_client_drives_vivianne_as_server`). No third-party ACP client has been connected to it.

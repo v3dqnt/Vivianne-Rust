@@ -476,3 +476,66 @@ async fn a_prompt_keeps_the_persons_title_and_what_was_added_elsewhere() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Vivianne's own ACP client against its own server, answering every question with `allow`.
+async fn client_writes(allow: bool, name: &str) -> (vivianne_providers::acp::TurnEnd, PathBuf, Vec<String>) {
+    use vivianne_providers::acp::{AcpEvent, DELEGATED, PromptPart, TurnRequest, run_over};
+
+    let dir = folder(name);
+    let (peer, _, _server) = start(writes_a_file());
+    let Peer { to, from, .. } = peer;
+    let (events, mut seen) = tokio::sync::mpsc::unbounded_channel();
+    let answer = tokio::spawn(async move {
+        let mut tools = Vec::new();
+        while let Some(event) = seen.recv().await {
+            match event {
+                AcpEvent::Permission(request) => request.answer(allow),
+                AcpEvent::ToolStart { name, .. } => tools.push(name),
+                _ => {}
+            }
+        }
+        tools
+    });
+    let prompt = [PromptPart::Text("write it".to_owned())];
+    let request = TurnRequest {
+        prompt: &prompt,
+        earlier: &[],
+        plan_mode: false,
+        bypass: false,
+        mcp_servers: &[],
+        own: None,
+    };
+    let (thread, cwd) = (format!("{DELEGATED}{name}"), dir.display().to_string());
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let turn = run_over(
+        Box::new(from),
+        Box::new(to),
+        &thread,
+        &cwd,
+        &request,
+        &events,
+        &cancel,
+    );
+    let end = tokio::time::timeout(Duration::from_secs(20), turn)
+        .await
+        .expect("in time")
+        .expect("ran");
+    drop(events);
+    (end, dir, answer.await.unwrap())
+}
+
+#[tokio::test]
+async fn vivianne_as_client_drives_vivianne_as_server() {
+    use vivianne_providers::acp::Outcome;
+
+    let (end, dir, tools) = client_writes(true, "own-allow").await;
+    assert_eq!(end.outcome, Outcome::Finished, "{}", end.reply);
+    assert_eq!(end.reply.trim(), "finished");
+    assert_eq!(std::fs::read_to_string(dir.join("made.txt")).unwrap(), "hello");
+    assert_eq!(tools.len(), 1, "{tools:?}");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let (_, dir, _) = client_writes(false, "own-reject").await;
+    assert!(!dir.join("made.txt").exists(), "a no from our client is a no to our server");
+    let _ = std::fs::remove_dir_all(&dir);
+}

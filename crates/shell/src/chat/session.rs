@@ -214,6 +214,8 @@ impl Session {
         match &self.engine {
             Engine::Own(agent) => {
                 let agent = agent.clone();
+                // The subagent and schedule tools need to know which conversation is calling.
+                agent.set_thread(&self.thread);
                 let (events_tx, watcher) =
                     watch_turn(self.runtime.handle(), self.thread.clone(), events_tx);
                 let (folder, thread) = (self.folder.display().to_string(), self.thread.clone());
