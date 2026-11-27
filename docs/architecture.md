@@ -9,11 +9,12 @@
 | `attachments` | Durable images and files attached to messages: content-addressed store, image normalization, request-sized versions. |
 | `plugins` | Context, typed services and events, reversible registrations. |
 | `providers` | One trait, adapters for OpenAI-compatible, Anthropic, Google, local. |
-| `tools` | Shell, browser, desktop control, and the working directory the file and shell tools start from (`workdir`). |
-| `runtime` | The single agent loop for chats and 24/7 agents, saved threads (an append-only log per thread), checkpoints, and the views folded from a thread's history. |
+| `tools` | Shell, browser, desktop control, and the working directory the file and shell tools start from (`workdir`). Background jobs and persistent terminals. |
+| `runtime` | The single agent loop for chats and 24/7 agents, saved threads (an append-only log per thread), checkpoints, and the views folded from a thread's history. `orchestration`: subagents (its own and coding agents over ACP) and their shared task board. |
 | `projects` | Shared projects: roles and the one permission check, membership and join-request rules, agent-run permissions, audit events. Pure, with storage behind a trait (`docs/plans/projects.md`). |
 | `hub` | `viv-hub`, the hosted service for shared projects: `projects` over SQLite, bearer sessions and an HTTP API. Nothing else depends on it. |
 | `sandbox` | Starting, owning and confining other programs. The only crate besides the shell's window glue that uses `unsafe`. |
+| `remote` | The machine-to-machine server and client, and `viv acp`, the Agent Client Protocol server. |
 | `app-api` | Local versioned API for micro-app processes. |
 | `shell` | GPUI app: window, panels, theme. The only crate that touches GPUI. |
 

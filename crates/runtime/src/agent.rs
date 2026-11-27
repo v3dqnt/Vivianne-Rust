@@ -746,6 +746,11 @@ impl Agent {
                     condensed_for_overflow = true;
                     continue;
                 }
+                // Stopped, and the stream noticed before the select above did: that is a stop, not a failure.
+                Err(_) if cancel.is_cancelled() => {
+                    send(events, AgentEvent::Stopped);
+                    return Ok(());
+                }
                 Err(error) => return Err(error),
             };
             if let Some(spent) = spent {
