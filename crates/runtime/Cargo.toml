@@ -21,6 +21,8 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util = "0.7"
 chrono = "0.4"
+# Time zones by name for daily, weekly and cron schedules (already in the tree through the cron schedule crate).
+chrono-tz = "0.10"
 cron = "0.12"
 uuid = { version = "1", features = ["v4"] }
 rand = "0.9"

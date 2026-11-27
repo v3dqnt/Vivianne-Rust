@@ -34,6 +34,7 @@ pub mod sections;
 pub mod session;
 pub mod projection;
 pub mod query;
+pub mod schedule;
 pub mod quotes;
 pub mod session_stats;
 pub mod store;
