@@ -64,7 +64,7 @@ pub enum Mode {
 
 /// Tools that only look. Anything not named here (a new tool, an editing one such as `lsp_edit`) counts as one that
 /// changes things: a list of what is safe fails closed, a list of what is dangerous fails open.
-const LOOK_ONLY_TOOLS: [&str; 25] = [
+const LOOK_ONLY_TOOLS: [&str; 27] = [
     "debug",
     "read",
     "ls",
@@ -95,6 +95,8 @@ const LOOK_ONLY_TOOLS: [&str; 25] = [
     // Reads the scheduled tasks; creating and editing one are changes and ask.
     "schedule_list",
     "schedule_view",
+    "job_output",
+    "job_list",
     // Searches this project's saved conversations.
     "search_threads",
 ];

@@ -121,5 +121,35 @@ pub fn definitions() -> Vec<serde_json::Value> {
                 "required": ["operation"]
             }
         }),
+        serde_json::json!({
+            "name": "job_output",
+            "description": "Read a background job: output since the previous read for stream jobs, or the result of a finished final-output job.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "job_id": { "type": "string", "description": "Job id returned by the tool that started the background work." },
+                    "wait": { "type": "boolean", "description": "Block until the job finishes or the timeout expires; a timed-out wait leaves the job running. Defaults to false." },
+                    "timeout_ms": { "type": "number", "description": "Max wait in milliseconds with wait: true. Default 30000, at most 600000." }
+                },
+                "required": ["job_id"]
+            }
+        }),
+        serde_json::json!({
+            "name": "job_list",
+            "description": "List your background jobs (running and finished) with their ids, kinds, and statuses.",
+            "parameters": { "type": "object", "properties": {} }
+        }),
+        serde_json::json!({
+            "name": "job_kill",
+            "description": "Request cancellation of a running background job.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "job_id": { "type": "string", "description": "Job id returned by the tool that started the background work." },
+                    "reason": { "type": "string", "description": "Optional short reason, recorded in the log and forwarded to the job." }
+                },
+                "required": ["job_id"]
+            }
+        }),
     ]
 }

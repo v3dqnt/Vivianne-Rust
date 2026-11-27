@@ -9,11 +9,13 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use vivianne_sandbox::policy::{self, Mode, Policy};
-use vivianne_sandbox::spawn::{self, Output, Spec};
 use vivianne_sandbox::confine;
 
 use crate::builtin::{Tool, ToolResult};
 use crate::confinement::Confinement;
+use crate::jobs::Jobs;
+
+mod background;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ToolError {
@@ -85,7 +87,8 @@ pub fn definitions() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "command": {"type": "string"},
-                    "timeout_secs": {"type": "integer", "description": "default 120, max 600"}
+                    "timeout_secs": {"type": "integer", "description": "default 120, max 600. On expiry the command moves to the background as a job instead of being killed."},
+                    "run_in_background": {"type": "boolean", "description": "Run in the background and return a job id immediately (collect with job_output, stop with job_kill). No timeout applies."}
                 },
                 "required": ["command"]
             }
@@ -222,17 +225,25 @@ const MAX_OUTPUT_BYTES: usize = 64 * 1024;
 pub struct Shell {
     workspace: Workspace,
     confinement: Confinement,
+    jobs: Option<Jobs>,
 }
 
 impl Shell {
     #[must_use]
     pub fn new(workspace: Workspace) -> Self {
-        Self { workspace, confinement: Confinement::default() }
+        Self { workspace, confinement: Confinement::default(), jobs: None }
     }
 
     #[must_use]
     pub fn confined(mut self, confinement: Confinement) -> Self {
         self.confinement = confinement;
+        self
+    }
+
+    /// Lets commands run as background jobs, and move there when they outlast their timeout.
+    #[must_use]
+    pub fn with_jobs(mut self, jobs: Jobs) -> Self {
+        self.jobs = Some(jobs);
         self
     }
 }
@@ -256,38 +267,20 @@ impl SimpleTool for Shell {
         let standing = self.confinement.get();
         let mode = self.confinement.asked("shell", args).map_err(ToolError::BadArgs)?.unwrap_or(standing);
         let argv = self.argv(command, mode)?;
-        let mut spec = Spec::new(argv.argv, start);
-        // One stream each; the collector keeps the end, where errors and results are.
-        let keep = || Output::Collect { max_bytes: MAX_OUTPUT_BYTES, spill: None };
-        spec.stdout = keep();
-        spec.stderr = keep();
-        let mut handle = spawn::spawn(spec).map_err(|e| ToolError::Failed(e.to_string()))?;
-        // Dropping the handle (a cancelled turn) ends the command and everything it started.
-        if !handle.wait_for_exit(Duration::from_secs(secs)).await {
-            handle.terminate();
-            handle.wait_for_exit(Duration::from_secs(5)).await;
-            return Err(ToolError::Failed(format!("timed out after {secs}s")));
+        let call = background::Command {
+            command,
+            argv: argv.argv,
+            start,
+            mode,
+            denial_signatures: argv.denial_signatures,
+        };
+        let limit = Duration::from_secs(secs);
+        let background = args["run_in_background"].as_bool() == Some(true);
+        match &self.jobs {
+            Some(jobs) => background::run(jobs, call, limit, background).await,
+            None if background => Err(ToolError::Failed("background jobs are unavailable here".to_owned())),
+            None => background::foreground(call, limit).await,
         }
-        let exit_code = handle.done().await.exit_code;
-        let (stdout, stderr) = handle.collected();
-        let mut text = String::new();
-        let mut dropped = false;
-        for stream in [&stdout, &stderr].into_iter().flatten() {
-            dropped |= stream.truncated;
-            text.push_str(&stream.text);
-        }
-        if dropped {
-            text.insert_str(0, "[...earlier output dropped]\n");
-        }
-        let mut text = format!("exit {}\n{}", exit_code.unwrap_or(-1), truncate(text));
-        let errors = stderr.map(|s| s.text).unwrap_or_default();
-        if confine::denied(exit_code, &errors, argv.denial_signatures) {
-            text.push_str(&format!("\n{}\n{}", policy::denial_marker(mode), policy::escalation_hint("command")));
-        }
-        Ok(SimpleOutput {
-            text,
-            details: Some(json!({"command": command, "exit_code": exit_code})),
-        })
     }
 }
 

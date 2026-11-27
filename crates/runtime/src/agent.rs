@@ -126,7 +126,9 @@ pub struct Agent {
     /// Where the conversation is made durable mid-run, when something wants that.
     checkpoint: Mutex<Option<Checkpoint>>,
     /// Messages sent while a run is going, added before its next model call.
-    inbox: Mutex<std::collections::VecDeque<String>>,
+    inbox: Inbox,
+    /// Puts the end of a background job in the inbox, while this agent lives.
+    _notices: vivianne_tools::jobs::Subscription,
     /// Asked for a block of standing context (core memory) at the start of every run.
     context_source: Option<ContextSource>,
     context: Mutex<Option<String>>,
@@ -179,6 +181,8 @@ struct Opened {
     answered: std::time::Instant,
 }
 
+type Inbox = Arc<Mutex<std::collections::VecDeque<String>>>;
+
 impl Agent {
     #[must_use]
     pub fn new(
@@ -187,6 +191,13 @@ impl Agent {
         system: Option<String>,
         tools: Toolbox,
     ) -> Self {
+        let inbox = Inbox::default();
+        let notices = {
+            let inbox = Arc::clone(&inbox);
+            tools.jobs().on_notice(move |text| {
+                inbox.lock().unwrap_or_else(PoisonError::into_inner).push_back(text);
+            })
+        };
         Self {
             targets: vec![Target::new(provider, model)],
             chain: Chain::new(1),
@@ -203,7 +214,8 @@ impl Agent {
             tool_timeout: None,
             result_filter: None,
             sections: Mutex::new(Sections::default()),
-            inbox: Mutex::new(std::collections::VecDeque::new()),
+            inbox,
+            _notices: notices,
             checkpoint: Mutex::new(None),
             context_source: None,
             context: Mutex::new(None),
@@ -305,6 +317,9 @@ impl Agent {
         if let Some(policy) = self.tools.confinement().describe(self.tools.working_directory().root()) {
             sections.set("sandbox-policy", order::CONTEXT + 40, policy);
         }
+        if self.tools.get("job_output").is_some() {
+            sections.set("background-jobs", order::CONTEXT + 45, vivianne_tools::jobs::GUIDANCE);
+        }
         // What the caller added or replaced by name wins over the built-in sections.
         sections.merge(&self.sections.lock().unwrap_or_else(PoisonError::into_inner));
         sections.assemble()
@@ -344,6 +359,23 @@ impl Agent {
     /// run that was about to finish goes on to answer it. Between runs it waits for the next one.
     pub fn steer(&self, text: impl Into<String>) {
         self.inbox.lock().unwrap_or_else(PoisonError::into_inner).push_back(text.into());
+        self.tools.jobs().steered();
+    }
+
+    /// Takes what is waiting to be said (a job that ended while nothing was running), so a surface can start a run
+    /// with it. `None` when nothing waits.
+    #[must_use]
+    pub fn take_waiting(&self) -> Option<String> {
+        let waiting: Vec<String> = self.inbox.lock().unwrap_or_else(PoisonError::into_inner).drain(..).collect();
+        (!waiting.is_empty()).then(|| waiting.join("
+
+"))
+    }
+
+    /// Whether a background job started by this agent's tools has not ended yet.
+    #[must_use]
+    pub fn background_running(&self) -> bool {
+        self.tools.jobs().registry().list(None).iter().any(|job| !job.status.is_terminal())
     }
 
     /// Whether a steering message is waiting.

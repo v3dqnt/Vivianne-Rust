@@ -13,6 +13,7 @@ pub mod builtin;
 pub mod browser;
 pub mod computer;
 pub mod git;
+pub mod jobs;
 pub mod present;
 pub mod ptc;
 pub mod run_code;
@@ -72,6 +73,8 @@ pub struct Toolbox {
     workdir: workdir::WorkingDirectory,
     /// The standing file mode `shell`, `write` and `edit` are held to.
     confinement: confinement::Confinement,
+    /// Background work started from this box; cancelled when the box goes.
+    jobs: jobs::Jobs,
 }
 
 impl std::fmt::Debug for Toolbox {
@@ -102,6 +105,7 @@ impl Toolbox {
             step: std::sync::Mutex::new(StepInfo::default()),
             workdir: workdir::WorkingDirectory::new(cwd),
             confinement: confinement::Confinement::default(),
+            jobs: jobs::Jobs::default(),
         }
     }
 
@@ -125,6 +129,12 @@ impl Toolbox {
         &self.confinement
     }
 
+    /// The box's background jobs.
+    #[must_use]
+    pub fn jobs(&self) -> &jobs::Jobs {
+        &self.jobs
+    }
+
     /// The coding tools, working in `root`.
     #[must_use]
     pub fn coding(root: &Path) -> Self {
@@ -142,7 +152,14 @@ impl Toolbox {
         toolbox.add(dap::DebugTool::new(cwd.clone(), false));
         toolbox.add(dap::DebugTool::new(cwd.clone(), true));
         toolbox.add(lsp::nav::LspTool::new(cwd));
-        toolbox.add(simple::Shell::new(workspace.clone()).confined(toolbox.confinement.clone()));
+        toolbox.add(
+            simple::Shell::new(workspace.clone())
+                .confined(toolbox.confinement.clone())
+                .with_jobs(toolbox.jobs.clone()),
+        );
+        toolbox.add(jobs::JobOutput(toolbox.jobs.clone()));
+        toolbox.add(jobs::JobList(toolbox.jobs.clone()));
+        toolbox.add(jobs::JobKill(toolbox.jobs.clone()));
         toolbox.add(simple::WriteFile::new(workspace.clone()).confined(toolbox.confinement.clone()));
         toolbox.add(simple::EditFile::new(workspace).confined(toolbox.confinement.clone()));
         toolbox.add(results::ReadToolResult);

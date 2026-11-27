@@ -313,6 +313,21 @@ impl Handle {
             .is_ok_and(|waited| waited.is_ok())
     }
 
+    /// How it ends, as a future that does not borrow the handle.
+    pub fn exited(&self) -> impl std::future::Future<Output = Outcome> + Send + use<> {
+        let mut done = self.done.clone();
+        async move {
+            let unknown = Outcome {
+                exit_code: None,
+                signal: None,
+            };
+            match done.wait_for(Option::is_some).await {
+                Ok(outcome) => outcome.unwrap_or(unknown),
+                Err(_) => unknown,
+            }
+        }
+    }
+
     /// Waits for it to end.
     pub async fn done(&mut self) -> Outcome {
         match self.done.wait_for(Option::is_some).await {

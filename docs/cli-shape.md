@@ -58,6 +58,8 @@ While a sandbox mode is standing, `write` and `edit` refuse under `read-only`, `
 
 `search_threads` (words and "quoted phrases" in this project's conversations; look-only), `list_threads`, `read_thread`, and `schedule_create`, `schedule_list`, `schedule_view`, `schedule_edit` are offered by the app, `viv` and the remote server alike; scheduled tasks are delivered only by the open app.
 
+`shell` takes `run_in_background`, and a command that outlasts `timeout_secs` moves to a background job instead of being killed. `job_output` and `job_list` (look-only) and `job_kill` (asks) manage jobs; the agent is told when one ends. Jobs end with the agent that started them: choosing another model, closing the app, the end of a one-shot `viv` run or of a remote request.
+
 `working_directory` (reads the directory relative paths and commands start from, or moves it with `path`, to an existing directory inside the project; it can never leave the project, and a move is replayed from the saved conversation when it is resumed; look-only, so it needs no approval and works in Plan mode).
 
 `convert_to_pdf` (converts a .doc/.docx/.xls/.xlsx/.ppt/.pptx in the project to a PDF with an installed LibreOffice; arguments `path`, `output?`, `overwrite?`; writes a file, so it asks in Ask mode and is refused in Plan mode; offered only when LibreOffice is found).

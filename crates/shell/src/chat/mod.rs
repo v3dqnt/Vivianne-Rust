@@ -4,6 +4,7 @@ mod composer;
 mod items;
 mod models;
 mod own_tools;
+mod run;
 mod session;
 mod thread_usage;
 mod toolcalls;
@@ -30,7 +31,7 @@ use crate::theme::{self, color};
 use composer::{Composer, Mode, Thinking, compose_message, display_message};
 use items::{Change, Item, apply};
 use models::{ModelChoice, Picker, choices};
-use session::{Finished, Run, Session};
+use session::{Finished, Session};
 
 pub use session::{RESUME_PROMPT, Session as ChatSession};
 
@@ -601,32 +602,7 @@ impl ChatView {
         self.composer
             .input
             .update(cx, |input, cx| input.clean(window, cx));
-        self.running = true;
-        let Run { mut events, done } = run;
-        cx.spawn_in(window, async move |this, cx| {
-            while let Some(first) = events.recv().await {
-                let mut batch = vec![first];
-                while let Ok(more) = events.try_recv() {
-                    batch.push(more);
-                }
-                if this
-                    .update(cx, |chat, cx| chat.apply_events(&batch, cx))
-                    .is_err()
-                {
-                    return;
-                }
-                cx.background_executor().timer(EVENT_BATCH_INTERVAL).await;
-            }
-            // No answer means the run's task died; the chat must not stay "working" for ever.
-            let finished = done.await.ok();
-            this.update_in(cx, |chat, window, cx| {
-                chat.finish(finished, cx);
-                chat.next_step(window, cx);
-            })
-            .ok();
-        })
-        .detach();
-        cx.notify();
+        self.follow(run, window, cx);
     }
 
     /// What the person chose on a notification.
