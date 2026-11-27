@@ -25,6 +25,7 @@ pub fn prepare(toolbox: &mut Toolbox, workspace: &Path, settings: &Resolved) -> 
     toolbox.add(tools::ScheduleEdit(schedules));
     let (mode, warning) = mode_from_setting(settings.sandbox.value.as_deref());
     toolbox.confinement().set(mode);
+    toolbox.jobs().keep_output();
     warning
 }
 

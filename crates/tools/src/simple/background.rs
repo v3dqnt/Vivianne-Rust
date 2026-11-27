@@ -164,10 +164,9 @@ impl JobOutputSource for Stream {
 }
 
 /// The job that runs `call`: it spawns when the registry admits it, and its kill ends the whole process tree.
-fn job(call: &Command<'_>, slot: &Slot) -> JobSpec {
-    let dir = crate::results::dir();
-    // Without the folder there is no spill file; the output kept in memory is unaffected.
-    let spill = std::fs::create_dir_all(&dir).ok().map(|()| Spill {
+fn job(call: &Command<'_>, slot: &Slot, jobs: &Jobs) -> JobSpec {
+    // Without a folder there is no spill file; the output kept in memory is unaffected.
+    let spill = jobs.spill_dir().map(|dir| Spill {
         max_bytes: SPILL_BYTES,
         dir,
     });
@@ -256,6 +255,17 @@ impl Drop for StopWithCall<'_> {
                 .jobs
                 .registry()
                 .kill(self.id, None, Some("tool call aborted"));
+            // The model never saw the id: the record goes once the process has.
+            let (jobs, id) = (self.jobs.clone(), self.id.to_owned());
+            if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+                runtime.spawn(async move {
+                    let _ = jobs
+                        .registry()
+                        .wait(&id, Duration::from_secs(60), None)
+                        .await;
+                    let _ = jobs.registry().remove(&id, None);
+                });
+            }
         }
     }
 }
@@ -270,7 +280,10 @@ pub(super) async fn run(
     let failed = |e: crate::jobs::JobError| ToolError::Failed(e.to_string());
     if background {
         // A command that is nothing but empty cannot label a job.
-        let id = jobs.registry().start(job(&call, &slot)).map_err(failed)?;
+        let id = jobs
+            .registry()
+            .start(job(&call, &slot, jobs))
+            .map_err(failed)?;
         if let Some(why) = lock(&slot).not_started.clone() {
             return Err(ToolError::Failed(why));
         }
@@ -279,7 +292,7 @@ pub(super) async fn run(
             details: Some(json!({"command": call.command, "job_id": id})),
         });
     }
-    let (id, waiting) = match jobs.registry().start_waited(job(&call, &slot)) {
+    let (id, waiting) = match jobs.registry().start_waited(job(&call, &slot, jobs)) {
         Ok(started) => started,
         // No room for another job: the command still runs, under the deadline kill.
         Err(error) => {
@@ -338,7 +351,7 @@ mod tests {
 
     use super::super::{Shell, Workspace};
     use crate::builtin::Tool;
-    use crate::jobs::{JobOutput, JobStatus, Jobs};
+    use crate::jobs::{JobOutput, Jobs};
 
     fn shell(jobs: &Jobs) -> Shell {
         Shell::new(Workspace::new(&std::env::temp_dir())).with_jobs(jobs.clone())
@@ -431,12 +444,13 @@ mod tests {
             .await
             .is_err()
         );
-        let id = jobs.registry().list(None)[0].id.clone();
-        let view = jobs
-            .registry()
-            .wait(&id, std::time::Duration::from_secs(10), None)
-            .await
-            .expect("known");
-        assert_eq!(view.status, JobStatus::Killed, "{:?}", view.detail);
+        // Ended, and gone: the model never had its id.
+        for _ in 0..100 {
+            if jobs.registry().list(None).is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        assert!(jobs.registry().list(None).is_empty());
     }
 }

@@ -42,7 +42,12 @@ struct Shared {
     /// Jobs the model stopped itself: their end is no news to it.
     killed: Mutex<HashSet<JobId>>,
     steered: tokio::sync::Notify,
+    /// Where the whole output of a job goes once it outgrows memory; nowhere until a surface says.
+    spill: std::sync::OnceLock<std::path::PathBuf>,
 }
+
+/// Whole-output files kept; older ones go when a new job starts.
+const KEPT_SPILLS: usize = 20;
 
 /// One toolbox's background jobs. Clones share them; they are cancelled when the last clone goes.
 #[derive(Debug, Clone, Default)]
@@ -60,6 +65,34 @@ impl Jobs {
     #[must_use]
     pub fn registry(&self) -> &Registry {
         &self.0.registry
+    }
+
+    /// Keeps jobs' whole output in files under `dir`. The first call decides.
+    pub fn keep_output_in(&self, dir: std::path::PathBuf) {
+        let _ = self.0.spill.set(dir);
+    }
+
+    /// [`keep_output_in`](Self::keep_output_in) the folder beside the stored tool results.
+    pub fn keep_output(&self) {
+        self.keep_output_in(crate::results::dir().join("jobs"));
+    }
+
+    /// The spill folder, made and pruned, ready for one more job.
+    pub(crate) fn spill_dir(&self) -> Option<std::path::PathBuf> {
+        let dir = self.0.spill.get()?;
+        std::fs::create_dir_all(dir).ok()?;
+        let mut files: Vec<_> = std::fs::read_dir(dir)
+            .ok()?
+            .filter_map(Result::ok)
+            .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
+            .collect();
+        files.sort();
+        let spare = files.len().saturating_sub(KEPT_SPILLS);
+        for (_, path) in files.into_iter().take(spare) {
+            // One still being written (Windows) or already gone is left to the next round.
+            let _ = std::fs::remove_file(path);
+        }
+        Some(dir.clone())
     }
 
     /// Notes that the model asked for `id` to stop, so no completion notice follows.

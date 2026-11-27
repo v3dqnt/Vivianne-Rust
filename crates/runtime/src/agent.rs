@@ -127,6 +127,10 @@ pub struct Agent {
     checkpoint: Mutex<Option<Checkpoint>>,
     /// Messages sent while a run is going, added before its next model call.
     inbox: Inbox,
+    /// Runs a surface started on its own since the person last said something.
+    wakes: AtomicU32,
+    /// The message the last such run was started with.
+    woke_with: Mutex<String>,
     /// Puts the end of a background job in the inbox, while this agent lives.
     _notices: vivianne_tools::jobs::Subscription,
     /// Asked for a block of standing context (core memory) at the start of every run.
@@ -181,6 +185,9 @@ struct Opened {
     answered: std::time::Instant,
 }
 
+/// How many runs in a row background jobs may start without the person.
+const MAX_WAKES: u32 = 10;
+
 type Inbox = Arc<Mutex<std::collections::VecDeque<String>>>;
 
 impl Agent {
@@ -215,6 +222,8 @@ impl Agent {
             result_filter: None,
             sections: Mutex::new(Sections::default()),
             inbox,
+            wakes: AtomicU32::new(0),
+            woke_with: Mutex::default(),
             _notices: notices,
             checkpoint: Mutex::new(None),
             context_source: None,
@@ -363,13 +372,20 @@ impl Agent {
     }
 
     /// Takes what is waiting to be said (a job that ended while nothing was running), so a surface can start a run
-    /// with it. `None` when nothing waits.
+    /// with it. `None` when nothing waits, or after `MAX_WAKES` such runs in a row: the rest waits for the person.
     #[must_use]
     pub fn take_waiting(&self) -> Option<String> {
+        if self.wakes.load(Ordering::Relaxed) >= MAX_WAKES {
+            return None;
+        }
         let waiting: Vec<String> = self.inbox.lock().unwrap_or_else(PoisonError::into_inner).drain(..).collect();
-        (!waiting.is_empty()).then(|| waiting.join("
-
-"))
+        let said = (!waiting.is_empty()).then(|| waiting.join("\n\n"))?;
+        self.wakes.fetch_add(1, Ordering::Relaxed);
+        self.woke_with
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone_from(&said);
+        Some(said)
     }
 
     /// Whether a background job started by this agent's tools has not ended yet.
@@ -522,6 +538,12 @@ impl Agent {
         thinking: Thinking,
         cancel: &CancellationToken,
     ) -> Result<(), AgentError> {
+        // A run the person started gives the jobs their wakes back.
+        let asked = history.iter().rev().find(|m| m.role == Role::User);
+        let woke = self.woke_with.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        if asked.is_some_and(|m| m.text != woke) {
+            self.wakes.store(0, Ordering::Relaxed);
+        }
         if let Some(recorder) = &self.changes {
             recorder
                 .start(vivianne_context::time::turn_of(history))
