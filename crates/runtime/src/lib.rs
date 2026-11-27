@@ -38,6 +38,7 @@ pub mod schedule;
 pub mod quotes;
 pub mod session_stats;
 pub mod store;
+pub mod surface;
 pub mod thread_tools;
 pub mod thread_refs;
 pub mod title;

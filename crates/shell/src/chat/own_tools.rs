@@ -16,7 +16,7 @@ use vivianne_tools::Toolbox;
 use vivianne_tools::mcp::{McpServerConfig, McpTransportConfig};
 
 /// The tools offered, with what each is for (the agent's instructions are written from this).
-const OFFERED: [(&str, &str); 5] = [
+const OFFERED: [(&str, &str); 6] = [
     ("recall", "search the user's memory from earlier sessions"),
     (
         "remember",
@@ -29,6 +29,10 @@ const OFFERED: [(&str, &str); 5] = [
     (
         "read_thread",
         "read another of the user's conversations in this project",
+    ),
+    (
+        "search_threads",
+        "search the words of the user's other conversations in this project",
     ),
     (
         "lsp",
@@ -53,6 +57,7 @@ pub fn for_turn(folder: &Path, plan_mode: bool) -> OwnTools {
     }
     toolbox.add(vivianne_runtime::thread_tools::ListThreads::new(&root));
     toolbox.add(vivianne_runtime::thread_tools::ReadThread::new(&root));
+    toolbox.add(vivianne_runtime::thread_tools::SearchThreads::new(&root));
     let tools: Vec<OfferedTool> = toolbox
         .definitions()
         .into_iter()

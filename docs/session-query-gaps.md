@@ -6,6 +6,8 @@ as a derived index) and `session-log-export` (Markdown transcript and ZIP). Thei
 a "current / shadowed / log-only" surface and parent sessions. Vivianne's conversation is a list of messages, so the
 vocabulary is mapped onto that. Code: `crates/runtime/src/query/` and `export_bundle.rs`, `archive.rs`.
 
+The agent searches with `search_threads`; the app has no search box of its own.
+
 | Original | Vivianne | State |
 |---|---|---|
 | `listSessions`, `filterSessions` (id, cwd, created-at, parent, availability) | `Query::list_threads`, `filter_threads` (id, workspace, updated-at, parent) | **Ported, narrowed.** No `availability` filter: a saved thread is the only kind there is. `updated_at` replaces `created-at` (a thread keeps no creation time). |
@@ -17,5 +19,5 @@ vocabulary is mapped onto that. Code: `crates/runtime/src/query/` and `export_bu
 | `traceEvent` (positional replacements, cited sources) | `Query::trace_event` | **Ported, narrowed.** A tool result names the reply that asked for it and a reply names its results; a checkpoint names the earlier state it condensed. There are no positional replacements or citations to follow. |
 | Live-preferred observation, prepared-session cache, `readTitleSnapshots`, config knobs | none | **Not needed.** Reads come from the saved file; titles are on the record. |
 | `session-query-sqlite`: FTS5 index in a separate database, ranked sessions and events, cursor pagination, reconcile on mismatch | `query::search` (`Index`), `~/.viv/agent/search.db` | **Ported.** `unicode61` tokens, words and phrases only: nothing typed is an operator. bm25 ranking, a best match and snippet per thread, keyset cursors (an invented cursor is refused). Changed threads are re-indexed and gone ones dropped on each reconcile; a damaged or other-version file is deleted and rebuilt. Differences: reconcile reads every thread (no change feed), and the index opens when a search runs (no `openAt`). |
-| `session-log-export`: Markdown, ZIP of session, sub-sessions and attachments; Web controls; `/export` | `export_bundle::markdown`, `bundle`, `archive::Zip`; `viv thread export --format` | **Ported as files.** Transcript and ZIP (log, transcript, branches, attachments, manifest), redacted by default, entries named safely, size capped. The Web header menu and slash command are not ported: the app has no export control yet. |
+| `session-log-export`: Markdown, ZIP of session, sub-sessions and attachments; Web controls; `/export` | `export_bundle::markdown`, `bundle`, `archive::Zip`; `viv thread export --format` | **Ported as files.** Transcript and ZIP (log, transcript, branches, attachments, manifest), redacted by default, entries named safely, size capped. The app has an export menu in the title bar (Markdown, ZIP); there is no slash command. |
 | `session-persistence` interplay (cold read of a crashed turn) | `log` reads | Covered by the log's torn-tail rule (see `session-package-gaps.md`). |

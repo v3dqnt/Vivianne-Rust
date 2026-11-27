@@ -129,6 +129,68 @@ impl Tool for ReadThread {
     }
 }
 
+/// Searches the words of this project's conversations.
+#[derive(Debug)]
+pub struct SearchThreads {
+    workspace: String,
+}
+
+impl SearchThreads {
+    #[must_use]
+    pub fn new(workspace: &str) -> Self {
+        Self {
+            workspace: workspace.to_owned(),
+        }
+    }
+}
+
+/// Brings the index up to date and searches it. Blocking work.
+fn search(workspace: String, words: String, limit: usize) -> Result<Value, String> {
+    use crate::query::Query;
+    use crate::query::filters::ThreadFilter;
+    use crate::query::search::{Index, Search};
+    let query = Query::standard().map_err(|e| e.to_string())?;
+    let mut index = Index::open(&vivianne_ai::paths::viv_agent_dir()?.join("search.db")).map_err(|e| e.to_string())?;
+    index.reconcile(&query).map_err(|e| e.to_string())?;
+    let request = Search {
+        query: words,
+        threads: vec![ThreadFilter::Workspace(vec![workspace])],
+        limit: Some(limit),
+        ..Search::default()
+    };
+    let page = index.search_threads(&request).map_err(|e| e.to_string())?;
+    Ok(json!({ "hits": page.items.iter().map(|h| json!({ "thread": h.thread, "position": h.best.record.seq, "snippet": h.best.snippet })).collect::<Vec<_>>() }))
+}
+
+#[async_trait]
+impl Tool for SearchThreads {
+    fn name(&self) -> &str {
+        "search_threads"
+    }
+
+    fn definition(&self) -> Option<Value> {
+        Some(json!({
+            "name": "search_threads",
+            "description": "Search the words said in the user's other conversations in this project. Words and \"quoted phrases\", all required. Read a found conversation with read_thread.",
+            "parameters": { "type": "object", "properties": {
+                "query": { "type": "string" },
+                "limit": { "type": "integer", "description": "default 10, at most 50" }
+            }, "required": ["query"] }
+        }))
+    }
+
+    async fn execute(&self, args: &Value, _cwd: &str) -> ToolResult {
+        let words = args["query"].as_str().unwrap_or_default().to_owned();
+        let limit = args["limit"].as_u64().and_then(|n| usize::try_from(n).ok()).unwrap_or(10).min(50);
+        let workspace = self.workspace.clone();
+        match tokio::task::spawn_blocking(move || search(workspace, words, limit)).await {
+            Ok(Ok(found)) => ToolResult::ok(found.to_string()),
+            Ok(Err(why)) => ToolResult::error(why),
+            Err(why) => ToolResult::error(why.to_string()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use vivianne_core::{Message, Mode};

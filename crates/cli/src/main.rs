@@ -74,11 +74,15 @@ async fn chat_here(args: Vec<String>) -> Result<(), String> {
     let workdir = std::env::current_dir().map_err(|e| e.to_string())?;
     let settings = vivianne_runtime::config::resolve(&workdir, None);
     vivianne_tools::results::set_limit(settings.max_tool_result_bytes.value);
+    let mut toolbox = Toolbox::coding(&workdir);
+    if let Some(warning) = vivianne_runtime::surface::prepare(&mut toolbox, &workdir, &settings) {
+        eprintln!("viv: {warning}");
+    }
     let mut agent = Agent::new(
         env::provider()?,
         &model,
         Some(coding_system_prompt(&workdir)),
-        Toolbox::coding(&workdir),
+        toolbox,
     )
     .with_max_steps(settings.max_agent_steps.value)
     // The project's instruction files, the clock and the terminal's place, as the app adds them.

@@ -14,6 +14,6 @@ provider, and Win32 process bindings. Code here: `crates/sandbox` (`env`, `outpu
 | Process and shell-activity inspectors | none | **Not ported.** |
 | Control channel (`stdio.control`) for out-of-process subagents | none | **Not ported:** Vivianne runs subagents in-process. |
 | Terminal (PTY) process primitive | none | Belongs to the `terminal` port. |
-| Used by the shell tool, language servers, subagent backends | nothing yet | **Not wired.** The existing `shell` tool, LSP and MCP still start processes their own way. |
+| Used by the shell tool, language servers, subagent backends | `tools::simple::Shell` | **Wired into `shell`** (so every agent: app, `viv`, remote, subagents), which now also gets the scrubbed environment and ends everything it started when it finishes. LSP and MCP still start processes their own way. |
 
 Tested on Windows only. The Unix paths have not been compiled or run.

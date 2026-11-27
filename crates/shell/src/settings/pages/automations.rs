@@ -10,6 +10,8 @@ use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
 use gpui_kit::prelude::*;
 use gpui_kit::{SharedString, Styled, div};
 use vivianne_runtime::automation::{self, Automation};
+use vivianne_runtime::schedule::domain::iso;
+use vivianne_runtime::schedule::store::{Entry, Patch, Store};
 
 use crate::settings::values::Shared;
 use crate::settings::widgets::{mono, muted, strong};
@@ -26,6 +28,16 @@ pub fn page(_values: &Shared) -> SettingPage {
                 }
                 div().flex().flex_col().gap_4().children(items.iter().map(row)).into_any_element()
             })),
+        )
+        .group(
+            SettingGroup::new()
+                .title("Tasks")
+                .description("Messages delivered to a conversation at a time, while the app is open. Ask the agent to make one, for example: \"remind me here tomorrow at 9\".")
+                .item(SettingItem::render(|_options, _window, _cx| match Store::standard().list(None, 0, 50) {
+                    Ok((tasks, _)) if tasks.is_empty() => muted("No scheduled tasks.").into_any_element(),
+                    Ok((tasks, _)) => div().flex().flex_col().gap_4().children(tasks.iter().map(task_row)).into_any_element(),
+                    Err(e) => muted(e.to_string()).into_any_element(),
+                })),
         )
 }
 
@@ -107,6 +119,70 @@ fn row(a: &Automation) -> impl IntoElement + use<> {
                         .label("Delete")
                         .on_click(move |_event, window, cx| {
                             let _ = automation::delete(&delete_id);
+                            window.refresh();
+                            cx.refresh_windows();
+                        }),
+                ),
+        )
+}
+
+fn task_row(entry: &Entry) -> impl IntoElement + use<> {
+    let task = &entry.task;
+    let active = task.active;
+    let next = if active {
+        let at = u64::try_from(task.scheduled_at).ok();
+        format!("next {}", when(at))
+    } else {
+        "paused or finished".to_owned()
+    };
+    let last = entry
+        .deliveries
+        .last()
+        .map_or_else(|| "never delivered".to_owned(), |d| format!("last delivered {}", iso(d.delivered_at)));
+    let (toggle_id, delete_id) = (task.id.clone(), task.id.clone());
+    div()
+        .flex()
+        .items_start()
+        .justify_between()
+        .gap_3()
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .min_w_0()
+                .child(strong(task.title.clone()))
+                .child(mono(next))
+                .child(muted(task.prompt.clone()))
+                .child(muted(last)),
+        )
+        .child(
+            div()
+                .flex()
+                .gap_1()
+                .flex_none()
+                .child(
+                    Button::new(SharedString::from(format!("task-toggle-{}", task.id)))
+                        .outline()
+                        .small()
+                        .label(if active { "Pause" } else { "Resume" })
+                        .on_click(move |_event, window, cx| {
+                            let patch = Patch { active: Some(!active), ..Patch::default() };
+                            let now = i64::try_from(automation::now_ms()).unwrap_or(i64::MAX);
+                            // A one-shot whose time has passed cannot be resumed; the row simply stays paused.
+                            let _ = Store::standard().edit(&toggle_id, &patch, None, now);
+                            window.refresh();
+                            cx.refresh_windows();
+                        }),
+                )
+                .child(
+                    Button::new(SharedString::from(format!("task-delete-{}", task.id)))
+                        .outline()
+                        .danger()
+                        .small()
+                        .label("Delete")
+                        .on_click(move |_event, window, cx| {
+                            let _ = Store::standard().delete(&delete_id, None);
                             window.refresh();
                             cx.refresh_windows();
                         }),

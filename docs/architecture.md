@@ -55,7 +55,7 @@ graph TD
   attachments --> core
   projects --> core
   hub --> projects
-  sandbox
+  tools --> sandbox
   context --> core
   providers --> core & ai
   telemetry --> ai

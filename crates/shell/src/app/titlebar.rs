@@ -2,6 +2,7 @@
 
 use gpui_kit::base::Selectable as _;
 use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{IconName, Sizable as _, TitleBar};
 use gpui_kit::prelude::*;
@@ -126,6 +127,26 @@ fn actions(app: &AppView, cx: &mut Context<AppView>) -> impl IntoElement {
         .items_center()
         .gap(px(2.0))
         .pr(px(8.0))
+        .when(matches!(app.page, Page::Thread(_)), |bar| {
+            let view = cx.entity();
+            bar.child(
+                Button::new("export-thread")
+                    .ghost()
+                    .small()
+                    .icon(IconName::ExternalLink)
+                    .tooltip("Export this conversation")
+                    .dropdown_menu(move |menu, _window, _cx| {
+                        let item = |label: &'static str, zip: bool| {
+                            let view = view.clone();
+                            PopupMenuItem::new(label).on_click(move |_event, window, cx| {
+                                view.update(cx, |app, cx| app.export_thread(zip, window, cx));
+                            })
+                        };
+                        menu.item(item("Export as Markdown…", false))
+                            .item(item("Export with attachments (ZIP)…", true))
+                    }),
+            )
+        })
         .child(
             Button::new("home")
                 .ghost()

@@ -393,11 +393,15 @@ fn start_run(
         }
     };
     let settings = vivianne_runtime::config::resolve(&workdir, None);
+    let mut toolbox = Toolbox::coding(&workdir);
+    if let Some(warning) = vivianne_runtime::surface::prepare(&mut toolbox, &workdir, &settings) {
+        eprintln!("viv: {warning}");
+    }
     let mut built = Agent::new(
         provider,
         &request.model,
         Some(coding_system_prompt(&workdir)),
-        Toolbox::coding(&workdir),
+        toolbox,
     )
     .with_max_steps(settings.max_agent_steps.value)
     // The project's instruction files, the clock and the terminal's place, as the app adds them.

@@ -302,6 +302,9 @@ impl Agent {
                 ),
             );
         }
+        if let Some(policy) = self.tools.confinement().describe(self.tools.working_directory().root()) {
+            sections.set("sandbox-policy", order::CONTEXT + 40, policy);
+        }
         // What the caller added or replaced by name wins over the built-in sections.
         sections.merge(&self.sections.lock().unwrap_or_else(PoisonError::into_inner));
         sections.assemble()
@@ -878,8 +881,15 @@ impl Agent {
                 is_error: true,
                 details: None,
             }
-        } else if mode.needs_approval(&call.name)
-            && !runs_without_asking(&call.name)
+        } else if let Err(why) = self.tools.confinement().asked(&call.name, &call.args) {
+            ToolResult {
+                content: why,
+                is_error: true,
+                details: None,
+            }
+        } else if (mode.needs_approval(&call.name) && !runs_without_asking(&call.name)
+            // Leaving the standing sandbox mode is asked for whatever the approval mode is.
+            || matches!(self.tools.confinement().asked(&call.name, &call.args), Ok(Some(_))))
             && !self.approved(call, events).await
         {
             ToolResult {

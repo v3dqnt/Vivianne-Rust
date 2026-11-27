@@ -25,6 +25,7 @@ pub mod code;
 #[rustfmt::skip]
 pub mod files;
 #[rustfmt::skip]
+pub mod confinement;
 pub mod connections;
 #[rustfmt::skip]
 #[allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::unwrap_used, clippy::expect_used, missing_debug_implementations)]
@@ -69,6 +70,8 @@ pub struct Toolbox {
     step: std::sync::Mutex<StepInfo>,
     /// Where relative paths and commands start; the agent can move it inside the project.
     workdir: workdir::WorkingDirectory,
+    /// The standing file mode `shell`, `write` and `edit` are held to.
+    confinement: confinement::Confinement,
 }
 
 impl std::fmt::Debug for Toolbox {
@@ -98,6 +101,7 @@ impl Toolbox {
             conditions: std::collections::HashMap::new(),
             step: std::sync::Mutex::new(StepInfo::default()),
             workdir: workdir::WorkingDirectory::new(cwd),
+            confinement: confinement::Confinement::default(),
         }
     }
 
@@ -113,6 +117,12 @@ impl Toolbox {
     #[must_use]
     pub fn working_directory(&self) -> &workdir::WorkingDirectory {
         &self.workdir
+    }
+
+    /// The standing file mode; set it to confine what commands and edits may write.
+    #[must_use]
+    pub fn confinement(&self) -> &confinement::Confinement {
+        &self.confinement
     }
 
     /// The coding tools, working in `root`.
@@ -132,9 +142,9 @@ impl Toolbox {
         toolbox.add(dap::DebugTool::new(cwd.clone(), false));
         toolbox.add(dap::DebugTool::new(cwd.clone(), true));
         toolbox.add(lsp::nav::LspTool::new(cwd));
-        toolbox.add(simple::Shell::new(workspace.clone()));
-        toolbox.add(simple::WriteFile::new(workspace.clone()));
-        toolbox.add(simple::EditFile::new(workspace));
+        toolbox.add(simple::Shell::new(workspace.clone()).confined(toolbox.confinement.clone()));
+        toolbox.add(simple::WriteFile::new(workspace.clone()).confined(toolbox.confinement.clone()));
+        toolbox.add(simple::EditFile::new(workspace).confined(toolbox.confinement.clone()));
         toolbox.add(results::ReadToolResult);
         toolbox.add(present::Present::new(root));
         toolbox.add(run_code::RunCode::with_directory(root, toolbox.workdir.clone()));
@@ -243,10 +253,16 @@ impl Toolbox {
                         .find(|d| d["name"] == tool.name())
                         .cloned()
                 })?;
+                let mut parameters = found["parameters"].clone();
+                // Asking to go wider only makes sense while a mode is standing.
+                if tool.name() == "shell" && self.confinement.is_confined() {
+                    parameters["properties"]["sandbox_permissions"] = serde_json::json!({ "type": "string", "enum": ["workspace-write", "danger-full-access"], "description": "The narrowest wider sandbox mode for a one-shot retry of the exact command the sandbox just denied; the retry asks the user for approval." });
+                    parameters["properties"]["justification"] = serde_json::json!({ "type": "string", "description": "Why, in one sentence. Only with sandbox_permissions." });
+                }
                 Some(ToolDef {
                     name: tool.name().to_owned(),
                     description: found["description"].as_str().unwrap_or_default().to_owned(),
-                    parameters: found["parameters"].clone(),
+                    parameters,
                 })
             })
             .chain(servers)

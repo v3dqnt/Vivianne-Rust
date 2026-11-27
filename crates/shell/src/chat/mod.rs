@@ -868,6 +868,11 @@ impl ChatView {
         self.ask(prompt, window, cx);
     }
 
+    /// Says something in the thread that is not part of the conversation (an export finished, say).
+    pub fn notify_user(&mut self, text: String, cx: &mut Context<Self>) {
+        self.push_item(Item::Notice(text), cx);
+    }
+
     /// Sends a scheduled task's message here; a conversation it just made takes the task's name.
     pub fn run_scheduled(
         &mut self,
