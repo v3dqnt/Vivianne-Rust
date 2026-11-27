@@ -1,3 +1,3 @@
 # docs/plans
 
-Written plans for work not yet (or only partly) built: self-improvement, usage and telemetry, and the findings behind computer use.
+Written plans for work not yet (or only partly) built: shared projects (`projects.md`), self-improvement, usage and telemetry, the DeepSeek Harness port (`deepseek-port.md`), and the findings behind computer use.

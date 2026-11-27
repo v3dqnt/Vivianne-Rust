@@ -393,11 +393,15 @@ fn start_run(
         }
     };
     let settings = vivianne_runtime::config::resolve(&workdir, None);
+    let mut toolbox = Toolbox::coding(&workdir);
+    if let Some(warning) = vivianne_runtime::surface::prepare(&mut toolbox, &workdir, &settings) {
+        eprintln!("viv: {warning}");
+    }
     let mut built = Agent::new(
         provider,
         &request.model,
         Some(coding_system_prompt(&workdir)),
-        Toolbox::coding(&workdir),
+        toolbox,
     )
     .with_max_steps(settings.max_agent_steps.value)
     // The project's instruction files, the clock and the terminal's place, as the app adds them.
@@ -408,6 +412,7 @@ fn start_run(
         built = built.with_changes(Arc::new(recorder));
     }
     let agent = Arc::new(built);
+    agent.set_thread(&request.thread_id);
     agent.set_mode(mode_of(&request.mode));
     let cancel = CancellationToken::new();
     shared
@@ -509,6 +514,7 @@ fn start_run(
             mode: mode_of(&request.mode),
             updated_at: store::now(),
             history,
+            parent: None,
         });
         let _ = shared.events.send(ServerMessage::RunEvent {
             thread_id: thread_id.clone(),

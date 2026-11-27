@@ -34,7 +34,7 @@ pub fn limit() -> usize {
     LIMIT.load(Ordering::Relaxed)
 }
 
-fn dir() -> PathBuf {
+pub(crate) fn dir() -> PathBuf {
     crate::host::viv_home_path(&["agent", "tool-results"])
 }
 

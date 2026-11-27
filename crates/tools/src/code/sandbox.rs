@@ -26,17 +26,9 @@
 use regex::Regex;
 use std::collections::HashMap;
 
-/// Env var names that are never handed to a spawned shell, even though the agent process itself holds them (for provider API calls).
-/// A name is withheld when it ends in `_KEY`, contains a credential word anywhere (`SECRET`, `PASSWORD`, `TOKEN`, `API_KEY`, `ACCESS_KEY`,
-/// `PRIVATE_KEY`, so `AWS_ACCESS_KEY_ID` and `GITHUB_TOKEN_FILE` are caught too), or is one of the handles to a credential agent.
-const DENIED_ENV_WORDS: &[&str] = &["SECRET", "PASSWORD", "PASSWD", "TOKEN", "CREDENTIAL", "API_KEY", "APIKEY", "ACCESS_KEY", "PRIVATE_KEY"];
-const DENIED_ENV_NAMES: &[&str] = &["SSH_AUTH_SOCK", "GPG_AGENT_INFO"];
-
+/// Env var names that are never handed to a program the agent starts. The list itself is the sandbox crate's.
 pub fn is_denied_env_var(name: &str) -> bool {
-    let upper = name.to_ascii_uppercase();
-    DENIED_ENV_NAMES.contains(&upper.as_str())
-        || upper.ends_with("_KEY")
-        || DENIED_ENV_WORDS.iter().any(|w| upper.contains(w))
+    vivianne_sandbox::env::withheld(name)
 }
 
 /// Build the environment a spawned shell command should see: everything the

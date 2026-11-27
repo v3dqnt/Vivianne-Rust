@@ -6,6 +6,7 @@
 //! the catalog, the `ssh` options, the frames, the retry and health clocks, the install choices, and the screen
 //! rules for terminal agents. See the README.
 
+pub mod acp;
 pub mod bridge;
 pub mod catalog;
 pub mod client;

@@ -11,8 +11,6 @@
 //! the user asked for, an app being opened) use `Command::new` directly.
 
 use std::ffi::OsStr;
-#[cfg(not(windows))]
-use std::time::Duration;
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -38,27 +36,6 @@ pub fn quiet_std(program: impl AsRef<OsStr>) -> std::process::Command {
     cmd
 }
 
-
-/// How long a command gets to exit on SIGTERM before it is killed outright.
-#[cfg(not(windows))]
-const KILL_GRACE: Duration = Duration::from_secs(3);
-
-/// End a process and everything it started (`npm run dev` → `sh` → `node`), not just the process itself, which would leave orphans holding the
-/// port. On Windows that is `taskkill /T`; elsewhere the command ran as the leader of its own process group, so the whole group is signalled:
-/// first politely, then for good once the grace period is over.
-pub(crate) async fn kill_tree(pid: u32) {
-    #[cfg(windows)]
-    {
-        let _ = quiet("taskkill").args(["/PID", &pid.to_string(), "/F", "/T"]).output().await;
-    }
-    #[cfg(not(windows))]
-    {
-        let group = format!("-{pid}");
-        let _ = quiet("kill").args(["-TERM", &group]).output().await;
-        tokio::time::sleep(KILL_GRACE).await;
-        let _ = quiet("kill").args(["-KILL", &group]).output().await;
-    }
-}
 
 /// Put the command in its own process group, so its whole tree can be signalled at once. Call before spawning.
 pub(crate) fn own_group(cmd: &mut tokio::process::Command) -> &mut tokio::process::Command {

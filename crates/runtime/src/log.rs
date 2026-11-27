@@ -25,7 +25,7 @@ use serde_json::{Value, json};
 use vivianne_core::{Message, Mode};
 
 use crate::formats;
-use crate::store::SavedThread;
+use crate::store::{Parent, SavedThread};
 
 /// The thread's settings as the header and `meta` lines carry them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -38,6 +38,8 @@ struct Meta {
     #[serde(default)]
     mode: Mode,
     updated_at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    parent: Option<Parent>,
 }
 
 impl Meta {
@@ -50,6 +52,7 @@ impl Meta {
             model: thread.model.clone(),
             mode: thread.mode,
             updated_at: thread.updated_at,
+            parent: thread.parent.clone(),
         }
     }
 
@@ -238,6 +241,7 @@ fn parse(text: &str) -> Result<Parsed, String> {
             model: meta.model,
             mode: meta.mode,
             updated_at: meta.updated_at,
+            parent: meta.parent,
             history,
         },
         generation,
@@ -426,6 +430,15 @@ pub fn write(dir: &Path, thread: &SavedThread) -> Result<(), String> {
     } else {
         rewrite(&path, thread, disk.generation, &lines, hashes)
     }
+}
+
+/// Where the thread was branched from, as the log last said. Read from what is already known of the file.
+#[must_use]
+pub fn parent_of(dir: &Path, id: &str) -> Option<Parent> {
+    disk_state(&path_of(dir, id))
+        .ok()
+        .flatten()
+        .and_then(|disk| disk.meta.parent)
 }
 
 /// The generations kept for a thread, oldest first.

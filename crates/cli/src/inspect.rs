@@ -3,19 +3,19 @@
 //! to stdout, problems to stderr. A usage error exits 2.
 
 use serde_json::{Value, json};
-use vivianne_runtime::{config, export, profiles, session, session_stats, store, thread_refs};
+use vivianne_runtime::{config, profiles, session, session_stats, store, thread_refs};
 
 /// A usage error: printed, and the process exits 2.
 pub struct Usage(pub String);
 
-fn take_switch(args: &mut Vec<String>, flag: &str) -> bool {
+pub(crate) fn take_switch(args: &mut Vec<String>, flag: &str) -> bool {
     args.iter()
         .position(|a| a == flag)
         .map(|at| args.remove(at))
         .is_some()
 }
 
-fn take_value(args: &mut Vec<String>, flag: &str) -> Result<Option<String>, Usage> {
+pub(crate) fn take_value(args: &mut Vec<String>, flag: &str) -> Result<Option<String>, Usage> {
     let Some(at) = args.iter().position(|a| a == flag) else {
         return Ok(None);
     };
@@ -27,7 +27,7 @@ fn take_value(args: &mut Vec<String>, flag: &str) -> Result<Option<String>, Usag
     Ok(Some(value))
 }
 
-fn print(json_out: bool, snapshot: &Value, text: impl FnOnce(&Value) -> String) {
+pub(crate) fn print(json_out: bool, snapshot: &Value, text: impl FnOnce(&Value) -> String) {
     if json_out {
         println!("{snapshot}");
     } else {
@@ -326,16 +326,18 @@ pub fn profiles_cmd(mut args: Vec<String>) -> Result<(), Usage> {
 /// - `viv thread mention <id>`
 pub fn thread_cmd(mut args: Vec<String>) -> Result<(), Usage> {
     let json_out = take_switch(&mut args, "--json");
+    // These take flags of their own, so they read their arguments before any are taken here.
+    if let Some(sub) = args.first().cloned().filter(|s| ["search", "trace", "event", "export"].contains(&s.as_str())) {
+        let folder = workspace().display().to_string();
+        return crate::thread_query::run(&sub, args, json_out, &folder);
+    }
     let from = take_value(&mut args, "--from")?;
     let to = take_value(&mut args, "--to")?;
     let before = take_value(&mut args, "--before")?;
-    let after = take_value(&mut args, "--after")?;
-    let out_file = take_value(&mut args, "--out")?;
-    let raw = take_switch(&mut args, "--raw");
     let number = |what: &str, text: Option<String>| -> Result<Option<usize>, Usage> {
         text.map(|t| t.parse::<usize>().map_err(|_| Usage(format!("{what} needs a whole number, got `{t}`")))).transpose()
     };
-    let (from, to, before, after) = (number("--from", from)?, number("--to", to)?, number("--before", before)?, number("--after", after)?);
+    let (from, to, before) = (number("--from", from)?, number("--to", to)?, number("--before", before)?);
     let folder = workspace().display().to_string();
     let id = |args: &[String]| args.get(1).cloned().ok_or_else(|| Usage("this thread command needs a thread id".to_owned()));
     match args.first().map(String::as_str) {
@@ -401,20 +403,6 @@ pub fn thread_cmd(mut args: Vec<String>) -> Result<(), Usage> {
             });
             Ok(())
         }
-        Some("export") => {
-            let id = id(&args)?;
-            let thread = store::load(&id).filter(|t| t.workspace == folder).ok_or_else(|| Usage(format!("there is no saved thread {id} in this project")))?;
-            let options = export::Options { redact: !raw, after: after.unwrap_or(0) };
-            let written = match out_file {
-                Some(file) => {
-                    let mut handle = std::fs::File::create(&file).map_err(|e| Usage(format!("cannot write {file}: {e}")))?;
-                    export::write_to(&mut handle, &thread, options).map_err(Usage)?
-                }
-                None => export::write_to(&mut std::io::stdout().lock(), &thread, options).map_err(Usage)?,
-            };
-            eprintln!("{written} lines{}", if raw { " (not redacted)" } else { "" });
-            Ok(())
-        }
         Some("generations") => {
             let id = id(&args)?;
             store::load(&id).filter(|t| t.workspace == folder).ok_or_else(|| Usage(format!("there is no saved thread {id} in this project")))?;
@@ -434,6 +422,6 @@ pub fn thread_cmd(mut args: Vec<String>) -> Result<(), Usage> {
             print(json_out, &json!({"mention": mention}), |s| format!("{}\n", s["mention"].as_str().unwrap_or_default()));
             Ok(())
         }
-        other => Err(Usage(format!("thread needs `list`, `events`, `stats`, `outline`, `fork`, `export`, `generations` or `mention`, got `{}`", other.unwrap_or("nothing")))),
+        other => Err(Usage(format!("thread needs `list`, `events`, `stats`, `outline`, `fork`, `search`, `trace`, `event`, `export`, `generations` or `mention`, got `{}`", other.unwrap_or("nothing")))),
     }
 }

@@ -1,5 +1,6 @@
 //! The app window: title bar, then Home or a chat with its rail.
 
+mod session_actions;
 mod titlebar;
 
 use std::path::{Path, PathBuf};
@@ -261,6 +262,23 @@ impl AppView {
                 {
                     return;
                 }
+                let scheduled = crate::backend::spawn(async {
+                    let now = i64::try_from(vivianne_runtime::automation::now_ms()).unwrap_or(i64::MAX);
+                    vivianne_runtime::schedule::store::Store::standard().due(now)
+                });
+                if let Some(scheduled) = scheduled
+                    && let Ok(Ok(scheduled)) = scheduled.await
+                    && !scheduled.is_empty()
+                    && this
+                        .update_in(cx, |app, window, cx| {
+                            for due in scheduled {
+                                app.run_scheduled(due, window, cx);
+                            }
+                        })
+                        .is_err()
+                {
+                    return;
+                }
                 cx.background_executor()
                     .timer(std::time::Duration::from_secs(30))
                     .await;
@@ -504,10 +522,10 @@ impl Render for AppView {
         if let Page::Thread(index) = self.page
             && let Some(thread) = self.threads.get(index)
         {
-            let (context, changes, summary) = {
+            let (jobs, changes, summary) = {
                 let chat = thread.chat.read(cx);
                 (
-                    chat.context(),
+                    chat.jobs(),
                     chat.changes().cloned(),
                     chat.change_summary().cloned(),
                 )
@@ -515,7 +533,7 @@ impl Render for AppView {
             let badge = self.views.git.read(cx).badge();
             self.views.rail.update(cx, |rail, cx| {
                 rail.set_badge(badge, cx);
-                rail.set_context(context, cx);
+                rail.set_jobs(jobs, cx);
                 rail.set_changes(changes, summary, cx);
             });
         }

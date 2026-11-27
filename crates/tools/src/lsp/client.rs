@@ -8,6 +8,7 @@
 //! The wire handling is strict on purpose: headers and bodies are size-bounded, a framing or JSON fault closes the connection (a desynced
 //! stream can't be trusted), JSON-RPC errors reach the caller as errors, and a server's own requests always get a reply so it never waits on us.
 
+use vivianne_sandbox::spawn::{self, Handle, Input, Output, Spec};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering};
@@ -77,9 +78,7 @@ pub struct LspClient {
     progress: Arc<StdMutex<HashSet<String>>>,
     stderr: Arc<StdMutex<VecDeque<String>>>,
     closed: Arc<AtomicBool>,
-    child: Mutex<Option<tokio::process::Child>>,
-    /// Ends the server and whatever it started when the client is dropped.
-    _tree: Option<crate::proc::TreeKillOnDrop>,
+    child: Mutex<Option<Handle>>,
 }
 
 #[derive(Default)]
@@ -168,18 +167,12 @@ pub(crate) fn config_section(settings: &Value, section: &str) -> Value {
 impl LspClient {
     /// Spawn `command args...` and perform the LSP `initialize`/`initialized` handshake.
     pub async fn spawn(command: &str, args: &[&str], root_dir: &str, init_options: &Value, settings: &Value) -> Result<Arc<Self>, String> {
-        let mut cmd = crate::proc::quiet(command);
-        crate::code::sandbox::scrub_env(&mut cmd);
-        crate::proc::own_group(&mut cmd);
-        let mut child = cmd
-            .args(args)
-            .current_dir(root_dir)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|e| format!("failed to spawn {command}: {e}"))?;
+        let argv: Vec<&str> = std::iter::once(command).chain(args.iter().copied()).collect();
+        let mut spec = Spec::new(argv, root_dir);
+        spec.stdin = Input::Pipe;
+        spec.stdout = Output::Pipe;
+        spec.stderr = Output::Pipe;
+        let mut child = spawn::spawn(spec).map_err(|e| format!("failed to spawn {command}: {e}"))?;
         let stdin = child.stdin.take().ok_or("no stdin")?;
         let stdout = child.stdout.take().ok_or("no stdout")?;
         let stderr = child.stderr.take();
@@ -203,7 +196,7 @@ impl LspClient {
     }
 
     /// A client over any pair of streams (the process pipes, or a test's in-memory ones).
-    fn over(read: Box<dyn AsyncRead + Unpin + Send>, write: Box<dyn AsyncWrite + Unpin + Send>, child: Option<tokio::process::Child>, root: &str, settings: Value) -> Arc<Self> {
+    fn over(read: Box<dyn AsyncRead + Unpin + Send>, write: Box<dyn AsyncWrite + Unpin + Send>, child: Option<Handle>, root: &str, settings: Value) -> Arc<Self> {
         let writer: Writer = Arc::new(Mutex::new(write));
         let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
         let diagnostics = Arc::new(Mutex::new(HashMap::new()));
@@ -228,7 +221,6 @@ impl LspClient {
             progress,
             stderr,
             closed,
-            _tree: child.as_ref().map(|c| crate::proc::TreeKillOnDrop { pid: c.id() }),
             child: Mutex::new(child),
         })
     }
@@ -526,10 +518,8 @@ impl LspClient {
         let _ = tokio::time::timeout(std::time::Duration::from_secs(3), self.request("shutdown", Value::Null)).await;
         let _ = self.notify("exit", Value::Null).await;
         if let Some(child) = self.child.lock().await.as_mut() {
-            if let Some(pid) = child.id() {
-                crate::proc::kill_tree(pid).await;
-            }
-            let _ = child.kill().await;
+            child.terminate();
+            child.wait_for_exit(std::time::Duration::from_secs(5)).await;
         }
     }
 }
@@ -1075,5 +1065,25 @@ mod tests {
         drop(server);
         let e = tokio::time::timeout(Duration::from_secs(5), call).await.expect("freed").unwrap().unwrap_err();
         assert!(e.contains("panicked: oom"), "{e}");
+    }
+}
+
+#[cfg(test)]
+mod real_server_tests {
+    use super::*;
+
+    /// `cargo test -p vivianne-tools a_real_language_server -- --ignored`, with `gopls` on PATH.
+    #[tokio::test]
+    #[ignore = "needs gopls"]
+    async fn a_real_language_server_starts_answers_and_stops() {
+        let dir = std::env::temp_dir().join(format!("viv-lsp-real-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("dir");
+        std::fs::write(dir.join("go.mod"), "module t\n\ngo 1.22\n").expect("go.mod");
+        let root = dir.to_string_lossy().into_owned();
+        let client = LspClient::spawn("gopls", &[], &root, &Value::Null, &Value::Null)
+            .await
+            .expect("started and initialised");
+        client.shutdown().await;
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

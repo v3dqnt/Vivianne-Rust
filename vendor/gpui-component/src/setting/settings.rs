@@ -8,16 +8,29 @@ use crate::{
     input::{Escape, Input, InputState},
     resizable_panel,
     setting::SettingPage,
-    sidebar::{Sidebar, SidebarMenu, SidebarMenuItem},
+    sidebar::{Sidebar, SidebarGroup, SidebarMenu, SidebarMenuItem},
 };
 use gpui::{
     App, AppContext as _, Axis, ElementId, Entity, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, RenderOnce, StyleRefinement, Styled, Window, container_query, div,
-    prelude::FluentBuilder as _, px, relative,
+    prelude::FluentBuilder as _, px, relative, SharedString,
 };
 use rust_i18n::t;
 
 const STACKED_LAYOUT_MAX_WIDTH: Pixels = px(480.);
+
+/// The visible pages, split where the section changes. A page with no section has an empty label.
+fn sections(pages: &[SettingPage], filter: &SettingsFilter) -> Vec<(SharedString, Vec<usize>)> {
+    let mut out: Vec<(SharedString, Vec<usize>)> = Vec::new();
+    for ix in filter.visible_pages() {
+        let label = pages[ix].section.clone().unwrap_or_default();
+        match out.last_mut() {
+            Some((last, members)) if *last == label => members.push(ix),
+            _ => out.push((label, vec![ix])),
+        }
+    }
+    out
+}
 
 /// The settings structure containing multiple pages for app settings.
 ///
@@ -188,19 +201,10 @@ impl Settings {
                         }
                     })
                     .pb(gpui::px(6.))
-                    .child(
-                        div()
-                            .px(gpui::px(10.))
-                            .pb(gpui::px(12.))
-                            .text_size(gpui::px(20.))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(crate::ActiveTheme::theme(cx).foreground)
-                            .child("Settings"),
-                    )
                     .child(Input::new(&search_input).prefix(IconName::Search)),
             )
-            .child(
-                SidebarMenu::new().children(filter.visible_pages().map(|page_ix| {
+            .children(sections(&self.pages, filter).into_iter().map(|(label, pages)| {
+                let items = pages.into_iter().map(|page_ix| {
                     let page = &self.pages[page_ix];
                     let groups = &filter.groups[page_ix];
                     let is_page_active = selected_index.page_ix == page_ix
@@ -223,8 +227,9 @@ impl Settings {
                                 })
                             }
                         })
-                })),
-            )
+                });
+                SidebarGroup::new(label).child(SidebarMenu::new().children(items))
+            }))
     }
 }
 

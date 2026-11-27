@@ -1,6 +1,7 @@
 # shell/src
 
-- `main.rs`: starts the tokio runtime, registers Kit's icons, opens the window.
+- `main.rs`: starts the tokio runtime, registers the icons, opens the window.
+- `assets.rs`, `icons.rs`: the pictures compiled in; `icons.rs` puts Iconoir over the Kit's icon set.
 - `agent_setup.rs`: builds one agent session per thread (environment config for now).
 - `theme.rs`: colour, radius and spacing tokens, pushed into Kit's theme.
 - `demo.rs`: offline provider (`VIV_DEMO=1`) so the app can be run and checked without a key.

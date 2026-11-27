@@ -4,14 +4,18 @@
 //! (`bash`, `powershell`, ...) once those are copied.
 
 use std::path::{Component, Path, PathBuf};
-use std::process::Stdio;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use tokio::process::Command;
+use vivianne_sandbox::policy::{self, Mode, Policy};
+use vivianne_sandbox::confine;
 
 use crate::builtin::{Tool, ToolResult};
+use crate::confinement::Confinement;
+use crate::jobs::Jobs;
+
+mod background;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ToolError {
@@ -83,7 +87,8 @@ pub fn definitions() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "command": {"type": "string"},
-                    "timeout_secs": {"type": "integer", "description": "default 120, max 600"}
+                    "timeout_secs": {"type": "integer", "description": "default 120, max 600. On expiry the command moves to the background as a job instead of being killed."},
+                    "run_in_background": {"type": "boolean", "description": "Run in the background and return a job id immediately (collect with job_output, stop with job_kill). No timeout applies."}
                 },
                 "required": ["command"]
             }
@@ -219,12 +224,27 @@ const MAX_OUTPUT_BYTES: usize = 64 * 1024;
 #[derive(Debug)]
 pub struct Shell {
     workspace: Workspace,
+    confinement: Confinement,
+    jobs: Option<Jobs>,
 }
 
 impl Shell {
     #[must_use]
     pub fn new(workspace: Workspace) -> Self {
-        Self { workspace }
+        Self { workspace, confinement: Confinement::default(), jobs: None }
+    }
+
+    #[must_use]
+    pub fn confined(mut self, confinement: Confinement) -> Self {
+        self.confinement = confinement;
+        self
+    }
+
+    /// Lets commands run as background jobs, and move there when they outlast their timeout.
+    #[must_use]
+    pub fn with_jobs(mut self, jobs: Jobs) -> Self {
+        self.jobs = Some(jobs);
+        self
     }
 }
 
@@ -240,37 +260,53 @@ impl SimpleTool for Shell {
             .as_u64()
             .unwrap_or(DEFAULT_TIMEOUT_SECS)
             .clamp(5, MAX_TIMEOUT_SECS);
-        let mut cmd = shell_command(command);
         // Where the command starts: the working directory the toolbox gave it, if that is inside the project.
         let start = args["cwd"].as_str().and_then(|dir| self.workspace.resolve(dir).ok()).filter(|dir| dir.is_dir());
-        cmd.current_dir(start.as_deref().unwrap_or_else(|| self.workspace.root()))
-            .stdin(Stdio::null())
-            .kill_on_drop(true);
-        let run = tokio::time::timeout(Duration::from_secs(secs), cmd.output());
-        let output = run
-            .await
-            .map_err(|_| ToolError::Failed(format!("timed out after {secs}s")))?
-            .map_err(|e| ToolError::Failed(e.to_string()))?;
-        let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
-        text.push_str(&String::from_utf8_lossy(&output.stderr));
-        let exit_code = output.status.code();
-        Ok(SimpleOutput {
-            text: format!("exit {}\n{}", exit_code.unwrap_or(-1), truncate(text)),
-            details: Some(json!({"command": command, "exit_code": exit_code})),
-        })
+        let start = start.unwrap_or_else(|| self.workspace.root().to_path_buf());
+        // A call that asked to go wider was approved by the person before it reached here.
+        let standing = self.confinement.get();
+        let mode = self.confinement.asked("shell", args).map_err(ToolError::BadArgs)?.unwrap_or(standing);
+        let argv = self.argv(command, mode)?;
+        let call = background::Command {
+            command,
+            argv: argv.argv,
+            start,
+            mode,
+            denial_signatures: argv.denial_signatures,
+            failure_signatures: argv.failure_signatures,
+        };
+        let limit = Duration::from_secs(secs);
+        let background = args["run_in_background"].as_bool() == Some(true);
+        match &self.jobs {
+            Some(jobs) => background::run(jobs, call, limit, background).await,
+            None if background => Err(ToolError::Failed("background jobs are unavailable here".to_owned())),
+            None => background::foreground(call, limit).await,
+        }
     }
 }
 
-fn shell_command(command: &str) -> Command {
-    if cfg!(windows) {
-        let mut c = Command::new("powershell");
-        c.args(["-NoProfile", "-NonInteractive", "-Command", command]);
-        c
-    } else {
-        let mut c = Command::new("sh");
-        c.args(["-c", command]);
-        c
+impl Shell {
+    /// The platform's shell running `command`, wrapped for `mode`. A mode this machine cannot enforce is refused.
+    fn argv(&self, command: &str, mode: Mode) -> Result<ShellArgv, ToolError> {
+        let plain: Vec<String> = if cfg!(windows) {
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", command].map(str::to_owned).to_vec()
+        } else {
+            ["sh", "-c", command].map(str::to_owned).to_vec()
+        };
+        if mode == Mode::DangerFullAccess {
+            return Ok(ShellArgv { argv: plain, denial_signatures: &[], failure_signatures: &[] });
+        }
+        let root = std::path::absolute(self.workspace.root()).map_err(failed)?;
+        let wanted = Policy::new(mode, &root, &[]).map_err(failed)?;
+        let confined = confine::confine(&plain, &wanted).map_err(failed)?;
+        Ok(ShellArgv { argv: confined.argv, denial_signatures: confined.denial_signatures, failure_signatures: confined.failure_signatures })
     }
+}
+
+struct ShellArgv {
+    argv: Vec<String>,
+    denial_signatures: &'static [&'static str],
+    failure_signatures: &'static [&'static str],
 }
 
 /// Keep the tail: errors and results are at the end.
@@ -319,6 +355,15 @@ mod shell_tests {
 
 // ── write and edit ───────────────────────────────────────────────────────
 
+/// Under `read-only` no file is changed. Writes are already kept inside the project, which is what
+/// `workspace-write` allows.
+fn writable(confinement: &Confinement) -> Result<(), ToolError> {
+    if confinement.get() == Mode::ReadOnly {
+        return Err(ToolError::Failed(format!("{} The user can change the sandbox setting.", policy::denial_marker(Mode::ReadOnly))));
+    }
+    Ok(())
+}
+
 fn failed(e: impl std::fmt::Display) -> ToolError {
     ToolError::Failed(e.to_string())
 }
@@ -334,12 +379,18 @@ async fn write_atomic(path: &Path, content: &str) -> Result<(), ToolError> {
 }
 
 #[derive(Debug)]
-pub struct WriteFile(Workspace);
+pub struct WriteFile(Workspace, Confinement);
 
 impl WriteFile {
     #[must_use]
     pub fn new(ws: Workspace) -> Self {
-        Self(ws)
+        Self(ws, Confinement::default())
+    }
+
+    #[must_use]
+    pub fn confined(mut self, confinement: Confinement) -> Self {
+        self.1 = confinement;
+        self
     }
 }
 
@@ -350,6 +401,7 @@ impl SimpleTool for WriteFile {
     }
 
     async fn call(&self, args: &Value) -> Result<SimpleOutput, ToolError> {
+        writable(&self.1)?;
         let path = self.0.resolve(string_arg(args, "path")?)?;
         let content = string_arg(args, "content")?;
         write_atomic(&path, content).await?;
@@ -361,12 +413,18 @@ impl SimpleTool for WriteFile {
 }
 
 #[derive(Debug)]
-pub struct EditFile(Workspace);
+pub struct EditFile(Workspace, Confinement);
 
 impl EditFile {
     #[must_use]
     pub fn new(ws: Workspace) -> Self {
-        Self(ws)
+        Self(ws, Confinement::default())
+    }
+
+    #[must_use]
+    pub fn confined(mut self, confinement: Confinement) -> Self {
+        self.1 = confinement;
+        self
     }
 }
 
@@ -377,6 +435,7 @@ impl SimpleTool for EditFile {
     }
 
     async fn call(&self, args: &Value) -> Result<SimpleOutput, ToolError> {
+        writable(&self.1)?;
         let path = self.0.resolve(string_arg(args, "path")?)?;
         let (old, new) = (
             string_arg(args, "old_string")?,
@@ -414,12 +473,12 @@ mod file_tests {
     #[tokio::test]
     async fn write_then_edit_changes_the_file() {
         let ws = scratch("flow");
-        let out = WriteFile(ws.clone())
+        let out = WriteFile::new(ws.clone())
             .execute(&json!({"path": "a/b.txt", "content": "one two"}), "")
             .await;
         assert!(!out.is_error, "{}", out.content);
         let edit = json!({"path": "a/b.txt", "old_string": "two", "new_string": "2"});
-        assert!(!EditFile(ws.clone()).execute(&edit, "").await.is_error);
+        assert!(!EditFile::new(ws.clone()).execute(&edit, "").await.is_error);
         let text = std::fs::read_to_string(ws.root().join("a").join("b.txt")).unwrap();
         assert_eq!(text, "one 2");
         let _ = std::fs::remove_dir_all(ws.root());
@@ -428,10 +487,10 @@ mod file_tests {
     #[tokio::test]
     async fn edit_refuses_ambiguous_and_missing_matches() {
         let ws = scratch("edit");
-        WriteFile(ws.clone())
+        WriteFile::new(ws.clone())
             .execute(&json!({"path": "f", "content": "aa"}), "")
             .await;
-        let edit = EditFile(ws.clone());
+        let edit = EditFile::new(ws.clone());
         let ambiguous = json!({"path": "f", "old_string": "a", "new_string": "b"});
         let missing = json!({"path": "f", "old_string": "z", "new_string": "b"});
         assert!(edit.execute(&ambiguous, "").await.is_error);
@@ -442,9 +501,34 @@ mod file_tests {
     #[tokio::test]
     async fn writing_outside_the_workspace_is_refused() {
         let ws = scratch("fence");
-        let out = WriteFile(ws)
+        let out = WriteFile::new(ws)
             .execute(&json!({"path": "../../x", "content": "no"}), "")
             .await;
         assert!(out.is_error);
+    }
+}
+
+#[cfg(test)]
+mod confined_tests {
+    use super::*;
+    use crate::builtin::Tool;
+
+    #[tokio::test]
+    async fn read_only_refuses_writes_and_a_command_that_cannot_be_confined_does_not_run() {
+        let dir = std::env::temp_dir().join(format!("viv-confined-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let confinement = Confinement::default();
+        confinement.set(Mode::ReadOnly);
+        let write = WriteFile::new(Workspace::new(&dir)).confined(confinement.clone());
+        let refused = write.execute(&json!({"path": "a.txt", "content": "x"}), "").await;
+        assert!(refused.is_error && refused.content.contains("read-only"), "{}", refused.content);
+        assert!(!dir.join("a.txt").exists());
+        if cfg!(windows) {
+            let shell = Shell::new(Workspace::new(&dir)).confined(confinement);
+            let out = shell.execute(&json!({"command": "Set-Content b.txt x"}), "").await;
+            assert!(out.is_error && out.content.contains("refusing to run the command unconfined"), "{}", out.content);
+            assert!(!dir.join("b.txt").exists());
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

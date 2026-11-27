@@ -121,5 +121,107 @@ pub fn definitions() -> Vec<serde_json::Value> {
                 "required": ["operation"]
             }
         }),
+        serde_json::json!({
+            "name": "job_output",
+            "description": "Read a background job: output since the previous read for stream jobs, or the result of a finished final-output job.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "job_id": { "type": "string", "description": "Job id returned by the tool that started the background work." },
+                    "wait": { "type": "boolean", "description": "Block until the job finishes or the timeout expires; a timed-out wait leaves the job running. Defaults to false." },
+                    "timeout_ms": { "type": "number", "description": "Max wait in milliseconds with wait: true. Default 30000, at most 600000." }
+                },
+                "required": ["job_id"]
+            }
+        }),
+        serde_json::json!({
+            "name": "job_list",
+            "description": "List your background jobs (running and finished) with their ids, kinds, and statuses.",
+            "parameters": { "type": "object", "properties": {} }
+        }),
+        serde_json::json!({
+            "name": "job_kill",
+            "description": "Request cancellation of a running background job.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "job_id": { "type": "string", "description": "Job id returned by the tool that started the background work." },
+                    "reason": { "type": "string", "description": "Optional short reason, recorded in the log and forwarded to the job." }
+                },
+                "required": ["job_id"]
+            }
+        }),
+        serde_json::json!({
+            "name": "terminal_open",
+            "description": "Create a persistent terminal session. Use this for shell or REPL state that must survive across tool calls.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "type": { "type": "string", "description": "Terminal backend type, \"shell\"." },
+                    "name": { "type": "string", "description": "Optional display name such as \"main\" or \"gdb\"." },
+                    "cwd": { "type": "string", "description": "Folder inside the project to start in." }
+                },
+                "required": ["type"]
+            }
+        }),
+        serde_json::json!({
+            "name": "terminal_send",
+            "description": "Send text to a persistent terminal. By default Enter is submitted and the call waits for output silence, timeout, or session exit.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sessionId": { "type": "string", "description": "Terminal session id returned by terminal_open or terminal_list." },
+                    "text": { "type": "string", "description": "UTF-8 text to write to the terminal." },
+                    "submit": { "type": "boolean", "description": "Submit Enter after text (default true). Set false for control characters or incomplete REPL input." },
+                    "run_in_background": { "type": "boolean", "description": "Return a job id immediately; collect with job_output or stop with job_kill." }
+                },
+                "required": ["sessionId", "text"]
+            }
+        }),
+        serde_json::json!({
+            "name": "terminal_read",
+            "description": "Read a bounded page of retained output from a persistent terminal without sending input.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sessionId": { "type": "string", "description": "Terminal session id returned by terminal_open or terminal_list." },
+                    "offset": { "type": "number", "description": "Newest-relative line offset (default 0)." },
+                    "count": { "type": "number", "description": "Requested line count (default 500)." }
+                },
+                "required": ["sessionId"]
+            }
+        }),
+        serde_json::json!({
+            "name": "terminal_signal",
+            "description": "Send an allowed signal to what is running in a persistent terminal.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sessionId": { "type": "string", "description": "Terminal session id returned by terminal_open or terminal_list." },
+                    "signal": { "type": "string", "enum": ["SIGINT", "SIGTERM", "SIGKILL", "SIGTSTP", "SIGHUP"], "description": "SIGINT works everywhere; to end the shell use terminal_close." }
+                },
+                "required": ["sessionId", "signal"]
+            }
+        }),
+        serde_json::json!({
+            "name": "terminal_close",
+            "description": "Close one persistent terminal and end what runs in it.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sessionId": { "type": "string", "description": "Terminal session id returned by terminal_open or terminal_list." }
+                },
+                "required": ["sessionId"]
+            }
+        }),
+        serde_json::json!({
+            "name": "terminal_list",
+            "description": "List your persistent terminal sessions.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }),
     ]
 }

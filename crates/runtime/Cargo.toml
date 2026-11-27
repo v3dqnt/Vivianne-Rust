@@ -21,6 +21,8 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util = "0.7"
 chrono = "0.4"
+# Time zones by name for daily, weekly and cron schedules (already in the tree through the cron schedule crate).
+chrono-tz = "0.10"
 cron = "0.12"
 uuid = { version = "1", features = ["v4"] }
 rand = "0.9"
@@ -28,6 +30,8 @@ similar = "2"
 sha2 = "0.10"
 # Gzip for the kept generations of a thread log (pure Rust, already in the tree through the HTTP stack).
 flate2 = "1"
+# The full-text index of saved conversations (FTS5). The same SQLite the memory crate bundles.
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [dev-dependencies]
 uuid = { version = "1", features = ["v4"] }

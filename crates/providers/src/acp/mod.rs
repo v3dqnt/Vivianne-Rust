@@ -22,6 +22,7 @@ mod install;
 mod models;
 mod own_tools;
 mod permission;
+mod pipes;
 mod registry;
 mod session;
 mod stderr;
@@ -45,6 +46,7 @@ pub use info::{AgentCommand, AgentModel, SessionInfo, context_usage, current_mod
 pub use install::InstallProgress;
 pub use models::{known_models, preferred_model};
 pub use own_tools::{CallFn, McpServerSpec, OfferedTool, OwnTools, ToolOutput};
+pub use pipes::{DELEGATED, run_over};
 pub use registry::{Harness, find, harnesses, is_usable};
 pub use session::Line;
 pub use turn::{AcpEvent, Outcome, PermissionRequest, PromptPart, ToolInfo, TurnEnd, TurnRequest};

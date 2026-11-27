@@ -280,8 +280,8 @@ pub type Approver = Arc<dyn Fn(String) -> futures::future::BoxFuture<'static, bo
 
 /// A program the adapter had Vivianne run: its process tree ends when this is dropped.
 struct Terminal {
-    _tree: crate::proc::TreeKillOnDrop,
-    _child: tokio::process::Child,
+    /// Dropping it ends the program and everything it started.
+    _child: vivianne_sandbox::spawn::Handle,
 }
 
 pub struct Session {
@@ -958,12 +958,9 @@ impl Session {
         if !allowed {
             return Err("the user did not allow it".into());
         }
-        let mut cmd = crate::proc::quiet(program);
-        crate::code::sandbox::scrub_env(&mut cmd);
-        super::client::apply_env(&mut cmd, &env);
-        crate::proc::own_group(&mut cmd);
-        let mut child = cmd.args(rest).current_dir(&cwd).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).kill_on_drop(true).spawn().map_err(|e| format!("couldn't start {program}: {e}"))?;
-        let pid = child.id();
+        let spec = super::client::adapter_spec(program, rest, &cwd, &env);
+        let mut child = vivianne_sandbox::spawn::spawn(spec).map_err(|e| format!("couldn't start {program}: {e}"))?;
+        let pid = child.pid();
         for (stream, label) in [(child.stdout.take().map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Unpin + Send>), ""), (child.stderr.take().map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Unpin + Send>), "[stderr] ")] {
             if let Some(stream) = stream {
                 let weak = Arc::downgrade(self);
@@ -978,7 +975,7 @@ impl Session {
                 });
             }
         }
-        self.terminals.lock().unwrap_or_else(|e| e.into_inner()).push(Terminal { _tree: crate::proc::TreeKillOnDrop { pid }, _child: child });
+        self.terminals.lock().unwrap_or_else(|e| e.into_inner()).push(Terminal { _child: child });
         Ok(json!({ "processId": pid }))
     }
 

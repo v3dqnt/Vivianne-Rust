@@ -28,27 +28,48 @@ use gpui_kit::component::setting::SettingPage;
 
 use super::values::Shared;
 
+/// The pages in sidebar order. Neighbours with the same section sit under one label; the first have none.
 pub fn all(values: &Shared) -> Vec<SettingPage> {
-    vec![
+    let mut pages = vec![
         account::page(values),
-        providers::page(values),
-        local::page(values),
-        reliability::page(values),
-        mods::page(values),
-        connections::page(values),
-        machines::page(values),
-        computer::page(values),
-        browser::page(values),
-        web::page(values),
-        memory::page(values),
-        vault::page(values),
-        skills::page(values),
-        automations::page(values),
-        diagnostics::page(values),
         appearance::page(values),
         characters::page(values),
         layout::page(values),
-        components::page(values),
-        updates::page(values),
-    ]
+    ];
+    let sections: [(&str, Vec<SettingPage>); 3] = [
+        (
+            "Agents",
+            vec![
+                providers::page(values),
+                local::page(values),
+                reliability::page(values),
+                memory::page(values),
+                skills::page(values),
+                automations::page(values),
+            ],
+        ),
+        (
+            "Tools",
+            vec![
+                computer::page(values),
+                web::page(values),
+                connections::page(values),
+                mods::page(values),
+                vault::page(values),
+                machines::page(values),
+            ],
+        ),
+        (
+            "App",
+            vec![
+                diagnostics::page(values),
+                components::page(values),
+                updates::page(values),
+            ],
+        ),
+    ];
+    for (name, members) in sections {
+        pages.extend(members.into_iter().map(|page| page.section(name)));
+    }
+    pages
 }

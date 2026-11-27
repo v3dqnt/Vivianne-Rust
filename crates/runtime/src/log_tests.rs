@@ -37,6 +37,7 @@ fn thread(texts: &[&str]) -> SavedThread {
                 )
             })
             .collect(),
+        parent: None,
     }
 }
 

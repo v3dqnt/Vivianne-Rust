@@ -23,5 +23,10 @@ vivianne-providers.workspace = true
 vivianne-runtime.workspace = true
 vivianne-tools.workspace = true
 
+[dev-dependencies]
+# A scripted model for the protocol server's tests.
+async-trait.workspace = true
+futures.workspace = true
+
 [lints]
 workspace = true

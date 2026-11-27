@@ -20,7 +20,6 @@ use vivianne_providers::acp::{
     Acp, AcpEvent, Line, Outcome, PermissionRequest, PromptPart, TurnRequest,
 };
 use vivianne_runtime::checkpoints;
-use vivianne_runtime::context::Breakdown;
 use vivianne_runtime::{Agent, AgentEvent};
 
 /// What answers the conversation.
@@ -132,16 +131,6 @@ impl Session {
         }
     }
 
-    /// Where the context window goes, for our own agent (a coding agent keeps its own conversation).
-    /// `None` while a run owns the history.
-    #[must_use]
-    pub fn breakdown(&self) -> Option<Breakdown> {
-        match &self.engine {
-            Engine::Own(agent) => Some(agent.breakdown(self.history.as_deref()?)),
-            Engine::Harness { .. } => None,
-        }
-    }
-
     /// Starts from a saved conversation: its id (so usage and the file stay one thread) and what was said.
     pub fn restore(&mut self, id: String, history: Vec<Message>) {
         self.thread = id;
@@ -225,6 +214,8 @@ impl Session {
         match &self.engine {
             Engine::Own(agent) => {
                 let agent = agent.clone();
+                // The subagent and schedule tools need to know which conversation is calling.
+                agent.set_thread(&self.thread);
                 let (events_tx, watcher) =
                     watch_turn(self.runtime.handle(), self.thread.clone(), events_tx);
                 let (folder, thread) = (self.folder.display().to_string(), self.thread.clone());

@@ -15,7 +15,10 @@ Every command, flag, setting, environment variable, file and exit code `viv` exp
 - `viv thread stats <id> [--json]`: turns, steps, tool calls, failures, context messages, model and tool time of one conversation.
 - `viv thread outline <id> [--json]`: every turn with a one-line prompt and a short preview of its answer.
 - `viv thread fork <id> --before <turn> [--json]`: a new conversation made of the earlier turns of `<id>` (the original is untouched); prints the new id.
-- `viv thread export <id> [--out FILE] [--after N] [--raw]`: the conversation as a session log, one JSON object per line (a `session` header, then each message with its position). Secrets and the home folder's name are taken out unless `--raw`; `--after N` skips the messages before position N so a later export continues an earlier one. Writes to standard output without `--out`; nothing is sent anywhere.
+- `viv thread export <id> [--format jsonl|markdown|zip] [--out FILE] [--after N] [--raw]`: the conversation as a session log (`jsonl`: a `session` header, then each message with its position), a Markdown transcript, or a ZIP with both, the conversations branched from it, its attachments and a `manifest.json`. Secrets and the home folder's name are taken out of the log and transcript unless `--raw` (attachment bytes are never scanned); `--after N` skips the messages before position N (jsonl). Writes to standard output without `--out`, except `zip`, which needs `--out`. Nothing is sent anywhere.
+- `viv thread search <words> [--thread ID] [--kind K] [--limit N] [--cursor C] [--all-projects] [--json]`: ranked full-text search of this project's conversations (or of one, with `--thread`); words and "quoted phrases", all required. Prints each hit's position, kind and a snippet with the matched words in `[brackets]`, and `--cursor` for the next page. `--all-projects` searches every project.
+- `viv thread trace <id> [--seq N] [--json]`: which conversations this one was branched from and which came from it; with `--seq`, the events that event answers or was answered by, and the earlier state a checkpoint condensed.
+- `viv thread event <id> <position> [--before N] [--after N] [--json]`: one message with up to 50 either side.
 - `viv thread generations <id> [--json]`: the earlier states of a conversation that were kept when it was condensed or rewound.
 - `viv thread mention <id>`: the text that mentions a conversation in a message (`@[title](viv-session:...)`).
 - `viv machine add <target> [--label L] [--remote-session S]`, `list`, `status`, `reconnect <m>`, `rename <m> <label>`, `enable <m>`, `disable <m>`, `remove <m>`, `install <m> [--yes]` (all take `--json` where they print).
@@ -30,10 +33,10 @@ Every command, flag, setting, environment variable, file and exit code `viv` exp
 0 success; 1 failure (a failed check, a failed run); 2 usage error.
 
 ## Environment
-`VIV_RUN_CODE_STATE` (`persistent` keeps a REPL environment for `run_code` programs within a conversation; anything else, or unset, gives each program a fresh one), `VIV_SOFFICE` (the LibreOffice executable used to convert Office files to PDF; otherwise `PATH` and the usual install places are searched), `VIV_AGENTS_HOME` (replaces `~/.agents`, the shared agents folder whose `AGENTS.md` is read as the user's instructions), `VIV_HOME` (replaces `~/.viv`; must be an absolute folder that is not a root or the home folder), `VIV_SESSION`, `VIV_SSH` (the ssh program), `VIV_MODEL`, `VIV_PROVIDER`, `VIV_MAX_AGENT_STEPS`, `VIV_MAX_TOOL_RESULT_BYTES`, `VIV_REMOTE_BINARY` (a file to install on a machine), `VIV_RELEASE_BASE` (an https folder with `viv-<os>-<arch>` and its `.sha256`).
+`VIV_TEAM` (`1` gives an agent and its subagents a shared task board; also the `team` key of `settings.json`, never of a repository), `VIV_SANDBOX` (the standing file sandbox mode: `read-only`, `workspace-write` or `danger-full-access`, the default; also the `sandbox` key of `settings.json`, never of a repository; an unknown value means `read-only`), `VIV_RUN_CODE_STATE` (`persistent` keeps a REPL environment for `run_code` programs within a conversation; anything else, or unset, gives each program a fresh one), `VIV_SOFFICE` (the LibreOffice executable used to convert Office files to PDF; otherwise `PATH` and the usual install places are searched), `VIV_AGENTS_HOME` (replaces `~/.agents`, the shared agents folder whose `AGENTS.md` is read as the user's instructions), `VIV_HOME` (replaces `~/.viv`; must be an absolute folder that is not a root or the home folder), `VIV_SESSION`, `VIV_SSH` (the ssh program), `VIV_MODEL`, `VIV_PROVIDER`, `VIV_MAX_AGENT_STEPS`, `VIV_MAX_TOOL_RESULT_BYTES`, `VIV_REMOTE_BINARY` (a file to install on a machine), `VIV_RELEASE_BASE` (an https folder with `viv-<os>-<arch>` and its `.sha256`).
 
 ## Files
-`~/.viv/AGENTS.md` and `~/.agents/AGENTS.md` (the user's own instructions; `AGENTS.local.md` and `CLAUDE.md` / `CLAUDE.local.md` beside any `AGENTS.md` in the project or here are read too), `~/.viv/agent/settings.json`, `~/.viv/agent/threads/<id>.jsonl` (the conversation as an append-only log: a header line with `"version"`, then one line per message and per settings change; a log from a newer Vivianne is left untouched and reported by `viv doctor`; a half line at the end is ignored), `~/.viv/agent/threads/<id>.g<N>.jsonl.gz` (an earlier state of the conversation, kept when it was condensed or rewound), `~/.viv/agent/threads/<id>.proj.json` (saved figures and outline, rebuilt when they do not match the conversation), `~/.viv/agent/threads/<id>.v<N>.bak` (the original of a thread an older Vivianne saved as one `<id>.json`, kept when it was carried forward from format N), `~/.viv/agent/threads/<id>.lock` (held by whoever is writing that conversation), `~/.viv/agent/tool-results/<id>.txt`, `~/.viv/client/machines.json`, `~/.viv/client/machine-metadata.json`, `~/.viv/client/ssh/`, `~/.viv/server/sessions/<name>/` (`session.json`, `session-snapshots/`, `session-backups/`), `~/.viv/agents/<name>/` and `<repo>/.viv/agents/<name>/` (`profile.json`, `prompt.md`), `<repo>/.viv.json` (repo-safe settings only), `~/.viv/agent-detection/<agent>.toml`.
+`~/.viv/AGENTS.md` and `~/.agents/AGENTS.md` (the user's own instructions; `AGENTS.local.md` and `CLAUDE.md` / `CLAUDE.local.md` beside any `AGENTS.md` in the project or here are read too), `~/.viv/agent/settings.json`, `~/.viv/agent/threads/<id>.jsonl` (the conversation as an append-only log: a header line with `"version"`, then one line per message and per settings change; a log from a newer Vivianne is left untouched and reported by `viv doctor`; a half line at the end is ignored), `~/.viv/agent/threads/<id>.g<N>.jsonl.gz` (an earlier state of the conversation, kept when it was condensed or rewound), `~/.viv/agent/schedules.json` (scheduled tasks, also listed under Settings, Automations; the model manages them with the `schedule_create`, `schedule_list`, `schedule_view` and `schedule_edit` tools, and the open app delivers them), `~/.viv/agent/search.db` (the full-text index of saved conversations, rebuilt from them when missing, damaged or from another version), `~/.viv/agent/threads/<id>.proj.json` (saved figures and outline, rebuilt when they do not match the conversation), `~/.viv/agent/threads/<id>.v<N>.bak` (the original of a thread an older Vivianne saved as one `<id>.json`, kept when it was carried forward from format N), `~/.viv/agent/threads/<id>.lock` (held by whoever is writing that conversation), `~/.viv/agent/tool-results/<id>.txt`, `~/.viv/client/machines.json`, `~/.viv/client/machine-metadata.json`, `~/.viv/client/ssh/`, `~/.viv/server/sessions/<name>/` (`session.json`, `session-snapshots/`, `session-backups/`), `~/.viv/agents/<name>/` and `<repo>/.viv/agents/<name>/` (`profile.json`, `prompt.md`), `<repo>/.viv.json` (repo-safe settings only), `~/.viv/agent-detection/<agent>.toml`.
 
 ## Settings
 `max_agent_steps` (default 100), `max_tool_result_bytes` (default 65536, at least 1024); layers: flag, environment, `settings.json` (workspace then top level), `.viv.json`, default.
@@ -51,6 +54,20 @@ Sending a message while the agent is working steers the run: the agent reads it 
 ## Tools
 `run_code` (runs a JavaScript program that can call only the read-only tools: `read`, `ls`, `grep`, `code_search`, `glob`, as async functions; argument `code`; limits 60 s, 64 MiB, 50 calls, 64 KiB of output; look-only, so it needs no approval and works in Plan mode). With `VIV_RUN_CODE_STATE=persistent` its programs are REPL programs and top-level variables survive from one call to the next within a conversation.
 
+While a sandbox mode is standing, `write` and `edit` refuse under `read-only`, `shell` runs confined (and is refused where the mode cannot be enforced). On Windows `viv` and the app restart themselves with the hidden first argument `--viv-sandbox-run` to run it; `workspace-write` there permanently changes the project folder's access list and integrity label (`crates/sandbox/src/windows/README.md`) and takes `sandbox_permissions` with `justification` to ask for one strictly wider mode, which asks the user in every approval mode.
+
+`search_threads` (words and "quoted phrases" in this project's conversations; look-only), `list_threads`, `read_thread`, and `schedule_create`, `schedule_list`, `schedule_view`, `schedule_edit` are offered by the app, `viv` and the remote server alike; scheduled tasks are delivered only by the open app.
+
+`shell` takes `run_in_background`, and a command that outlasts `timeout_secs` moves to a background job instead of being killed. `job_output` and `job_list` (look-only) and `job_kill` (asks) manage jobs; the agent is told when one ends. Jobs end with the agent that started them: choosing another model, closing the app, the end of a one-shot `viv` run or of a remote request.
+
+`terminal_open`, `terminal_send`, `terminal_signal`, `terminal_close` (ask) and `terminal_read`, `terminal_list` (look-only) keep shells whose state survives between calls; they end with the agent that opened them.
+
+`viv acp` (no arguments) serves the Agent Client Protocol, version 1, on standard input and output: other programs create sessions in a folder, prompt them and answer permission requests. Standard output carries only protocol messages. The model is chosen as for `viv` itself.
+
+`task`, `task_output`, `wait_tasks`, `kill_task` (asks) and `list_subagent_profiles` run subagents on every surface. A subagent is read-only unless the thread is in Auto mode. `task` takes `agent`, an Agent Client Protocol registry id, to have that coding agent do the work; this is refused outside Auto mode and while a sandbox mode is set.
+
+With the `team` setting on, `team_task_create`, `team_task_list`, `team_task_get` and `team_task_update` (none ask) keep a task board the conversation's agent and its subagents share, in `~/.viv/agent/teams/<thread>.json`.
+
 `working_directory` (reads the directory relative paths and commands start from, or moves it with `path`, to an existing directory inside the project; it can never leave the project, and a move is replayed from the saved conversation when it is resumed; look-only, so it needs no approval and works in Plan mode).
 
 `convert_to_pdf` (converts a .doc/.docx/.xls/.xlsx/.ppt/.pptx in the project to a PDF with an installed LibreOffice; arguments `path`, `output?`, `overwrite?`; writes a file, so it asks in Ask mode and is refused in Plan mode; offered only when LibreOffice is found).
@@ -59,3 +76,38 @@ Sending a message while the agent is working steers the run: the agent reads it 
 
 ## Change-recording settings
 `max_changed_files` (500), `max_changed_file_bytes` (2097152), `change_diff_timeout_ms` (100), `change_git_timeout_ms` (30000), `change_git_output_max_bytes` (8388608). Environment: `VIV_MAX_CHANGED_FILES`, `VIV_MAX_CHANGED_FILE_BYTES`, `VIV_CHANGE_DIFF_TIMEOUT_MS`, `VIV_CHANGE_GIT_TIMEOUT_MS`, `VIV_CHANGE_GIT_OUTPUT_MAX_BYTES`. Layers: environment, `settings.json` (workspace then top level), default; `.viv.json` cannot set them (R4.4). A value of 0 is raised to 1. Listed by `viv config list --show-origin`.
+
+## viv-hub (the shared-projects service)
+
+Commands (a usage error exits 2, a failure 1):
+
+- `viv-hub serve [--db FILE] [--addr HOST:PORT] [--tls-in-front]`: serves until Ctrl+C. Defaults: `viv-hub.db` here, `127.0.0.1:8787`. It speaks plain HTTP and refuses a non-loopback address without `--tls-in-front`.
+- `viv-hub token issue <user> [--db FILE] [--days N]`: prints a new token once (30 days by default, at most 365). `<user>` is letters, digits, `-`, `_`, `.`, at most 64. This is the operator's bootstrap; sign-in is not built.
+- `viv-hub token revoke <user> [--db FILE]`: removes all of a person's tokens.
+
+State: one SQLite file (`user_version` 1; a newer one is refused and left as it is), with its `-wal` and `-shm` files. No environment variables or settings.
+
+HTTP, JSON in and out. Every call but the directory needs `Authorization: Bearer <token>`. `Idempotency-Key` (1 to 64 letters, digits, hyphens) makes a repeated create or join request return the first result. Bodies are at most 64 KiB. Errors are `{"error": text}` with 400, 401, 403, 404, 408, 409, 413, 429, 500 or 503; a project the caller may not see answers like a missing one.
+
+| Call | Body |
+|---|---|
+| `GET /v1/directory?after=SLUG` | |
+| `GET /v1/me` | |
+| `POST /v1/projects` | `slug`, `name`, `summary?`, `visibility?`, `join_policy?` |
+| `GET /v1/projects/{id}` | |
+| `PUT /v1/projects/{id}/visibility` | `visibility` |
+| `PUT /v1/projects/{id}/lifecycle` | `lifecycle` |
+| `GET /v1/projects/{id}/members?after=USER` | |
+| `PUT /v1/projects/{id}/members/{user}/role` | `role` |
+| `PUT /v1/projects/{id}/members/{user}/status` | `status`, `block?` |
+| `POST /v1/projects/{id}/invitations` | `user`, `role` |
+| `POST /v1/projects/{id}/invitations/accept` | |
+| `POST /v1/projects/{id}/join-requests` | `note?` |
+| `GET /v1/projects/{id}/join-requests` | |
+| `POST /v1/join-requests/{id}/decide` | `revision`, `approve_as?` (absent rejects) |
+| `POST /v1/join-requests/{id}/withdraw` | |
+| `POST /v1/projects/{id}/owner/offer` | `user`, `confirmed` |
+| `POST /v1/projects/{id}/owner/accept` | |
+| `GET /v1/projects/{id}/audit` | |
+
+Values are snake case: visibility `public`, `private`; join policy `open`, `approval`, `invite_only`, `closed`; lifecycle `draft`, `active`, `archived`, `deletion_pending`; role `viewer`, `contributor`, `maintainer`, `admin`, `owner`; status `active`, `suspended`, `removed`.

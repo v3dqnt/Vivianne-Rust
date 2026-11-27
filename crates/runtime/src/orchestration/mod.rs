@@ -6,8 +6,12 @@
 //! reaches the threads the user has open. A tool learns who is calling from [`Caller`], set around every turn, so
 //! no tool has to be built per thread.
 
+mod coding;
+mod metering;
 mod profiles;
+mod spawner;
 mod subagents;
+pub mod team;
 mod threads;
 mod tools;
 
@@ -19,11 +23,15 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use vivianne_core::Mode;
+use vivianne_providers::Provider;
 
 use crate::Agent;
 
+pub use coding::{CodingAgents, CodingJob, Installed};
 pub use profiles::{Profile, profiles};
-pub use subagents::{Handle, Registry, Status};
+pub use spawner::Standard as StandardSpawner;
+pub(crate) use subagents::stop_all;
+pub use subagents::{Handle, Registry, Start, Status, start, start_coding};
 pub use threads::{AskThread, MessageThread, SpawnThread};
 pub use tools::{KillTask, ListSubagentProfiles, Task, TaskOutput, WaitTasks};
 
@@ -41,6 +49,12 @@ pub struct Caller {
     pub folder: PathBuf,
     /// The provider and model the thread answers with, which a subagent uses too.
     pub model: Option<(String, String)>,
+    /// The connection that model is reached over, keys and all: a subagent uses the same one.
+    pub provider: Option<ParentProvider>,
+    /// A sandbox mode is standing.
+    pub confined: bool,
+    /// The subagent this is, when it is one; `None` is the conversation's own agent.
+    pub member: Option<Member>,
     /// How many agents deep: 0 is a thread's own agent, 1 a subagent it started.
     pub depth: usize,
 }
@@ -56,6 +70,19 @@ pub fn caller() -> Option<Caller> {
     CALLER.try_with(Clone::clone).ok()
 }
 
+/// A subagent, as the others know it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Member {
+    pub id: String,
+    pub name: String,
+}
+
+/// A conversation id for a surface that keeps none of its own: never one that was used before.
+#[must_use]
+pub fn new_thread_id() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
+
 /// What a subagent's agent is built to be.
 #[derive(Debug, Clone)]
 pub struct AgentSpec {
@@ -66,6 +93,18 @@ pub struct AgentSpec {
     pub system: String,
     /// The model of the thread that asked, to use unless something else is chosen.
     pub model: Option<(String, String)>,
+    /// The parent's connection to it; `None` looks one up by the provider's id.
+    pub provider: Option<ParentProvider>,
+}
+
+/// A parent's provider, handed to what it starts.
+#[derive(Clone)]
+pub struct ParentProvider(pub Arc<dyn Provider>);
+
+impl std::fmt::Debug for ParentProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("ParentProvider").field(&self.0.id()).finish()
+    }
 }
 
 /// Builds the agent a subagent runs as. The shell implements it, because it knows the keys and the models.

@@ -9996,6 +9996,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "vivianne-hub"
+version = "0.0.1"
+dependencies = [
+ "bytes",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "rand 0.9.5",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+ "vivianne-projects",
+]
+
+[[package]]
 name = "vivianne-memory"
 version = "0.0.1"
 dependencies = [
@@ -10041,6 +10058,17 @@ name = "vivianne-plugins"
 version = "0.0.1"
 
 [[package]]
+name = "vivianne-projects"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "vivianne-core",
+]
+
+[[package]]
 name = "vivianne-providers"
 version = "0.0.1"
 dependencies = [
@@ -10063,6 +10091,8 @@ name = "vivianne-remote"
 version = "0.0.1"
 dependencies = [
  "alacritty_terminal",
+ "async-trait",
+ "futures",
  "regex",
  "reqwest",
  "serde",
@@ -10085,10 +10115,12 @@ version = "0.0.1"
 dependencies = [
  "async-trait",
  "chrono",
+ "chrono-tz",
  "cron",
  "flate2",
  "futures",
  "rand 0.9.5",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -10103,6 +10135,21 @@ dependencies = [
  "vivianne-core",
  "vivianne-providers",
  "vivianne-tools",
+]
+
+[[package]]
+name = "vivianne-sandbox"
+version = "0.0.1"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
+ "which 7.0.3",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -10151,6 +10198,7 @@ dependencies = [
 name = "vivianne-tools"
 version = "0.0.1"
 dependencies = [
+ "alacritty_terminal",
  "async-trait",
  "base64 0.22.1",
  "dirs 6.0.0",
@@ -10178,6 +10226,7 @@ dependencies = [
  "toml 0.8.23",
  "url",
  "uuid",
+ "vivianne-sandbox",
  "which 7.0.3",
  "zip 4.6.1",
 ]

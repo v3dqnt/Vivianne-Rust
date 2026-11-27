@@ -6,6 +6,7 @@
 
 mod inspect;
 mod remote_cli;
+mod thread_query;
 
 use std::io::{BufRead, Write};
 
@@ -17,6 +18,7 @@ use vivianne_tools::Toolbox;
 
 #[tokio::main]
 async fn main() {
+    vivianne_tools::confinement::run_sandbox_helper_if_asked();
     if let Err(message) = run().await {
         eprintln!("viv: {message}");
         std::process::exit(1);
@@ -62,10 +64,28 @@ async fn run() -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("machine") => return remote_cli::machine(args[1..].to_vec()).await,
         Some("server") => return remote_cli::server(&session, &args[1..]).await,
+        Some("acp") => return serve_acp(&args[1..]).await,
         Some("remote-client-bridge") => return remote_cli::bridge_host(&session, &args[1..]).await,
         _ => {}
     }
     chat_here(args).await
+}
+
+/// `viv acp`: serves the Agent Client Protocol on standard input and output until the client closes them.
+async fn serve_acp(rest: &[String]) -> Result<(), String> {
+    if !rest.is_empty() {
+        return Err("viv acp takes no arguments".to_owned());
+    }
+    let host = vivianne_remote::acp::Host {
+        build: std::sync::Arc::new(|folder: &std::path::Path| {
+            vivianne_remote::acp::standard_build(folder, coding_system_prompt(folder))
+        }),
+        threads: std::sync::Arc::new(vivianne_remote::acp::Standard),
+    };
+    let input = tokio::io::BufReader::new(tokio::io::stdin());
+    vivianne_remote::acp::serve(host, input, tokio::io::stdout())
+        .await
+        .map_err(|e| e.to_string())
 }
 
 async fn chat_here(args: Vec<String>) -> Result<(), String> {
@@ -73,11 +93,15 @@ async fn chat_here(args: Vec<String>) -> Result<(), String> {
     let workdir = std::env::current_dir().map_err(|e| e.to_string())?;
     let settings = vivianne_runtime::config::resolve(&workdir, None);
     vivianne_tools::results::set_limit(settings.max_tool_result_bytes.value);
+    let mut toolbox = Toolbox::coding(&workdir);
+    if let Some(warning) = vivianne_runtime::surface::prepare(&mut toolbox, &workdir, &settings) {
+        eprintln!("viv: {warning}");
+    }
     let mut agent = Agent::new(
         env::provider()?,
         &model,
         Some(coding_system_prompt(&workdir)),
-        Toolbox::coding(&workdir),
+        toolbox,
     )
     .with_max_steps(settings.max_agent_steps.value)
     // The project's instruction files, the clock and the terminal's place, as the app adds them.
@@ -88,6 +112,7 @@ async fn chat_here(args: Vec<String>) -> Result<(), String> {
     {
         agent = agent.with_changes(std::sync::Arc::new(recorder));
     }
+    agent.set_thread(&vivianne_runtime::orchestration::new_thread_id());
     let mut history = Vec::new();
 
     let prompt = args.join(" ");

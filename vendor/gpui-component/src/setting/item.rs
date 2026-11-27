@@ -293,7 +293,7 @@ impl SettingItem {
                                         this.w_full()
                                     }
                                 })
-                                .child(Label::new(title.clone()).text_sm())
+                                .child(Label::new(title.clone()).text_sm().font_weight(gpui::FontWeight::MEDIUM))
                                 .when_some(description, |this, description| {
                                     this.child(
                                         div()

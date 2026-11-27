@@ -1,0 +1,103 @@
+# shell/assets/iconoir
+
+The app's icons: [Iconoir](https://iconoir.com) 7.12.2, MIT (see `LICENSE`). Each file is named as the app or a
+GPUI Kit component asks for it (the Lucide name), and `src/icons.rs` serves it instead of the Kit's. A name with no
+file here still gets the Kit's Lucide icon. To change one, copy another Iconoir SVG over it; to add one, add the
+file and a line in `src/icons.rs`.
+
+| File | Iconoir icon |
+|---|---|
+| `arrow-down.svg` | `arrow-down` |
+| `arrow-up.svg` | `arrow-up` |
+| `asterisk.svg` | `asterisk` |
+| `ban.svg` | `prohibition` |
+| `bell.svg` | `bell` |
+| `book-open.svg` | `open-book` |
+| `bot.svg` | `cpu` |
+| `calendar.svg` | `calendar` |
+| `case-sensitive.svg` | `text-size` |
+| `check.svg` | `check` |
+| `chevron-down.svg` | `nav-arrow-down` |
+| `chevron-left.svg` | `nav-arrow-left` |
+| `chevron-right.svg` | `nav-arrow-right` |
+| `chevron-up.svg` | `nav-arrow-up` |
+| `chevrons-up-down.svg` | `arrow-separate-vertical` |
+| `circle-check.svg` | `check-circle` |
+| `circle-x.svg` | `xmark-circle` |
+| `close.svg` | `xmark` |
+| `copy.svg` | `copy` |
+| `database.svg` | `database` |
+| `ellipsis.svg` | `more-horiz` |
+| `external-link.svg` | `open-new-window` |
+| `eye.svg` | `eye` |
+| `eye-off.svg` | `eye-closed` |
+| `file.svg` | `empty-page` |
+| `file-archive.svg` | `archive` |
+| `file-badge.svg` | `badge-check` |
+| `file-box.svg` | `cube` |
+| `file-braces.svg` | `code-brackets` |
+| `file-chart-pie.svg` | `stats-report` |
+| `file-code.svg` | `code` |
+| `file-cog.svg` | `settings` |
+| `file-diff.svg` | `git-compare` |
+| `file-image.svg` | `media-image` |
+| `file-key.svg` | `key` |
+| `file-lock.svg` | `lock` |
+| `file-music.svg` | `music-double-note` |
+| `file-spreadsheet.svg` | `table` |
+| `file-terminal.svg` | `terminal` |
+| `file-text.svg` | `page` |
+| `file-type.svg` | `text-size` |
+| `file-video-camera.svg` | `media-video` |
+| `folder.svg` | `folder` |
+| `folder-archive.svg` | `archive` |
+| `folder-check.svg` | `folder` |
+| `folder-code.svg` | `folder` |
+| `folder-cog.svg` | `folder-settings` |
+| `folder-git.svg` | `git-fork` |
+| `folder-git-2.svg` | `git-branch` |
+| `folder-heart.svg` | `folder` |
+| `folder-open.svg` | `folder` |
+| `folder-tree.svg` | `multiple-pages` |
+| `frame.svg` | `frame` |
+| `github.svg` | `github` |
+| `globe.svg` | `globe` |
+| `heart.svg` | `heart` |
+| `inbox.svg` | `mail` |
+| `info.svg` | `info-circle` |
+| `inspector.svg` | `select-window` |
+| `layout-dashboard.svg` | `dashboard` |
+| `loader.svg` | `refresh-double` |
+| `maximize.svg` | `maximize` |
+| `mic.svg` | `microphone` |
+| `minimize.svg` | `reduce` |
+| `minus.svg` | `minus` |
+| `network.svg` | `network` |
+| `palette.svg` | `palette` |
+| `panel-bottom.svg` | `app-window` |
+| `panel-bottom-open.svg` | `app-window` |
+| `panel-left.svg` | `layout-left` |
+| `panel-left-close.svg` | `sidebar-collapse` |
+| `panel-left-open.svg` | `sidebar-expand` |
+| `panel-right.svg` | `layout-right` |
+| `panel-right-close.svg` | `layout-right` |
+| `panel-right-open.svg` | `layout-right` |
+| `pencil.svg` | `edit-pencil` |
+| `plus.svg` | `plus` |
+| `refresh-cw.svg` | `refresh` |
+| `replace.svg` | `data-transfer-both` |
+| `search.svg` | `search` |
+| `settings.svg` | `settings` |
+| `sort-ascending.svg` | `sort-up` |
+| `sort-descending.svg` | `sort-down` |
+| `square.svg` | `square` |
+| `square-terminal.svg` | `terminal` |
+| `star.svg` | `star` |
+| `star-fill.svg` | `solid/star` |
+| `triangle-alert.svg` | `warning-triangle` |
+| `undo-2.svg` | `undo` |
+| `user.svg` | `user` |
+| `window-close.svg` | `xmark` |
+| `window-maximize.svg` | `square` |
+| `window-minimize.svg` | `minus` |
+| `window-restore.svg` | `multi-window` |

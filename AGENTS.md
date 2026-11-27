@@ -6,9 +6,9 @@
 - `crates/core`: domain types and the lists that decide what asks, what only looks, what is private. No UI, no network.
 - `crates/ai`: the AI layer from the old app: providers' API clients, keys, models, paths (`~/.viv`).
 - `crates/providers`: the `Provider` trait, the adapters over `ai`, and the ACP coding agents.
-- `crates/tools`: the agent's tools, the MCP client, git, the browser and computer-use wrappers.
-- `crates/runtime`: the one agent loop, saved threads, checkpoints, automations, orchestration, the ledger.
-- `crates/memory`, `crates/multiplayer`, `crates/remote`, `crates/telemetry`: features on top.
+- `crates/tools`: the agent's tools (with background jobs and terminals), the MCP client, git, the browser and computer-use wrappers.
+- `crates/runtime`: the one agent loop, saved threads, checkpoints, automations, orchestration (subagents, the task board), the ledger.
+- `crates/memory`, `crates/multiplayer`, `crates/remote` (machines, and the `viv acp` server), `crates/telemetry`: features on top.
 - `crates/cli` (`viv`) and `crates/shell` (`vivianne`, the GPUI app): the two surfaces. They only wire.
 - The allowed crate graph is `scripts/check-boundaries.sh`; the diagram is `docs/architecture.md`.
 

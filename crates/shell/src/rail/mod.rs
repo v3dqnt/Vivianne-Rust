@@ -1,6 +1,6 @@
 //! The project rail on the right of a chat: Overview, Files, Preview, Terminal.
 
-mod context;
+mod jobs;
 mod debugger;
 mod file_icons;
 mod files;
@@ -20,7 +20,7 @@ use gpui_kit::component::{Icon, Sizable as _};
 use gpui_kit::prelude::*;
 use gpui_kit::{ClipboardItem, Context, Entity, SharedString, Window, div, img, px};
 
-pub use self::context::ContextView;
+pub use self::jobs::JobRow;
 use self::debugger::DebuggerView;
 use self::files::Content;
 use self::git::{ChangeKind, Snapshot};
@@ -107,8 +107,8 @@ pub struct Rail {
     terminal: Option<Entity<TerminalView>>,
     /// Started the first time the tab is opened; it reads the project's debug session while it exists.
     debug: Option<Entity<DebuggerView>>,
-    /// The active chat's context window, pushed in by the app; `None` when there is nothing to show.
-    context: Option<ContextView>,
+    /// The active chat's running background jobs, pushed in by the app.
+    jobs: Vec<JobRow>,
     /// What the newest run changed, with the means to undo it.
     changes: Option<vivianne_runtime::checkpoints::LastRun>,
     /// The newest run per file with line counts; preferred over `changes` for what is listed.
@@ -139,7 +139,7 @@ impl Rail {
             git,
             terminal: None,
             debug: None,
-            context: None,
+            jobs: Vec::new(),
             changes: None,
             summary: None,
             open_apps: vivianne_tools::open_apps::list(),
@@ -321,10 +321,10 @@ impl Rail {
             ))
     }
 
-    /// Shows the active chat's context window. Redraws only when it changed.
-    pub fn set_context(&mut self, context: Option<ContextView>, cx: &mut Context<Self>) {
-        if self.context != context {
-            self.context = context;
+    /// Shows the active chat's running jobs. Redraws only when something changed.
+    pub fn set_jobs(&mut self, jobs: Vec<JobRow>, cx: &mut Context<Self>) {
+        if self.jobs != jobs {
+            self.jobs = jobs;
             cx.notify();
         }
     }
@@ -578,19 +578,12 @@ impl Rail {
     }
 
     fn overview(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let context_closed = self.collapsed.contains("context");
         div()
             .flex()
             .flex_col()
             // The first section's top rule would sit right under the tabs: it is clipped away.
             .mt(px(-1.0))
-            .children(self.context.as_ref().map(|view| {
-                context::card(
-                    view,
-                    context_closed,
-                    cx.listener(|rail, _e, _w, cx| rail.toggle_section("context", cx)),
-                )
-            }))
+            .children(jobs::section_of(&self.jobs))
             .children(self.last_run(cx))
             .children(self.dev_server(cx))
             .child(self.version_control(cx))

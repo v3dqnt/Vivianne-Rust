@@ -179,6 +179,10 @@ fn resolve_number(
 pub struct Resolved {
     pub max_agent_steps: Setting<usize>,
     pub max_tool_result_bytes: Setting<usize>,
+    /// The standing file sandbox mode; never settable by a repository.
+    pub sandbox: Setting<Option<String>>,
+    /// The shared task board for an agent and its subagents; never settable by a repository.
+    pub team: Setting<bool>,
     /// What the per-run change recorder may spend; none of these can be set by a repository's `.viv.json`.
     pub changes: ChangeSettings,
     pub warnings: Vec<String>,
@@ -273,7 +277,40 @@ pub fn resolve_with(
             defaults.output_max_bytes,
         ),
     };
+    let on = |text: &str| matches!(text.trim(), "1" | "true" | "on");
+    let team = if let Some(value) = env("VIV_TEAM") {
+        Setting {
+            value: on(&value),
+            origin: Origin::Env("VIV_TEAM".to_owned()),
+        }
+    } else if let Some(value) = settings["workspaces"][&ws]["team"].as_bool() {
+        Setting {
+            value,
+            origin: Origin::WorkspaceSettings,
+        }
+    } else if let Some(value) = settings["team"].as_bool() {
+        Setting {
+            value,
+            origin: Origin::Settings,
+        }
+    } else {
+        Setting {
+            value: false,
+            origin: Origin::Default,
+        }
+    };
+    let sandbox = if let Some(value) = env("VIV_SANDBOX") {
+        Setting { value: Some(value), origin: Origin::Env("VIV_SANDBOX".to_owned()) }
+    } else if let Some(value) = settings["workspaces"][&ws]["sandbox"].as_str() {
+        Setting { value: Some(value.to_owned()), origin: Origin::WorkspaceSettings }
+    } else if let Some(value) = settings["sandbox"].as_str() {
+        Setting { value: Some(value.to_owned()), origin: Origin::Settings }
+    } else {
+        Setting { value: None, origin: Origin::Default }
+    };
     Resolved {
+        sandbox,
+        team,
         changes,
         max_agent_steps: resolve_number(
             "max_agent_steps",
@@ -307,6 +344,16 @@ pub fn resolve(workspace: &Path, flag_steps: Option<usize>) -> Resolved {
 #[must_use]
 pub fn list(resolved: &Resolved) -> Vec<(&'static str, String, String)> {
     vec![
+        (
+            "team",
+            resolved.team.value.to_string(),
+            resolved.team.origin.to_string(),
+        ),
+        (
+            "sandbox",
+            resolved.sandbox.value.clone().unwrap_or_else(|| "danger-full-access".to_owned()),
+            resolved.sandbox.origin.to_string(),
+        ),
         (
             "max_agent_steps",
             resolved.max_agent_steps.value.to_string(),
@@ -476,7 +523,8 @@ mod tests {
         );
         assert_eq!(low.max_tool_result_bytes.value, MIN_RESULT_BYTES);
         let listed = list(&low);
-        assert_eq!(listed.len(), 7);
+        assert_eq!(listed.len(), 9);
+        assert!(listed.iter().any(|(k, ..)| *k == "sandbox"));
         assert!(
             listed.iter().any(|(k, _, o)| *k == "max_tool_result_bytes"
                 && o.contains("VIV_MAX_TOOL_RESULT_BYTES"))

@@ -128,6 +128,9 @@ fn build_agent(
     // The layered settings (flag, environment, settings.json, the repository's .viv.json, default) for this project.
     let settings = vivianne_runtime::config::resolve(workspace, None);
     vivianne_tools::results::set_limit(settings.max_tool_result_bytes.value);
+    if let Some(warning) = vivianne_runtime::surface::prepare(&mut tools, workspace, &settings) {
+        vivianne_core::debuglog::log("app", warning);
+    }
     for warning in &settings.warnings {
         vivianne_core::debuglog::log("app", warning.clone());
     }

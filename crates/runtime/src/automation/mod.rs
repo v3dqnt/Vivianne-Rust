@@ -138,14 +138,13 @@ fn list_folder(dir: &str) -> Vec<(String, u64)> {
         .collect()
 }
 
-/// The cron crate wants six fields (seconds first); the familiar five get a `0` seconds column.
+/// The familiar five fields are read as standard cron (Sunday is 0 or 7, Monday 1); six or seven go to the cron crate as
+/// they are, which counts days of the week from Sunday as 1.
 fn schedule(expression: &str) -> Option<Schedule> {
-    let text = if expression.split_whitespace().count() == 5 {
-        format!("0 {}", expression.trim())
-    } else {
-        expression.trim().to_owned()
-    };
-    Schedule::from_str(&text).ok()
+    if expression.split_whitespace().count() == 5 {
+        return crate::schedule::domain::cron_schedule(expression).ok();
+    }
+    Schedule::from_str(expression.trim()).ok()
 }
 
 #[must_use]
@@ -370,6 +369,20 @@ mod tests {
         }
         for bad in ["not a cron", "99 99 99 99 99", ""] {
             assert!(!is_valid_cron(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_weekday_in_five_field_cron_is_the_standard_one() {
+        use chrono::{Datelike as _, Timelike as _, Weekday};
+        // "1" is Monday in cron, whatever the day the search starts on, and the time is the user's own.
+        let start: DateTime<Utc> = "2026-05-03T00:00:00Z".parse().expect("time");
+        for (expression, day) in [("0 12 * * 1", Weekday::Mon), ("0 12 * * 0", Weekday::Sun), ("0 12 * * 5", Weekday::Fri)] {
+            let next = next_run_after(expression, start).expect("valid");
+            let local = DateTime::from_timestamp_millis(i64::try_from(next).expect("fits"))
+                .expect("time")
+                .with_timezone(&Local);
+            assert_eq!((local.weekday(), local.hour()), (day, 12), "{expression}");
         }
     }
 

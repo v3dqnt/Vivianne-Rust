@@ -247,6 +247,7 @@ mod tests {
                 ),
                 Message::tool_result("c", "password=hunter2 ok".to_owned()),
             ],
+            parent: None,
         }
     }
 

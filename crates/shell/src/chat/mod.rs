@@ -4,6 +4,7 @@ mod composer;
 mod items;
 mod models;
 mod own_tools;
+mod run;
 mod session;
 mod thread_usage;
 mod toolcalls;
@@ -30,7 +31,7 @@ use crate::theme::{self, color};
 use composer::{Composer, Mode, Thinking, compose_message, display_message};
 use items::{Change, Item, apply};
 use models::{ModelChoice, Picker, choices};
-use session::{Finished, Run, Session};
+use session::{Finished, Session};
 
 pub use session::{RESUME_PROMPT, Session as ChatSession};
 
@@ -76,8 +77,6 @@ pub struct ChatView {
     folded_tools: HashSet<String>,
     /// What this thread has used, shown in the status row. Read again after each reply.
     thread_usage: Option<vivianne_ai::inference::usage_store::DayUsage>,
-    /// Where the context window goes, worked out when the history or the mode changes (not on every redraw).
-    context: Option<vivianne_runtime::context::Breakdown>,
     /// The thread's name and who gave it (`user` or `auto`); `None` until something has been said.
     title: Option<(String, &'static str)>,
     /// What the newest run changed in the project, for the side panel and for undoing it.
@@ -158,7 +157,6 @@ impl ChatView {
             }
         })
         .detach();
-        let context = session.as_ref().ok().and_then(Session::breakdown);
         Self {
             items: Vec::new(),
             composer,
@@ -173,7 +171,6 @@ impl ChatView {
             running: false,
             folded_tools: HashSet::new(),
             thread_usage: None,
-            context,
             title: None,
             changes: None,
             summary: None,
@@ -601,32 +598,7 @@ impl ChatView {
         self.composer
             .input
             .update(cx, |input, cx| input.clean(window, cx));
-        self.running = true;
-        let Run { mut events, done } = run;
-        cx.spawn_in(window, async move |this, cx| {
-            while let Some(first) = events.recv().await {
-                let mut batch = vec![first];
-                while let Ok(more) = events.try_recv() {
-                    batch.push(more);
-                }
-                if this
-                    .update(cx, |chat, cx| chat.apply_events(&batch, cx))
-                    .is_err()
-                {
-                    return;
-                }
-                cx.background_executor().timer(EVENT_BATCH_INTERVAL).await;
-            }
-            // No answer means the run's task died; the chat must not stay "working" for ever.
-            let finished = done.await.ok();
-            this.update_in(cx, |chat, window, cx| {
-                chat.finish(finished, cx);
-                chat.next_step(window, cx);
-            })
-            .ok();
-        })
-        .detach();
-        cx.notify();
+        self.follow(run, window, cx);
     }
 
     /// What the person chose on a notification.
@@ -789,14 +761,11 @@ impl ChatView {
         );
     }
 
-    /// Works out where the context window goes. Kept as it was while a run owns the history.
+    /// Tells the agent how large the chosen model's window is, so it condenses before the window fills.
     fn refresh_context(&mut self) {
         let window = self.window();
         if let Ok(session) = &self.session {
             session.set_context_window(window);
-            if let Some(parts) = session.breakdown() {
-                self.context = Some(parts);
-            }
         }
     }
 
@@ -806,20 +775,6 @@ impl ChatView {
             .iter()
             .find(|m| m.provider == self.selection.provider && m.id == self.selection.model)
             .and_then(|m| m.context_window)
-    }
-
-    /// What the side panel shows about the window. `None` for a coding agent, which keeps its own conversation.
-    #[must_use]
-    pub fn context(&self) -> Option<crate::rail::ContextView> {
-        let window = self.window();
-        let own = self.selection.provider != models::AGENT_PROVIDER;
-        self.context
-            .filter(|_| own)
-            .map(|breakdown| crate::rail::ContextView {
-                breakdown,
-                window,
-                mode: self.composer.mode,
-            })
     }
 
     /// Reads what the thread has used so far, for the status row. Everything the turn spent was recorded before
@@ -866,6 +821,26 @@ impl ChatView {
         self.title = Some((name.to_owned(), vivianne_runtime::title::USER));
         self.steps = steps.into();
         self.ask(prompt, window, cx);
+    }
+
+    /// Says something in the thread that is not part of the conversation (an export finished, say).
+    pub fn notify_user(&mut self, text: String, cx: &mut Context<Self>) {
+        self.push_item(Item::Notice(text), cx);
+    }
+
+    /// Sends a scheduled task's message here; a conversation it just made takes the task's name.
+    pub fn run_scheduled(
+        &mut self,
+        title: &str,
+        message: &str,
+        new: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if new {
+            self.title = Some((title.to_owned(), vivianne_runtime::title::USER));
+        }
+        self.ask(message, window, cx);
     }
 
     /// The next step of an automation, when the reply it waited for is done. A step that asks first is put in the
@@ -1073,6 +1048,7 @@ impl ChatView {
             mode: self.composer.mode,
             updated_at: vivianne_runtime::store::now(),
             history: history.to_vec(),
+            parent: None,
         };
         // A failed save is not worth interrupting anyone for: the next turn saves again.
         crate::backend::spawn(async move { vivianne_runtime::store::save(&thread) });

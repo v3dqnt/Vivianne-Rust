@@ -1,4 +1,4 @@
-//! The app's picture files: Kit's icon set, plus the company and app logos for the Providers page. The logos are
+//! The app's picture files: Iconoir icons over Kit's icon set (see `icons`), plus the company and app logos for the Providers page. The logos are
 //! single-colour marks (from the open Simple Icons set, CC0) kept in `assets/logos/` and compiled in; they are drawn
 //! in the text colour, so they follow the theme. A name with no mark gets a monogram instead (see `logo`).
 
@@ -72,7 +72,7 @@ pub fn logo_path(name: &str) -> Option<String> {
         .then(|| format!("logos/{name}.svg"))
 }
 
-/// Kit's icons, and the logos.
+/// The icons and the logos.
 pub struct Assets {
     kit: gpui_kit::assets::AllAssets,
 }
@@ -96,6 +96,9 @@ impl AssetSource for Assets {
                 .iter()
                 .find(|(n, _)| *n == name)
                 .map(|(_, bytes)| Cow::Borrowed(*bytes)));
+        }
+        if let Some(bytes) = crate::icons::load(path) {
+            return Ok(Some(Cow::Borrowed(bytes)));
         }
         self.kit.load(path)
     }
