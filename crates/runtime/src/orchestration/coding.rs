@@ -182,6 +182,7 @@ mod tests {
             provider: None,
             confined: false,
             depth: 0,
+            member: None,
         }
     }
 

@@ -43,6 +43,13 @@ pub fn prepare_child(
     toolbox.add(tools::ScheduleEdit(schedules));
     let (mode, warning) = mode_from_setting(settings.sandbox.value.as_deref());
     toolbox.confinement().set(mode);
+    // Only when asked for: four more tools in every request.
+    if settings.team.value {
+        let boards = orchestration::team::Store::standard();
+        for kind in orchestration::team::Kind::ALL {
+            toolbox.add(orchestration::team::TeamTool(kind, boards.clone()));
+        }
+    }
     toolbox.jobs().keep_output();
     warning
 }
@@ -84,6 +91,16 @@ mod tests {
             !toolbox.confinement().is_confined(),
             "nothing is confined unless asked"
         );
+        let has_board = |t: &Toolbox| t.get("team_task_update").is_some();
+        assert!(!has_board(&toolbox), "off unless asked for");
+        settings.team.value = true;
+        let mut team = Toolbox::coding(&dir);
+        let _ = prepare(&mut team, &dir, &settings);
+        assert!(has_board(&team));
+        let mut child = Toolbox::coding(&dir);
+        let _ = prepare_child(&mut child, &dir, &settings);
+        assert!(has_board(&child) && child.get("task").is_none());
+        settings.team.value = false;
         settings.sandbox.value = Some("read-only".to_owned());
         let mut confined = Toolbox::coding(&dir);
         let _ = prepare(&mut confined, &dir, &settings);

@@ -23,7 +23,7 @@ A permission request nobody answers is denied, never allowed (R4). Test the serv
 |---|---|---|---|
 | 1 | `guard` | 321 | Compare with `attempts.rs` and the agent's tool timeout first. |
 | 2 | `subagent` | 9 900 | Gap table against `orchestration`; keep existing tool names where one exists. No unattended permission bypass for Claude Code or Codex by default. Check whether `subagent-acp` against `viv acp` covers `dsh-sdk`. |
-| 3 | `team` | 1 340 | Needs 2. |
+| 3 | `team` | 1 340 | **Done, narrowed** (`docs/team-gaps.md`). |
 | 4 | `acp` server | 1 780 | Steps 2 and 3 of ACP v3. |
 | 5 | everything else | several hundred thousand | One group at a time, each chosen with the user; much of it (`client`, `api`, `typert`, `test-support`, `boot`) belongs to the original's TypeScript host and has no counterpart. |
 

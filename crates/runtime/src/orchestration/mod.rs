@@ -11,6 +11,7 @@ mod metering;
 mod profiles;
 mod spawner;
 mod subagents;
+pub mod team;
 mod threads;
 mod tools;
 
@@ -30,7 +31,7 @@ pub use coding::{CodingAgents, CodingJob, Installed};
 pub use profiles::{Profile, profiles};
 pub use spawner::Standard as StandardSpawner;
 pub(crate) use subagents::stop_all;
-pub use subagents::{Handle, Registry, Status, start_coding};
+pub use subagents::{Handle, Registry, Start, Status, start, start_coding};
 pub use threads::{AskThread, MessageThread, SpawnThread};
 pub use tools::{KillTask, ListSubagentProfiles, Task, TaskOutput, WaitTasks};
 
@@ -52,6 +53,8 @@ pub struct Caller {
     pub provider: Option<ParentProvider>,
     /// A sandbox mode is standing.
     pub confined: bool,
+    /// The subagent this is, when it is one; `None` is the conversation's own agent.
+    pub member: Option<Member>,
     /// How many agents deep: 0 is a thread's own agent, 1 a subagent it started.
     pub depth: usize,
 }
@@ -65,6 +68,19 @@ pub async fn scope<F: Future>(caller: Caller, work: F) -> F::Output {
 #[must_use]
 pub fn caller() -> Option<Caller> {
     CALLER.try_with(Clone::clone).ok()
+}
+
+/// A subagent, as the others know it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Member {
+    pub id: String,
+    pub name: String,
+}
+
+/// A conversation id for a surface that keeps none of its own: never one that was used before.
+#[must_use]
+pub fn new_thread_id() -> String {
+    uuid::Uuid::new_v4().to_string()
 }
 
 /// What a subagent's agent is built to be.

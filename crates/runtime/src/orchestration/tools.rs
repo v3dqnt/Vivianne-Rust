@@ -432,6 +432,7 @@ mod delegate_tests {
             provider: None,
             confined,
             depth: 0,
+            member: None,
         };
         let args = json!({ "description": "d", "prompt": "p", "agent": "claude-acp" });
         let out = scope(caller, Task.execute(&args, "")).await;
@@ -486,6 +487,7 @@ mod real_agent_tests {
             provider: None,
             confined: false,
             depth: 0,
+            member: None,
         };
         let args = json!({
             "description": "copy the code word",

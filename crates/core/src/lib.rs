@@ -64,7 +64,7 @@ pub enum Mode {
 
 /// Tools that only look. Anything not named here (a new tool, an editing one such as `lsp_edit`) counts as one that
 /// changes things: a list of what is safe fails closed, a list of what is dangerous fails open.
-const LOOK_ONLY_TOOLS: [&str; 29] = [
+const LOOK_ONLY_TOOLS: [&str; 33] = [
     "debug",
     "read",
     "ls",
@@ -83,6 +83,12 @@ const LOOK_ONLY_TOOLS: [&str; 29] = [
     "task_output",
     "wait_tasks",
     "list_subagent_profiles",
+    // The task board is the agents' own list: changing it changes no file of the project, and a read-only subagent
+    // has to be able to claim and complete its task.
+    "team_task_create",
+    "team_task_list",
+    "team_task_get",
+    "team_task_update",
     "list_automations",
     // Reads a result that was too large to show; it changes nothing.
     "read_tool_result",

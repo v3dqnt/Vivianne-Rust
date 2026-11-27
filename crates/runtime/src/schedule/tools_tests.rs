@@ -23,6 +23,7 @@ fn from(depth: usize) -> Caller {
         provider: None,
         confined: false,
         depth,
+        member: None,
     }
 }
 

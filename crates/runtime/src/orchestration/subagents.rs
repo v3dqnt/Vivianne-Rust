@@ -261,6 +261,10 @@ pub fn start(
     let child = Caller {
         depth: caller.depth + 1,
         mode: request.spec.mode,
+        member: Some(super::Member {
+            id: handle.id.clone(),
+            name: handle.name.clone(),
+        }),
         ..caller.clone()
     };
     let driver = handle.clone();

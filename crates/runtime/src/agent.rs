@@ -273,6 +273,7 @@ impl Agent {
             )),
             confined: self.tools.confinement().is_confined(),
             depth: 0,
+            member: None,
         })
     }
 
@@ -378,6 +379,13 @@ impl Agent {
             .describe(self.tools.working_directory().root())
         {
             sections.set("sandbox-policy", order::CONTEXT + 40, policy);
+        }
+        if self.tools.get("team_task_list").is_some() {
+            sections.set(
+                "team",
+                order::CONTEXT + 46,
+                crate::orchestration::team::POLICY,
+            );
         }
         if self.tools.get("job_output").is_some() {
             sections.set(
