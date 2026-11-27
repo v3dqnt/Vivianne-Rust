@@ -95,6 +95,11 @@ fn build_agent(
     let mut tools = Toolbox::coding(workspace);
     tools.add(vivianne_runtime::automation::CreateAutomation);
     tools.add(vivianne_runtime::automation::ListAutomations);
+    let schedules = vivianne_runtime::schedule::store::Store::standard();
+    tools.add(vivianne_runtime::schedule::tools::ScheduleCreate(schedules.clone()));
+    tools.add(vivianne_runtime::schedule::tools::ScheduleList(schedules.clone()));
+    tools.add(vivianne_runtime::schedule::tools::ScheduleView(schedules.clone()));
+    tools.add(vivianne_runtime::schedule::tools::ScheduleEdit(schedules));
     tools.add(vivianne_runtime::automation::DeleteAutomation);
     tools.add(vivianne_runtime::automation::SetAutomationEnabled);
     let root = workspace.display().to_string();

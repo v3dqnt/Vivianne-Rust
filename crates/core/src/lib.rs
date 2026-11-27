@@ -64,7 +64,7 @@ pub enum Mode {
 
 /// Tools that only look. Anything not named here (a new tool, an editing one such as `lsp_edit`) counts as one that
 /// changes things: a list of what is safe fails closed, a list of what is dangerous fails open.
-const LOOK_ONLY_TOOLS: [&str; 22] = [
+const LOOK_ONLY_TOOLS: [&str; 24] = [
     "debug",
     "read",
     "ls",
@@ -92,6 +92,9 @@ const LOOK_ONLY_TOOLS: [&str; 22] = [
     "run_code",
     // Moves where relative paths start, inside the project; changes no file.
     "working_directory",
+    // Reads the scheduled tasks; creating and editing one are changes and ask.
+    "schedule_list",
+    "schedule_view",
 ];
 
 /// The tools of the `computer` MCP server (agent-desktop), by public name: `mcp__computer__desktop_<tool>`.

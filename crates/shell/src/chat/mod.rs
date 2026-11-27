@@ -868,6 +868,21 @@ impl ChatView {
         self.ask(prompt, window, cx);
     }
 
+    /// Sends a scheduled task's message here; a conversation it just made takes the task's name.
+    pub fn run_scheduled(
+        &mut self,
+        title: &str,
+        message: &str,
+        new: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if new {
+            self.title = Some((title.to_owned(), vivianne_runtime::title::USER));
+        }
+        self.ask(message, window, cx);
+    }
+
     /// The next step of an automation, when the reply it waited for is done. A step that asks first is put in the
     /// composer for the person to send instead.
     fn next_step(&mut self, window: &mut Window, cx: &mut Context<Self>) {

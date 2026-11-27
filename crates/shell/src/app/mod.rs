@@ -241,6 +241,60 @@ impl AppView {
         cx.notify();
     }
 
+    /// A scheduled task is due: it is sent to the conversation it names (waiting while that one is busy or still
+    /// opening) or to a new one, and only then marked as delivered.
+    fn run_scheduled(
+        &mut self,
+        due: vivianne_runtime::schedule::store::Due,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use vivianne_runtime::schedule::{domain, store::Store};
+        let task = &due.entry.task;
+        let reused = match &task.target {
+            domain::Target::Session { session_id } => Some(session_id.clone()),
+            domain::Target::NewOnce { session_id, .. } if !session_id.is_empty() => {
+                Some(session_id.clone())
+            }
+            _ => None,
+        };
+        let index = match reused {
+            Some(id) => {
+                let open = self
+                    .threads
+                    .iter()
+                    .position(|t| t.chat.read(cx).thread_id() == Some(id.as_str()));
+                match open {
+                    Some(index) => index,
+                    None if vivianne_runtime::store::load(&id).is_some() => {
+                        // Opens in the background; the next tick sends it.
+                        self.open_saved(&id, window, cx);
+                        return;
+                    }
+                    // The conversation it named is gone: it gets a new one.
+                    None => self.add_thread(window, cx),
+                }
+            }
+            None => self.add_thread(window, cx),
+        };
+        let chat = self.threads[index].chat.clone();
+        if chat.read(cx).is_running() {
+            return;
+        }
+        let message = domain::reminder(&task.id, &task.prompt, &domain::iso(due.occurrence_at));
+        let (title, empty) = (task.title.clone(), chat.read(cx).is_empty());
+        chat.update(cx, |chat, cx| {
+            chat.run_scheduled(&title, &message, empty, window, cx);
+        });
+        let session = chat.read(cx).thread_id().map(str::to_owned);
+        if let Some(session) = session {
+            let now = i64::try_from(vivianne_runtime::automation::now_ms()).unwrap_or(i64::MAX);
+            // A task changed meanwhile keeps its new form; this delivery is simply not recorded.
+            let _ = Store::standard().delivered(&due, &session, now);
+        }
+        cx.notify();
+    }
+
     /// Looks every half minute for automations that are due and runs them.
     fn start_scheduler(window: &mut Window, cx: &mut Context<Self>) {
         cx.spawn_in(window, async move |this, cx| {
@@ -255,6 +309,23 @@ impl AppView {
                         .update_in(cx, |app, window, cx| {
                             for fired in due {
                                 app.run_automation(fired, window, cx);
+                            }
+                        })
+                        .is_err()
+                {
+                    return;
+                }
+                let scheduled = crate::backend::spawn(async {
+                    let now = i64::try_from(vivianne_runtime::automation::now_ms()).unwrap_or(i64::MAX);
+                    vivianne_runtime::schedule::store::Store::standard().due(now)
+                });
+                if let Some(scheduled) = scheduled
+                    && let Ok(Ok(scheduled)) = scheduled.await
+                    && !scheduled.is_empty()
+                    && this
+                        .update_in(cx, |app, window, cx| {
+                            for due in scheduled {
+                                app.run_scheduled(due, window, cx);
                             }
                         })
                         .is_err()
