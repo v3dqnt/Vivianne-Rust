@@ -29,9 +29,10 @@ The `claude-code` and `codex` one-shot providers (reach those agents through `ag
 
 - A subagent's usage is recorded under the thread that started it. A run limit is checked when the parent's own usage arrives, so subagents can overshoot it while the parent waits.
 - Stopping a turn stops every subagent the thread still has working, including ones started in earlier turns.
+- Whether that run reported its usage is not known: usage is buffered, and the test process ended before a flush. A one-shot `viv` can lose a subagent's usage the same way.
 - Subagents end with the process; a one-shot `viv` that does not wait loses them.
 - A coding agent runs its own tools: Vivianne's sandbox, change records and checkpoints do not cover what it does beyond the checkpoint around the whole turn.
 
 ## Tests
 
-Covered: refusal outside Auto mode and under a sandbox mode; a stopped turn stopping its subagent; finished, stopped and cut-off turns with a stand-in agent; Vivianne's ACP client driving `viv acp` in memory (allow writes, reject does not). Checked once by hand: the built `viv` running its own subagent against a stand-in model. **Never run with a real third-party coding agent.** The real delegation path (`Installed`) has never run. Not covered: usage recording, a stop during startup, the original's other cases (its tests were not translated).
+Covered: refusal outside Auto mode and under a sandbox mode; a stopped turn stopping its subagent; finished, stopped and cut-off turns with a stand-in agent; Vivianne's ACP client driving `viv acp` in memory (allow writes, reject does not). Checked once by hand: the built `viv` running its own subagent against a stand-in model. Run once with a real coding agent (`claude-acp`, 2026-11-27) through `task`: it read a note, wrote the answer file after its requests were allowed, and replied, in 243 seconds with 2 tool calls; why it took that long was not looked into. Rerun with the ignored test `a_real_coding_agent_does_a_task` (spends quota). No other coding agent has been tried. Not covered: usage recording, a stop during startup, the original's other cases (its tests were not translated).

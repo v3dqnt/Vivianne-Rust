@@ -24,7 +24,7 @@ pub(super) async fn record(thread: &str, spent: &Spent) {
         &usage,
         &spent.provider,
         &spent.model,
-        &format!("main:{thread}"),
+        &format!("task:{thread}"),
     )
     .await;
     crate::ledger::record_usage(

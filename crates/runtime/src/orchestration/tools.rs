@@ -459,3 +459,65 @@ mod delegate_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod real_agent_tests {
+    use serde_json::json;
+
+    use super::*;
+    use crate::orchestration::scope;
+
+    /// Spends the person's quota with that agent, so it runs only when asked for by name:
+    /// `VIV_TEST_CODING_AGENT=claude-acp cargo test -p vivianne-runtime a_real_coding_agent -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore = "needs a signed-in coding agent and spends its quota"]
+    async fn a_real_coding_agent_does_a_task() {
+        let Ok(agent) = std::env::var("VIV_TEST_CODING_AGENT") else {
+            return;
+        };
+        let dir = std::env::temp_dir().join(format!("viv-real-agent-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("note.txt"), "The code word is TANGERINE.\n").unwrap();
+        let caller = Caller {
+            thread: format!("real-agent-{}", std::process::id()),
+            mode: Mode::Auto,
+            folder: dir.clone(),
+            model: None,
+            provider: None,
+            confined: false,
+            depth: 0,
+        };
+        let args = json!({
+            "description": "copy the code word",
+            "prompt": "Read note.txt in the current folder. Write only the code word from it into a new file named answer.txt in the same folder. Do nothing else. Then reply with the word.",
+            "agent": agent,
+            "run_in_background": false
+        });
+        let started = std::time::Instant::now();
+        let out = scope(caller.clone(), Task.execute(&args, "")).await;
+        println!("took {}s", started.elapsed().as_secs());
+        println!("result: {}", out.content);
+        for handle in Registry::global().of(&caller.thread) {
+            println!("{}", handle.summary());
+        }
+        let wrote = std::fs::read_to_string(dir.join("answer.txt")).ok();
+        println!("answer.txt: {wrote:?}");
+        let files: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| Some(e.ok()?.file_name()))
+            .collect();
+        println!("files: {files:?}");
+        if wrote.is_none() {
+            for line in vivianne_providers::acp::trace_lines()
+                .iter()
+                .rev()
+                .take(25)
+                .rev()
+            {
+                println!("trace: {line}");
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(wrote.as_deref().map(str::trim), Some("TANGERINE"));
+    }
+}
