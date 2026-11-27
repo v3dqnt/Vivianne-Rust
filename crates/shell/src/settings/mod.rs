@@ -15,6 +15,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gpui_kit::component::WindowExt as _;
+use gpui_kit::component::group_box::GroupBoxVariant;
 use gpui_kit::component::setting::Settings;
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Window, div, px};
@@ -41,6 +42,7 @@ pub fn open(window: &mut Window, cx: &mut App) {
         let height = (f32::from(size.height) - 96.0).clamp(DIALOG_HEIGHT, 960.0);
         let settings = Settings::new("settings")
             .sidebar_width(px(SIDEBAR_WIDTH))
+            .with_group_variant(GroupBoxVariant::Outline)
             .pages(pages::all(&values));
         // No title bar: the sidebar carries the heading, and the sheet runs edge to edge under the close button.
         dialog

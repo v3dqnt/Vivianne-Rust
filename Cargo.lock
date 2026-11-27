@@ -9996,6 +9996,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "vivianne-hub"
+version = "0.0.1"
+dependencies = [
+ "bytes",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "rand 0.9.5",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+ "vivianne-projects",
+]
+
+[[package]]
 name = "vivianne-memory"
 version = "0.0.1"
 dependencies = [
@@ -10039,6 +10056,17 @@ dependencies = [
 [[package]]
 name = "vivianne-plugins"
 version = "0.0.1"
+
+[[package]]
+name = "vivianne-projects"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "vivianne-core",
+]
 
 [[package]]
 name = "vivianne-providers"

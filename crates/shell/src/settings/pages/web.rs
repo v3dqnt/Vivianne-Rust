@@ -29,12 +29,12 @@ const KEYED: [(&str, &str); 3] = [
 ];
 
 pub fn page(values: &Shared) -> SettingPage {
-    SettingPage::new("Web & browser")
+    let page = SettingPage::new("Web & browser")
         .icon(IconName::Globe)
         .description("How the agent searches the web and drives a browser.")
         .group(search_group(values))
-        .group(keys_group(values))
-        .group(browsers_group(values))
+        .group(keys_group(values));
+    super::browser::add_groups(page, values).group(browsers_group(values))
 }
 
 fn search_group(values: &Shared) -> SettingGroup {
@@ -96,7 +96,7 @@ fn keys_group(values: &Shared) -> SettingGroup {
 fn browsers_group(values: &Shared) -> SettingGroup {
     let list = values.clone();
     SettingGroup::new()
-        .title("Browsers")
+        .title("Your browsers")
         .description("The agent drives a browser through its extension. Connect one to let it open pages as you.")
         .item(SettingItem::render(move |_options, _window, _cx| {
             let browsers = list.borrow().browsers.clone();

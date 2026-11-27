@@ -7,6 +7,8 @@ cd "$(dirname "$0")/.."
 declare -A ALLOWED=(
   [ai]=""
   [core]=""
+  [projects]="core"
+  [hub]="projects"
   [attachments]="core"
   [context]="core"
   [plugins]=""

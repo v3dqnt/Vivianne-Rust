@@ -269,4 +269,4 @@ Documentation prose and original illustrations in the Docs, Base, Component, and
 
 ## Changes in this copy
 
-Vendored from gpui-component 0.9.1 for Vivianne's Settings dialog. Changed files only: `src/setting/settings.rs` (a flat sidebar: no nested group rows), `src/setting/page.rs` (page header and spacing), `src/group_box.rs` (group headings), `src/sidebar/menu.rs` (row size). Everything else is as published.
+Vendored from gpui-component 0.9.1 for Vivianne's Settings dialog. Changed files only: `src/setting/settings.rs` (a flat sidebar with labelled sections: no nested group rows), `src/setting/page.rs` (`section`, the "Settings / Page" header, a centred column), `src/setting/group.rs` (card rows with hairlines), `src/setting/item.rs` (row title weight), `src/group_box.rs` (group headings), `src/sidebar/menu.rs` (row size), `src/sidebar/group.rs` (no row for an empty label). Everything else is as published.

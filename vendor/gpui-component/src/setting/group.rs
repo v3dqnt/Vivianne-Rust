@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use gpui::{
     AnyElement, App, IntoElement, ParentElement as _, SharedString, StyleRefinement, Styled,
-    Window, prelude::FluentBuilder as _,
+    Window, div, prelude::FluentBuilder as _, px,
 };
 
 use crate::{
@@ -118,9 +118,36 @@ impl SettingGroup {
         window: &mut Window,
         cx: &mut App,
     ) -> impl IntoElement {
+        let variant = self.variant.unwrap_or(options.group_variant());
+        // On a card the rows run edge to edge with a hairline between them; without one they just stack.
+        let card = variant != GroupBoxVariant::Normal;
+        let divider = cx.theme().border;
+        let mut rows = Vec::new();
+        for (item_ix, item) in self.items.iter().enumerate() {
+            if !item.is_match(&query, cx) {
+                continue;
+            }
+            let row = item
+                .clone()
+                .render_item(&options.with_item_ix(item_ix), window, cx);
+            let first = rows.is_empty();
+            rows.push(
+                div()
+                    .w_full()
+                    .when(card, |this| this.px(px(20.)).py(px(16.)))
+                    .when(card && !first, |this| this.border_t_1().border_color(divider))
+                    .child(row),
+            );
+        }
+        let mut content = StyleRefinement::default();
+        if card {
+            content = content.p_0().gap_0().rounded(px(12.));
+        }
+
         GroupBox::new()
             .id(SharedString::from(format!("group-{}", options.group_ix())))
-            .with_variant(self.variant.unwrap_or(options.group_variant()))
+            .with_variant(variant)
+            .content_style(content)
             .when_some(self.title.clone(), |this, title| {
                 this.title(v_flex().gap_1().child(title).when_some(
                     self.description.clone(),
@@ -133,17 +160,8 @@ impl SettingGroup {
                     },
                 ))
             })
-            .gap_4()
-            .children(self.items.iter().enumerate().filter_map(|(item_ix, item)| {
-                if item.is_match(&query, cx) {
-                    Some(
-                        item.clone()
-                            .render_item(&options.with_item_ix(item_ix), window, cx),
-                    )
-                } else {
-                    None
-                }
-            }))
+            .when(!card, |this| this.gap_4())
+            .children(rows)
             .when_some(self.footer, |this, footer| this.footer(footer(window, cx)))
             .refine_style(&self.style)
     }

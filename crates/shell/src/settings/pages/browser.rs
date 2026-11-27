@@ -5,7 +5,6 @@
 use std::sync::Mutex;
 
 use gpui_kit::base::{Disableable as _, h_flex};
-use gpui_kit::component::IconName;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::setting::{SettingGroup, SettingItem, SettingPage};
@@ -39,14 +38,14 @@ fn state() -> std::sync::MutexGuard<'static, State> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-pub fn page(values: &Shared) -> SettingPage {
+/// The groups for the agent's own browser, shown on the Web & browser page.
+pub fn add_groups(page: SettingPage, values: &Shared) -> SettingPage {
     let values = values.clone();
-    SettingPage::new("Browser")
-        .icon(IconName::Globe)
-        .description("Let the agent open and use web pages. It works in a browser of its own, separate from yours: your logins, cookies and history are never shared with it.")
+    page
         .group(
             SettingGroup::new()
-                .title("Status")
+                .title("Agent browser")
+                .description("Let the agent open and use web pages. It works in a browser of its own, separate from yours: your logins, cookies and history are never shared with it.")
                 .item(SettingItem::render(|_o, _w, _cx| {
                     status().into_any_element()
                 })),

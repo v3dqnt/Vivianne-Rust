@@ -17,6 +17,9 @@ use crate::{
     v_flex,
 };
 
+/// The widest a page's groups grow; wider windows centre them.
+const CONTENT_MAX_WIDTH: gpui::Pixels = px(1040.);
+
 /// A setting page that can contain multiple setting groups.
 #[derive(Clone)]
 pub struct SettingPage {
@@ -24,6 +27,7 @@ pub struct SettingPage {
     resettable: bool,
     pub(super) default_open: bool,
     pub(super) title: SharedString,
+    pub(super) section: Option<SharedString>,
     pub(super) title_suffix: Option<Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>>,
     pub(super) description: Option<SharedString>,
     pub(super) groups: Vec<SettingGroup>,
@@ -37,11 +41,18 @@ impl SettingPage {
             resettable: true,
             default_open: false,
             title: title.into(),
+            section: None,
             title_suffix: None,
             description: None,
             groups: Vec::new(),
             header_style: StyleRefinement::default(),
         }
+    }
+
+    /// Set the sidebar section the page is listed under. Neighbouring pages with the same section share its label.
+    pub fn section(mut self, section: impl Into<SharedString>) -> Self {
+        self.section = Some(section.into());
+        self
     }
 
     /// Set the title of the setting page.
@@ -241,51 +252,67 @@ impl SettingPage {
             .id(ix)
             .size_full()
             .child(
-                v_flex()
-                    .px(px(32.))
-                    .pt(px(28.))
-                    .pb(px(12.))
-                    .gap(px(6.))
+                h_flex()
+                    .w_full()
+                    .flex_shrink_0()
+                    .h(px(56.))
+                    .pl(px(24.))
+                    // Room for the dialog's close button.
+                    .pr(px(52.))
+                    .justify_between()
+                    .border_b_1()
+                    .border_color(cx.theme().border)
                     .refine_style(&self.header_style)
                     .child(
                         h_flex()
-                            .justify_between()
+                            .gap_2()
+                            .text_size(px(15.))
+                            .child(
+                                div()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Settings"),
+                            )
+                            .child(div().text_color(cx.theme().muted_foreground).child("/"))
                             .child(
                                 h_flex()
                                     .gap_1()
-                                    .text_size(px(26.))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(cx.theme().foreground)
                                     .child(self.title.clone())
                                     .when_some(self.title_suffix.clone(), |this, suffix| {
                                         this.child(suffix(window, cx))
                                     }),
-                            )
-                            .when(self.is_resettable(&query, cx), |this| {
-                                this.child(
-                                    Button::new("reset")
-                                        .icon(IconName::Undo2)
-                                        .ghost()
-                                        .small()
-                                        .tooltip(t!("Settings.Reset All"))
-                                        .on_click({
-                                            let page = self.clone();
-                                            let query = query.clone();
-                                            move |_, window, cx| {
-                                                page.reset_all(&query, window, cx);
-                                            }
-                                        }),
-                                )
-                            }),
+                            ),
                     )
-                    .when_some(self.description.clone(), |this, description| {
+                    .when(self.is_resettable(&query, cx), |this| {
                         this.child(
-                            Label::new(description)
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground),
+                            Button::new("reset")
+                                .icon(IconName::Undo2)
+                                .label("Restore defaults")
+                                .ghost()
+                                .small()
+                                .tooltip(t!("Settings.Reset All"))
+                                .on_click({
+                                    let page = self.clone();
+                                    let query = query.clone();
+                                    move |_, window, cx| {
+                                        page.reset_all(&query, window, cx);
+                                    }
+                                }),
                         )
                     }),
             )
+            .when_some(self.description.clone(), |this, description| {
+                this.child(
+                    h_flex().w_full().justify_center().px(px(32.)).pt(px(18.)).child(
+                        div().w_full().max_w(CONTENT_MAX_WIDTH).child(
+                            Label::new(description)
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground),
+                        ),
+                    ),
+                )
+            })
             .child(
                 div()
                     .relative()
@@ -301,14 +328,17 @@ impl SettingPage {
                                 let (group_ix, group) = groups[visible_ix].clone();
                                 // Keep horizontal padding inside the list's clip bounds
                                 // so focus rings can extend beyond the group's edges.
-                                div()
+                                h_flex()
                                     .w_full()
+                                    .justify_center()
                                     .px(px(32.))
-                                    .child(group.py(px(14.)).render(
-                                        &query,
-                                        &options.with_page_ix(ix).with_group_ix(group_ix),
-                                        window,
-                                        cx,
+                                    .child(div().w_full().max_w(CONTENT_MAX_WIDTH).child(
+                                        group.py(px(14.)).render(
+                                            &query,
+                                            &options.with_page_ix(ix).with_group_ix(group_ix),
+                                            window,
+                                            cx,
+                                        ),
                                     ))
                                     .into_any_element()
                             }

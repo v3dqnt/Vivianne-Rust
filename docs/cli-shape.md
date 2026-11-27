@@ -59,3 +59,38 @@ Sending a message while the agent is working steers the run: the agent reads it 
 
 ## Change-recording settings
 `max_changed_files` (500), `max_changed_file_bytes` (2097152), `change_diff_timeout_ms` (100), `change_git_timeout_ms` (30000), `change_git_output_max_bytes` (8388608). Environment: `VIV_MAX_CHANGED_FILES`, `VIV_MAX_CHANGED_FILE_BYTES`, `VIV_CHANGE_DIFF_TIMEOUT_MS`, `VIV_CHANGE_GIT_TIMEOUT_MS`, `VIV_CHANGE_GIT_OUTPUT_MAX_BYTES`. Layers: environment, `settings.json` (workspace then top level), default; `.viv.json` cannot set them (R4.4). A value of 0 is raised to 1. Listed by `viv config list --show-origin`.
+
+## viv-hub (the shared-projects service)
+
+Commands (a usage error exits 2, a failure 1):
+
+- `viv-hub serve [--db FILE] [--addr HOST:PORT] [--tls-in-front]`: serves until Ctrl+C. Defaults: `viv-hub.db` here, `127.0.0.1:8787`. It speaks plain HTTP and refuses a non-loopback address without `--tls-in-front`.
+- `viv-hub token issue <user> [--db FILE] [--days N]`: prints a new token once (30 days by default, at most 365). `<user>` is letters, digits, `-`, `_`, `.`, at most 64. This is the operator's bootstrap; sign-in is not built.
+- `viv-hub token revoke <user> [--db FILE]`: removes all of a person's tokens.
+
+State: one SQLite file (`user_version` 1; a newer one is refused and left as it is), with its `-wal` and `-shm` files. No environment variables or settings.
+
+HTTP, JSON in and out. Every call but the directory needs `Authorization: Bearer <token>`. `Idempotency-Key` (1 to 64 letters, digits, hyphens) makes a repeated create or join request return the first result. Bodies are at most 64 KiB. Errors are `{"error": text}` with 400, 401, 403, 404, 408, 409, 413, 429, 500 or 503; a project the caller may not see answers like a missing one.
+
+| Call | Body |
+|---|---|
+| `GET /v1/directory?after=SLUG` | |
+| `GET /v1/me` | |
+| `POST /v1/projects` | `slug`, `name`, `summary?`, `visibility?`, `join_policy?` |
+| `GET /v1/projects/{id}` | |
+| `PUT /v1/projects/{id}/visibility` | `visibility` |
+| `PUT /v1/projects/{id}/lifecycle` | `lifecycle` |
+| `GET /v1/projects/{id}/members?after=USER` | |
+| `PUT /v1/projects/{id}/members/{user}/role` | `role` |
+| `PUT /v1/projects/{id}/members/{user}/status` | `status`, `block?` |
+| `POST /v1/projects/{id}/invitations` | `user`, `role` |
+| `POST /v1/projects/{id}/invitations/accept` | |
+| `POST /v1/projects/{id}/join-requests` | `note?` |
+| `GET /v1/projects/{id}/join-requests` | |
+| `POST /v1/join-requests/{id}/decide` | `revision`, `approve_as?` (absent rejects) |
+| `POST /v1/join-requests/{id}/withdraw` | |
+| `POST /v1/projects/{id}/owner/offer` | `user`, `confirmed` |
+| `POST /v1/projects/{id}/owner/accept` | |
+| `GET /v1/projects/{id}/audit` | |
+
+Values are snake case: visibility `public`, `private`; join policy `open`, `approval`, `invite_only`, `closed`; lifecycle `draft`, `active`, `archived`, `deletion_pending`; role `viewer`, `contributor`, `maintainer`, `admin`, `owner`; status `active`, `suspended`, `removed`.

@@ -59,7 +59,7 @@ impl<E: SidebarItem> SidebarItem for SidebarGroup<E> {
 
         v_flex()
             .relative()
-            .when(!self.collapsed, |this| {
+            .when(!self.collapsed && !self.label.is_empty(), |this| {
                 this.child(
                     h_flex()
                         .flex_shrink_0()
