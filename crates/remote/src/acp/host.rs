@@ -15,6 +15,15 @@ pub struct Built {
     pub model: String,
 }
 
+impl std::fmt::Debug for Built {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Built")
+            .field("provider", &self.provider)
+            .field("model", &self.model)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Saved conversations. Behind a trait so a test touches no real one (R7).
 pub trait Threads: Send + Sync {
     fn save(&self, thread: &SavedThread) -> Result<(), String>;
@@ -58,10 +67,13 @@ impl Threads for Standard {
     }
 }
 
+/// Builds the agent for a session's folder.
+pub type Build = Arc<dyn Fn(&Path) -> Result<Built, String> + Send + Sync>;
+
 /// How the server gets its agents and keeps its conversations.
 #[derive(Clone)]
 pub struct Host {
-    pub build: Arc<dyn Fn(&Path) -> Result<Built, String> + Send + Sync>,
+    pub build: Build,
     pub threads: Arc<dyn Threads>,
 }
 
@@ -71,25 +83,33 @@ impl std::fmt::Debug for Host {
     }
 }
 
-/// The record of a conversation after a turn.
+/// The record of a conversation after a turn. What the saved one already says about itself (its name, its mode,
+/// where it was branched from) is kept.
 pub(super) fn record(
     id: &str,
     folder: &str,
     built: (&str, &str),
     history: &[Message],
+    before: Option<&SavedThread>,
 ) -> SavedThread {
-    let (title, source) = title::decide(None, title::first_ask(history));
+    let (title, source) = before.filter(|t| !t.title.is_empty()).map_or_else(
+        || {
+            let (title, source) = title::decide(None, title::first_ask(history));
+            (title, source.to_owned())
+        },
+        |thread| (thread.title.clone(), thread.title_source.clone()),
+    );
     SavedThread {
         id: id.to_owned(),
-        workspace: folder.to_owned(),
+        workspace: before.map_or_else(|| folder.to_owned(), |t| t.workspace.clone()),
         title,
-        title_source: source.to_owned(),
+        title_source: source,
         provider: built.0.to_owned(),
         model: built.1.to_owned(),
-        mode: vivianne_core::Mode::Ask,
+        mode: before.map_or(vivianne_core::Mode::Ask, |t| t.mode),
         updated_at: store::now(),
         history: history.to_vec(),
-        parent: None,
+        parent: before.and_then(|t| t.parent.clone()),
     }
 }
 

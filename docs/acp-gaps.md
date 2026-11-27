@@ -16,7 +16,7 @@
 | Thought chunks, usage updates, configuration updates | **Not ported.** |
 | `session/request_permission` with one-shot choices | **Ported.** Only choosing "allow once" allows; a cancel, an error, anything else or a client that leaves is a no. |
 | `session/set_config_option` (model, reasoning effort) | **Not ported.** The model is the one `viv` is set to. |
-| MCP servers a session brings | **Not ported:** a non-empty list is refused. The person's own configured servers still apply. |
+| MCP servers a session brings | **Not ported:** the list is accepted, not mounted, and named on standard error. The person's own configured servers still apply. |
 | A prompt stays open while subagents run | **Not ported** beyond what the loop does itself. Background jobs end with their session and do not start turns. |
 
 Also: version 2 of the protocol is not served. A client that offers 2 is answered with 1.
@@ -25,4 +25,4 @@ Also: version 2 of the protocol is not served. A client that offers 2 is answere
 
 The original's `describe` blocks and ours: permission policy (covered: allow, reject, cancel, client leaving), bridge and prompt lifecycle (covered: one prompt at a time, cancel), codec (stop reasons only through the tests above), rich content (text and links; images refused), connection ownership and multi-session isolation (**not covered**), MCP mapping and model configuration (**not ported**), update projection (covered for the three kinds sent). The original's tests (about 3 500 lines) were not translated.
 
-Checked once by hand: the built `viv acp` against a local stand-in model, writing a file after being asked. No third-party ACP client has been connected to it.
+Checked once by hand: the built `viv acp` against a local stand-in model, writing a file after being asked. No third-party ACP client has been connected to it, and **neither has Vivianne's own** (`providers/src/acp` only starts agents from the registry): that is the first thing to test when ACP delegation is built.

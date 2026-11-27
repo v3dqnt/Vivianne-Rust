@@ -69,14 +69,14 @@ impl Client {
         let _ = self.out.send(message);
     }
 
-    fn answer(&self, id: &Value, result: Result<Value, Refused>) {
+    fn answer(&self, id: &Value, result: &Result<Value, Refused>) {
         self.send(match result {
             Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
             Err(e) => json!({ "jsonrpc": "2.0", "id": id, "error": { "code": e.code, "message": e.message } }),
         });
     }
 
-    fn update(&self, session: &str, update: Value) {
+    fn update(&self, session: &str, update: &Value) {
         self.send(json!({
             "jsonrpc": "2.0",
             "method": "session/update",
@@ -85,7 +85,7 @@ impl Client {
     }
 
     /// Sends a request; the response, or nothing if the client goes first.
-    fn request(&self, method: &str, params: Value) -> oneshot::Receiver<Value> {
+    fn request(&self, method: &str, params: &Value) -> oneshot::Receiver<Value> {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
         lock(&self.waiting).insert(id, tx);
@@ -154,7 +154,7 @@ where
         let Ok(message) = serde_json::from_str::<Value>(&line) else {
             client.answer(
                 &Value::Null,
-                Err(Refused {
+                &Err(Refused {
                     code: PARSE_ERROR,
                     message: "not a JSON message".to_owned(),
                 }),
@@ -190,7 +190,7 @@ where
                 message: format!("method not found: {other}"),
             }),
         };
-        client.answer(id, result);
+        client.answer(id, &result);
     }
     client.abandon();
     sessions.shut_down().await;

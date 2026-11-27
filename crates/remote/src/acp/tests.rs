@@ -22,7 +22,7 @@ struct Scripted(Replies);
 
 #[async_trait]
 impl Provider for Scripted {
-    fn id(&self) -> &str {
+    fn id(&self) -> &'static str {
         "scripted"
     }
 
@@ -406,7 +406,6 @@ async fn what_a_session_cannot_be_made_from_is_refused() {
     for params in [
         json!({ "cwd": "relative", "mcpServers": [] }),
         json!({ "cwd": dir.join("nowhere"), "mcpServers": [] }),
-        json!({ "cwd": dir, "mcpServers": [{ "name": "x", "command": "y" }] }),
         json!({}),
     ] {
         assert_eq!(
@@ -422,5 +421,58 @@ async fn what_a_session_cannot_be_made_from_is_refused() {
         )
         .await;
     assert_eq!(unknown["error"]["code"], -32602);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn a_brought_mcp_list_does_not_stop_a_session() {
+    let dir = folder("mcp");
+    let (mut peer, _, _server) = start(Vec::new());
+    let made = peer
+        .ask(
+            "session/new",
+            json!({ "cwd": dir, "mcpServers": [{ "name": "x", "command": "y" }] }),
+        )
+        .await;
+    assert!(made["result"]["sessionId"].is_string(), "{made}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn a_prompt_keeps_the_persons_title_and_what_was_added_elsewhere() {
+    let dir = folder("keep");
+    let (mut peer, memory, _server) = start(Vec::new());
+    let session = new_session(&mut peer, &dir).await;
+    peer.ask(
+        "session/prompt",
+        json!({ "sessionId": session, "prompt": words("first") }),
+    )
+    .await;
+    // The app renames the thread and adds to it while the session is idle.
+    let mut saved = memory.load(&session).expect("saved");
+    saved.title = "Mine".to_owned();
+    saved.title_source = "user".to_owned();
+    saved.mode = vivianne_core::Mode::Plan;
+    saved.history.push(vivianne_core::Message::new(
+        vivianne_core::Role::User,
+        "added in the app",
+    ));
+    memory.save(&saved).unwrap();
+    peer.ask(
+        "session/prompt",
+        json!({ "sessionId": session, "prompt": words("second") }),
+    )
+    .await;
+    let after = memory.load(&session).expect("saved");
+    assert_eq!(
+        (after.title.as_str(), after.title_source.as_str()),
+        ("Mine", "user")
+    );
+    assert_eq!(after.mode, vivianne_core::Mode::Plan);
+    let said: Vec<&str> = after.history.iter().map(|m| m.text.as_str()).collect();
+    assert!(
+        said.contains(&"added in the app") && said.contains(&"second"),
+        "{said:?}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -11,6 +11,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use vivianne_core::{Message, Mode, Role, Thinking};
+use vivianne_runtime::store::SavedThread;
 use vivianne_runtime::{Agent, AgentEvent};
 
 use super::host::{Host, record};
@@ -54,12 +55,14 @@ fn folder(params: &Value) -> Result<PathBuf, Refused> {
     if !path.is_dir() {
         return Err(Refused::params(format!("cwd is not a folder: {cwd}")));
     }
-    // Servers of a session's own are not mounted: say so rather than run without them.
-    if params["mcpServers"]
-        .as_array()
-        .is_some_and(|servers| !servers.is_empty())
-    {
-        return Err(Refused::params("per-session MCP servers are not supported"));
+    // Servers of a session's own are not mounted. A client sends the person's list as a matter of course (Vivianne's
+    // own does), so the session goes ahead and says what it goes without.
+    if let Some(servers) = params["mcpServers"].as_array().filter(|s| !s.is_empty()) {
+        let names: Vec<&str> = servers.iter().filter_map(|s| s["name"].as_str()).collect();
+        eprintln!(
+            "viv acp: MCP servers a session brings are not mounted: {}",
+            names.join(", ")
+        );
     }
     Ok(path.to_path_buf())
 }
@@ -193,9 +196,12 @@ impl Sessions {
             ));
         }
         let lease = self.host.threads.lease(&id).map_err(Refused::internal)?;
-        let Some(mut history) = session.history.take() else {
+        let Some(held) = session.history.take() else {
             return Err(Refused::internal("the conversation is not here"));
         };
+        // Under the lease the saved conversation is the truth: the app may have added to it since the last prompt.
+        let before = self.host.threads.load(&id);
+        let mut history = before.as_ref().map_or(held, |saved| saved.history.clone());
         history.push(Message::new(Role::User, text));
         let cancel = CancellationToken::new();
         let turn = Turn {
@@ -205,6 +211,7 @@ impl Sessions {
             built: (session.provider.clone(), session.model.clone()),
             folder: session.folder.clone(),
             host: self.host.clone(),
+            before,
             client: self.client.clone(),
             table: Arc::clone(&self.table),
             cancel: cancel.clone(),
@@ -222,6 +229,8 @@ struct Turn {
     built: (String, String),
     folder: String,
     host: Host,
+    /// The conversation as it was saved when the turn began.
+    before: Option<SavedThread>,
     client: Client,
     table: Table,
     cancel: CancellationToken,
@@ -229,16 +238,17 @@ struct Turn {
 
 impl Turn {
     /// Asks the client whether a call may run. A cancelled turn, an error or silence from a gone client is a no.
-    fn ask(&self, call: String, title: String) {
+    fn ask(&self, call: &str, title: &str) {
         let answer = self.client.request(
             "session/request_permission",
-            json!({
+            &json!({
                 "sessionId": self.id,
                 "toolCall": { "toolCallId": call, "title": title, "status": "pending" },
                 "options": updates::permission_options(),
             }),
         );
         let (agent, cancel) = (Arc::clone(&self.agent), self.cancel.clone());
+        let call = call.to_owned();
         tokio::spawn(async move {
             let allow = tokio::select! {
                 () = cancel.cancelled() => false,
@@ -262,9 +272,9 @@ impl Turn {
             let mut last = None;
             while let Some(event) = seen.recv().await {
                 if let AgentEvent::Approval { id, title } = &event {
-                    self.ask(id.clone(), title.clone());
+                    self.ask(id, title);
                 } else if let Some(update) = updates::update(&event) {
-                    self.client.update(&self.id, update);
+                    self.client.update(&self.id, &update);
                 }
                 if matches!(
                     event,
@@ -281,6 +291,7 @@ impl Turn {
             &self.folder,
             (&self.built.0, &self.built.1),
             &history,
+            self.before.as_ref(),
         ));
         drop(lease);
         if let Some(session) = lock(&self.table).get_mut(&self.id) {
@@ -293,6 +304,6 @@ impl Turn {
             ))),
             (Ok(()), Ok(())) => Ok(json!({ "stopReason": updates::stop_reason(last.as_ref()) })),
         };
-        self.client.answer(&self.request, result);
+        self.client.answer(&self.request, &result);
     }
 }
