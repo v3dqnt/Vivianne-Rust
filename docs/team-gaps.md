@@ -23,4 +23,4 @@
 
 ## Tests
 
-Covered: the rules and error codes above in part, the store's reload, numbering and refusal to overwrite a file it cannot read, a read-only subagent claiming and completing a task in Ask mode, and, once by hand, the built `viv` doing the same against a stand-in model. The original's tests (about 2 900 lines) were not translated; not covered: the task limit, pages and filters beyond owner, two processes writing at once. Never run with a real model.
+Covered: the rules and error codes above in part, the store's reload, numbering and refusal to overwrite a file it cannot read, a read-only subagent claiming and completing a task in Ask mode, and, once by hand, the built `viv` doing the same against a stand-in model. The original's tests (about 2 900 lines) were not translated; not covered: the task limit, pages and filters beyond owner, two processes writing at once. Run once with a real model (2026-11-27, `viv acp`, the saved model choice, in Ask mode): the lead made a task, one read-only subagent claimed it, read the file and completed it, and no permission was asked.
