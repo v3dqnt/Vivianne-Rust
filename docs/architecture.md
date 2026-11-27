@@ -13,6 +13,7 @@
 | `runtime` | The single agent loop for chats and 24/7 agents, saved threads (an append-only log per thread), checkpoints, and the views folded from a thread's history. |
 | `projects` | Shared projects: roles and the one permission check, membership and join-request rules, agent-run permissions, audit events. Pure, with storage behind a trait (`docs/plans/projects.md`). |
 | `hub` | `viv-hub`, the hosted service for shared projects: `projects` over SQLite, bearer sessions and an HTTP API. Nothing else depends on it. |
+| `sandbox` | Starting, owning and confining other programs. The only crate besides the shell's window glue that uses `unsafe`. |
 | `app-api` | Local versioned API for micro-app processes. |
 | `shell` | GPUI app: window, panels, theme. The only crate that touches GPUI. |
 
@@ -54,6 +55,7 @@ graph TD
   attachments --> core
   projects --> core
   hub --> projects
+  sandbox
   context --> core
   providers --> core & ai
   telemetry --> ai

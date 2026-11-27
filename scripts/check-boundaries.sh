@@ -9,6 +9,7 @@ declare -A ALLOWED=(
   [core]=""
   [projects]="core"
   [hub]="projects"
+  [sandbox]=""
   [attachments]="core"
   [context]="core"
   [plugins]=""

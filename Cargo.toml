@@ -18,6 +18,7 @@ members = [
     "crates/shell",
     "crates/projects",
     "crates/hub",
+    "crates/sandbox",
 ]
 
 [workspace.package]
@@ -49,6 +50,7 @@ vivianne-tools = { path = "crates/tools" }
 vivianne-plugins = { path = "crates/plugins" }
 vivianne-app-api = { path = "crates/app-api" }
 vivianne-projects = { path = "crates/projects" }
+vivianne-sandbox = { path = "crates/sandbox" }
 
 # gpui-component's Settings dialog is restyled (a flat sidebar, a real page header, headings that read as headings).
 # Vendored from 0.9.1 with those changes only; see vendor/gpui-component/README.md.

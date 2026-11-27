@@ -1,0 +1,28 @@
+[package]
+name = "vivianne-sandbox"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+tokio = { workspace = true, features = ["process", "io-util", "time", "sync", "rt", "macros"] }
+tokio-util = "0.7"
+# Finds a program on a given PATH, as the tools crate already does.
+which = "7.0"
+
+# Job objects, restricted tokens and the other calls confinement needs on Windows (already in the tree).
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_Security"] }
+
+# Signals to a process group on Unix (already in the tree).
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[lints]
+workspace = true

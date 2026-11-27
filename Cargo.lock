@@ -10136,6 +10136,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "vivianne-sandbox"
+version = "0.0.1"
+dependencies = [
+ "libc",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
+ "which 7.0.3",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "vivianne-shell"
 version = "0.0.1"
 dependencies = [
