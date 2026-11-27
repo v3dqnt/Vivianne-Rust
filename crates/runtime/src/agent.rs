@@ -16,6 +16,7 @@ use vivianne_tools::{ToolResult, Toolbox};
 
 use crate::AgentEvent;
 use crate::attempts::Attempts;
+use crate::repeats::Repeats;
 use crate::compact;
 use crate::context::{self, Breakdown};
 use crate::history;
@@ -145,7 +146,9 @@ pub struct Agent {
 pub struct ResultFilter(Arc<dyn Fn(&ToolCall, ToolResult) -> ToolResult + Send + Sync>);
 
 impl ResultFilter {
-    pub fn new(filter: impl Fn(&ToolCall, ToolResult) -> ToolResult + Send + Sync + 'static) -> Self {
+    pub fn new(
+        filter: impl Fn(&ToolCall, ToolResult) -> ToolResult + Send + Sync + 'static,
+    ) -> Self {
         Self(Arc::new(filter))
     }
 }
@@ -202,7 +205,10 @@ impl Agent {
         let notices = {
             let inbox = Arc::clone(&inbox);
             tools.jobs().on_notice(move |text| {
-                inbox.lock().unwrap_or_else(PoisonError::into_inner).push_back(text);
+                inbox
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .push_back(text);
             })
         };
         Self {
@@ -288,7 +294,11 @@ impl Agent {
         if call.name.starts_with("mcp__") {
             return None;
         }
-        let definition = self.tools.definitions().into_iter().find(|d| d.name == call.name)?;
+        let definition = self
+            .tools
+            .definitions()
+            .into_iter()
+            .find(|d| d.name == call.name)?;
         vivianne_tools::validate::invalid_arguments(&definition.parameters, &call.args)
     }
 
@@ -324,11 +334,19 @@ impl Agent {
                 ),
             );
         }
-        if let Some(policy) = self.tools.confinement().describe(self.tools.working_directory().root()) {
+        if let Some(policy) = self
+            .tools
+            .confinement()
+            .describe(self.tools.working_directory().root())
+        {
             sections.set("sandbox-policy", order::CONTEXT + 40, policy);
         }
         if self.tools.get("job_output").is_some() {
-            sections.set("background-jobs", order::CONTEXT + 45, vivianne_tools::jobs::GUIDANCE);
+            sections.set(
+                "background-jobs",
+                order::CONTEXT + 45,
+                vivianne_tools::jobs::GUIDANCE,
+            );
         }
         // What the caller added or replaced by name wins over the built-in sections.
         sections.merge(&self.sections.lock().unwrap_or_else(PoisonError::into_inner));
@@ -338,27 +356,48 @@ impl Agent {
     /// Adds a section to the system prompt, or replaces the one of that name (including a built-in one: `system`,
     /// `context`, `mode`). Lower orders come first; see [`order`](crate::sections::order).
     pub fn set_section(&self, name: &str, order: i32, text: impl Into<String>) {
-        self.sections.lock().unwrap_or_else(PoisonError::into_inner).set(name, order, text);
+        self.sections
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .set(name, order, text);
     }
 
     /// Like [`set_section`](Self::set_section), with text asked for each time the prompt is built.
-    pub fn set_dynamic_section(&self, name: &str, order: i32, text: impl Fn() -> Option<String> + Send + Sync + 'static) {
-        self.sections.lock().unwrap_or_else(PoisonError::into_inner).set_dynamic(name, order, text);
+    pub fn set_dynamic_section(
+        &self,
+        name: &str,
+        order: i32,
+        text: impl Fn() -> Option<String> + Send + Sync + 'static,
+    ) {
+        self.sections
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .set_dynamic(name, order, text);
     }
 
     /// Takes a caller's section back out. A built-in one it replaced comes back.
     pub fn remove_section(&self, name: &str) -> bool {
-        self.sections.lock().unwrap_or_else(PoisonError::into_inner).remove(name)
+        self.sections
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(name)
     }
 
     /// Chooses where the conversation is saved mid-run (`None` stops saving there). See [`Checkpoint`].
     pub fn set_checkpoint(&self, checkpoint: Option<Checkpoint>) {
-        *self.checkpoint.lock().unwrap_or_else(PoisonError::into_inner) = checkpoint;
+        *self
+            .checkpoint
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = checkpoint;
     }
 
     /// Saves the conversation now, if a place was chosen. An error stops the run before anything goes out.
     fn save_now(&self, history: &[Message]) -> Result<(), AgentError> {
-        let place = self.checkpoint.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        let place = self
+            .checkpoint
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
         match place {
             Some(save) => (save.0)(history).map_err(AgentError::Checkpoint),
             None => Ok(()),
@@ -368,7 +407,10 @@ impl Agent {
     /// Sends a message into a run that is going: it is added to the conversation before the next model call, and a
     /// run that was about to finish goes on to answer it. Between runs it waits for the next one.
     pub fn steer(&self, text: impl Into<String>) {
-        self.inbox.lock().unwrap_or_else(PoisonError::into_inner).push_back(text.into());
+        self.inbox
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push_back(text.into());
         self.tools.jobs().steered();
     }
 
@@ -379,7 +421,12 @@ impl Agent {
         if self.wakes.load(Ordering::Relaxed) >= MAX_WAKES {
             return None;
         }
-        let waiting: Vec<String> = self.inbox.lock().unwrap_or_else(PoisonError::into_inner).drain(..).collect();
+        let waiting: Vec<String> = self
+            .inbox
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .drain(..)
+            .collect();
         let said = (!waiting.is_empty()).then(|| waiting.join("\n\n"))?;
         self.wakes.fetch_add(1, Ordering::Relaxed);
         self.woke_with
@@ -392,17 +439,31 @@ impl Agent {
     /// Whether a background job started by this agent's tools has not ended yet.
     #[must_use]
     pub fn background_running(&self) -> bool {
-        self.tools.jobs().registry().list(None).iter().any(|job| !job.status.is_terminal())
+        self.tools
+            .jobs()
+            .registry()
+            .list(None)
+            .iter()
+            .any(|job| !job.status.is_terminal())
     }
 
     /// Whether a steering message is waiting.
     #[must_use]
     pub fn has_steering(&self) -> bool {
-        !self.inbox.lock().unwrap_or_else(PoisonError::into_inner).is_empty()
+        !self
+            .inbox
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .is_empty()
     }
 
     fn take_steering(&self, history: &mut Vec<Message>) {
-        let waiting: Vec<String> = self.inbox.lock().unwrap_or_else(PoisonError::into_inner).drain(..).collect();
+        let waiting: Vec<String> = self
+            .inbox
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .drain(..)
+            .collect();
         for text in waiting {
             history.push(Message::new(Role::User, text).at(crate::workspace_context::now_ms()));
         }
@@ -541,7 +602,11 @@ impl Agent {
     ) -> Result<(), AgentError> {
         // A run the person started gives the jobs their wakes back.
         let asked = history.iter().rev().find(|m| m.role == Role::User);
-        let woke = self.woke_with.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        let woke = self
+            .woke_with
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
         if asked.is_some_and(|m| m.text != woke) {
             self.wakes.store(0, Ordering::Relaxed);
         }
@@ -572,17 +637,24 @@ impl Agent {
             *self.context.lock().unwrap_or_else(PoisonError::into_inner) = standing;
         }
         let mut attempts = Attempts::default();
+        let mut repeats = Repeats::default();
         let mut condensed_for_overflow = false;
         // Where the conversation had moved its working directory, read back from what it did (also after a resume).
-        self.tools.working_directory().replay(&crate::history::calls_with_outcomes(history));
+        self.tools
+            .working_directory()
+            .replay(&crate::history::calls_with_outcomes(history));
         // Paths the tools used since the last model call: a folder they reach may hold instructions of its own.
         let mut touched: Vec<String> = Vec::new();
         for step in 1..=self.max_steps {
             // A run that was cut off earlier may have left calls without results, which a provider refuses.
             history::repair(history);
+            if self.has_steering() {
+                repeats.reset();
+            }
             self.take_steering(history);
             let (provider, model) = self.primary();
-            self.tools.set_step(vivianne_tools::StepInfo { provider, model });
+            self.tools
+                .set_step(vivianne_tools::StepInfo { provider, model });
             let made_room = tokio::select! {
                 () = cancel.cancelled() => None,
                 made = self.make_room(history, events, false) => Some(made),
@@ -644,7 +716,7 @@ impl Agent {
             self.save_now(history)?;
             touched.extend(calls.iter().flat_map(|c| touched_paths(&c.args)));
             let stopped = self
-                .run_tools(&calls, history, events, cancel, &mut attempts)
+                .run_tools(&calls, history, events, cancel, (&mut attempts, &mut repeats))
                 .await;
             if stopped {
                 // Nobody will answer what was still being asked.
@@ -670,7 +742,7 @@ impl Agent {
         history: &mut Vec<Message>,
         events: &UnboundedSender<AgentEvent>,
         cancel: &CancellationToken,
-        attempts: &mut Attempts,
+        (attempts, repeats): (&mut Attempts, &mut Repeats),
     ) -> bool {
         let mut stopped = false;
         let mut next = 0;
@@ -710,6 +782,9 @@ impl Agent {
                         }
                     } else {
                         attempts.succeeded(call);
+                    }
+                    if let Some(note) = repeats.observe(call) {
+                        answer.text.push_str(&note);
                     }
                 }
                 // Stamped when it is added, so a conversation's tool time can be read back from it.
@@ -877,7 +952,8 @@ impl Agent {
             // What the summariser says is not part of the conversation, so its text goes nowhere.
             let (sink, _unread) = tokio::sync::mpsc::unbounded_channel();
             let asked = async { collect(open(target, &request).await?, &sink).await };
-            if let Ok(Ok((text, _, spent, _))) = tokio::time::timeout(SUMMARY_TIMEOUT, asked).await {
+            if let Ok(Ok((text, _, spent, _))) = tokio::time::timeout(SUMMARY_TIMEOUT, asked).await
+            {
                 if let Some(spent) = spent {
                     send(events, usage_event(spent));
                 }
@@ -965,7 +1041,11 @@ impl Agent {
                 Some(limit) => match tokio::time::timeout(limit, run).await {
                     Ok(done) => done,
                     Err(_) => Some(ToolResult {
-                        content: format!("`{}` did not finish within {} seconds and was stopped", call.name, limit.as_secs().max(1)),
+                        content: format!(
+                            "`{}` did not finish within {} seconds and was stopped",
+                            call.name,
+                            limit.as_secs().max(1)
+                        ),
                         is_error: true,
                         details: None,
                     }),
@@ -1303,14 +1383,29 @@ mod tests {
         let provider = Scripted::new(vec![vec![ChatEvent::Text("hello".into()), ChatEvent::Done]]);
         let (tx, _rx) = unbounded_channel();
         let mut history = user("ping");
-        agent(provider).run(&mut history, &tx, Thinking::Low).await.unwrap();
-        let reply = history.iter().find(|m| m.role == Role::Assistant).expect("a reply");
+        agent(provider)
+            .run(&mut history, &tx, Thinking::Low)
+            .await
+            .unwrap();
+        let reply = history
+            .iter()
+            .find(|m| m.role == Role::Assistant)
+            .expect("a reply");
         let timing = reply.timing.expect("the reply was timed");
-        assert!(timing.first_token_ms < 5_000 && timing.decode_ms < 5_000, "{timing:?}");
+        assert!(
+            timing.first_token_ms < 5_000 && timing.decode_ms < 5_000,
+            "{timing:?}"
+        );
         let json = serde_json::to_value(reply).expect("serializes");
-        assert!(json["timing"]["first_token_ms"].is_u64(), "kept in the saved thread: {json}");
+        assert!(
+            json["timing"]["first_token_ms"].is_u64(),
+            "kept in the saved thread: {json}"
+        );
         let user_json = serde_json::to_value(&history[0]).expect("serializes");
-        assert!(user_json.get("timing").is_none(), "nothing is written where there is nothing to say");
+        assert!(
+            user_json.get("timing").is_none(),
+            "nothing is written where there is nothing to say"
+        );
     }
 
     #[tokio::test]
@@ -1694,35 +1789,80 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(60)).await;
             self.active.fetch_sub(1, Ordering::SeqCst);
             self.log.lock().unwrap().push(format!("end:{id}"));
-            ToolResult { content: format!("done {id}"), is_error: false, details: None }
+            ToolResult {
+                content: format!("done {id}"),
+                is_error: false,
+                details: None,
+            }
         }
     }
 
     fn probe_call(id: &str, tool: &str) -> ChatEvent {
-        ChatEvent::ToolCall(ToolCall { id: id.into(), name: tool.into(), args: json!({ "id": id, "path": id, "content": "" }) })
+        ChatEvent::ToolCall(ToolCall {
+            id: id.into(),
+            name: tool.into(),
+            args: json!({ "id": id, "path": id, "content": "" }),
+        })
     }
 
     #[tokio::test]
     async fn reads_overlap_a_change_waits_for_them_and_answers_stay_in_the_models_order() {
         let log = Arc::new(Mutex::new(Vec::new()));
-        let (active, most) = (Arc::new(std::sync::atomic::AtomicUsize::new(0)), Arc::new(std::sync::atomic::AtomicUsize::new(0)));
+        let (active, most) = (
+            Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        );
         let mut tools = Toolbox::new(std::path::Path::new("."));
         for name in ["read", "write"] {
-            tools.add(Probe { name, log: log.clone(), active: active.clone(), most: most.clone() });
+            tools.add(Probe {
+                name,
+                log: log.clone(),
+                active: active.clone(),
+                most: most.clone(),
+            });
         }
         let provider = Scripted::new(vec![
-            vec![probe_call("a", "read"), probe_call("b", "read"), probe_call("c", "read"), probe_call("w", "write"), probe_call("d", "read"), ChatEvent::Done],
+            vec![
+                probe_call("a", "read"),
+                probe_call("b", "read"),
+                probe_call("c", "read"),
+                probe_call("w", "write"),
+                probe_call("d", "read"),
+                ChatEvent::Done,
+            ],
             vec![ChatEvent::Text("ok".into()), ChatEvent::Done],
         ]);
         let (tx, _rx) = unbounded_channel();
         let mut history = user("go");
-        Agent::new(provider, "m", None, tools).run(&mut history, &tx, Thinking::default()).await.expect("runs");
-        assert!(most.load(std::sync::atomic::Ordering::SeqCst) >= 3, "the three reads ran together");
+        Agent::new(provider, "m", None, tools)
+            .run(&mut history, &tx, Thinking::default())
+            .await
+            .expect("runs");
+        assert!(
+            most.load(std::sync::atomic::Ordering::SeqCst) >= 3,
+            "the three reads ran together"
+        );
         let log = log.lock().unwrap().clone();
-        let at = |entry: &str| log.iter().position(|l| l == entry).unwrap_or_else(|| panic!("{entry} in {log:?}"));
-        assert!(at("start:w") > at("end:a") && at("start:w") > at("end:b") && at("start:w") > at("end:c"), "{log:?}");
-        assert!(at("start:d") > at("end:w"), "the read after the change waits for it: {log:?}");
-        let answers: Vec<&str> = history.iter().filter(|m| m.role == Role::Tool).map(|m| m.text.as_str()).collect();
+        let at = |entry: &str| {
+            log.iter()
+                .position(|l| l == entry)
+                .unwrap_or_else(|| panic!("{entry} in {log:?}"))
+        };
+        assert!(
+            at("start:w") > at("end:a")
+                && at("start:w") > at("end:b")
+                && at("start:w") > at("end:c"),
+            "{log:?}"
+        );
+        assert!(
+            at("start:d") > at("end:w"),
+            "the read after the change waits for it: {log:?}"
+        );
+        let answers: Vec<&str> = history
+            .iter()
+            .filter(|m| m.role == Role::Tool)
+            .map(|m| m.text.as_str())
+            .collect();
         assert_eq!(answers, ["done a", "done b", "done c", "done w", "done d"]);
     }
 
@@ -1743,7 +1883,11 @@ mod tests {
         }
         async fn execute(&self, _args: &Value, _cwd: &str) -> ToolResult {
             *self.0.lock().unwrap() += 1;
-            ToolResult { content: "ran".into(), is_error: false, details: None }
+            ToolResult {
+                content: "ran".into(),
+                is_error: false,
+                details: None,
+            }
         }
     }
 
@@ -1752,16 +1896,45 @@ mod tests {
         let ran = Arc::new(Mutex::new(0));
         let mut tools = Toolbox::new(std::path::Path::new("."));
         tools.add(Strict(ran.clone()));
-        let bad = ChatEvent::ToolCall(ToolCall { id: "x".into(), name: "strict".into(), args: json!({ "count": "three" }) });
-        let missing = ChatEvent::ToolCall(ToolCall { id: "y".into(), name: "strict".into(), args: json!({}) });
-        let good = ChatEvent::ToolCall(ToolCall { id: "z".into(), name: "strict".into(), args: json!({ "count": 3 }) });
-        let provider = Scripted::new(vec![vec![bad, missing, good, ChatEvent::Done], vec![ChatEvent::Text("ok".into()), ChatEvent::Done]]);
+        let bad = ChatEvent::ToolCall(ToolCall {
+            id: "x".into(),
+            name: "strict".into(),
+            args: json!({ "count": "three" }),
+        });
+        let missing = ChatEvent::ToolCall(ToolCall {
+            id: "y".into(),
+            name: "strict".into(),
+            args: json!({}),
+        });
+        let good = ChatEvent::ToolCall(ToolCall {
+            id: "z".into(),
+            name: "strict".into(),
+            args: json!({ "count": 3 }),
+        });
+        let provider = Scripted::new(vec![
+            vec![bad, missing, good, ChatEvent::Done],
+            vec![ChatEvent::Text("ok".into()), ChatEvent::Done],
+        ]);
         let (tx, _rx) = unbounded_channel();
         let mut history = user("go");
-        Agent::new(provider, "m", None, tools).run(&mut history, &tx, Thinking::default()).await.expect("runs");
-        let answers: Vec<&str> = history.iter().filter(|m| m.role == Role::Tool).map(|m| m.text.as_str()).collect();
-        assert!(answers[0].starts_with("error: invalid arguments:") && answers[0].contains("\"count\" must be an integer"), "{answers:?}");
-        assert!(answers[1].contains("missing required property \"count\""), "{answers:?}");
+        Agent::new(provider, "m", None, tools)
+            .run(&mut history, &tx, Thinking::default())
+            .await
+            .expect("runs");
+        let answers: Vec<&str> = history
+            .iter()
+            .filter(|m| m.role == Role::Tool)
+            .map(|m| m.text.as_str())
+            .collect();
+        assert!(
+            answers[0].starts_with("error: invalid arguments:")
+                && answers[0].contains("\"count\" must be an integer"),
+            "{answers:?}"
+        );
+        assert!(
+            answers[1].contains("missing required property \"count\""),
+            "{answers:?}"
+        );
         assert_eq!(answers[2], "ran");
         assert_eq!(*ran.lock().unwrap(), 1, "only the call that fit ran");
     }
@@ -1778,42 +1951,83 @@ mod tests {
             self.1
         }
         fn definition(&self) -> Option<Value> {
-            Some(json!({ "name": self.0, "description": "waits", "parameters": { "type": "object", "properties": {} } }))
+            Some(
+                json!({ "name": self.0, "description": "waits", "parameters": { "type": "object", "properties": {} } }),
+            )
         }
         async fn execute(&self, _args: &Value, _cwd: &str) -> ToolResult {
             tokio::time::sleep(self.2).await;
-            ToolResult { content: "finished".into(), is_error: false, details: None }
+            ToolResult {
+                content: "finished".into(),
+                is_error: false,
+                details: None,
+            }
         }
     }
 
     fn bare_call(id: &str, tool: &str) -> ChatEvent {
-        ChatEvent::ToolCall(ToolCall { id: id.into(), name: tool.into(), args: json!({}) })
+        ChatEvent::ToolCall(ToolCall {
+            id: id.into(),
+            name: tool.into(),
+            args: json!({}),
+        })
     }
 
     async fn run_with(agent: Agent, history: &mut Vec<Message>) {
         let (tx, _rx) = unbounded_channel();
-        agent.run(history, &tx, Thinking::default()).await.expect("runs");
+        agent
+            .run(history, &tx, Thinking::default())
+            .await
+            .expect("runs");
     }
 
     fn tool_answers(history: &[Message]) -> Vec<String> {
-        history.iter().filter(|m| m.role == Role::Tool).map(|m| m.text.clone()).collect()
+        history
+            .iter()
+            .filter(|m| m.role == Role::Tool)
+            .map(|m| m.text.clone())
+            .collect()
     }
 
     #[tokio::test(start_paused = true)]
     async fn a_call_that_outlasts_its_tools_own_limit_or_the_agents_is_stopped_with_an_error() {
         let mut tools = Toolbox::new(std::path::Path::new("."));
-        tools.add(Sleepy("own", Some(Duration::from_secs(2)), Duration::from_secs(60)));
+        tools.add(Sleepy(
+            "own",
+            Some(Duration::from_secs(2)),
+            Duration::from_secs(60),
+        ));
         tools.add(Sleepy("default", None, Duration::from_secs(60)));
-        tools.add(Sleepy("quick", Some(Duration::from_secs(2)), Duration::from_secs(1)));
+        tools.add(Sleepy(
+            "quick",
+            Some(Duration::from_secs(2)),
+            Duration::from_secs(1),
+        ));
         let provider = Scripted::new(vec![
-            vec![bare_call("a", "own"), bare_call("b", "default"), bare_call("c", "quick"), ChatEvent::Done],
+            vec![
+                bare_call("a", "own"),
+                bare_call("b", "default"),
+                bare_call("c", "quick"),
+                ChatEvent::Done,
+            ],
             vec![ChatEvent::Text("ok".into()), ChatEvent::Done],
         ]);
         let mut history = user("go");
-        run_with(Agent::new(provider, "m", None, tools).with_tool_timeout(Duration::from_secs(10)), &mut history).await;
+        run_with(
+            Agent::new(provider, "m", None, tools).with_tool_timeout(Duration::from_secs(10)),
+            &mut history,
+        )
+        .await;
         let answers = tool_answers(&history);
-        assert!(answers[0].starts_with("error:") && answers[0].contains("did not finish within 2 seconds"), "{answers:?}");
-        assert!(answers[1].contains("did not finish within 10 seconds"), "{answers:?}");
+        assert!(
+            answers[0].starts_with("error:")
+                && answers[0].contains("did not finish within 2 seconds"),
+            "{answers:?}"
+        );
+        assert!(
+            answers[1].contains("did not finish within 10 seconds"),
+            "{answers:?}"
+        );
         assert_eq!(answers[2], "finished");
     }
 
@@ -1821,13 +2035,20 @@ mod tests {
     async fn a_result_filter_changes_what_the_model_sees_and_leaves_failures_to_the_filter() {
         let mut tools = Toolbox::new(std::path::Path::new("."));
         tools.add(Echo);
-        let provider = Scripted::new(vec![vec![call("c1", "echo"), ChatEvent::Done], vec![ChatEvent::Text("ok".into()), ChatEvent::Done]]);
+        let provider = Scripted::new(vec![
+            vec![call("c1", "echo"), ChatEvent::Done],
+            vec![ChatEvent::Text("ok".into()), ChatEvent::Done],
+        ]);
         let filter = ResultFilter::new(|call, mut result| {
             result.content = format!("[{}] {}", call.name, result.content.replace("pong", "***"));
             result
         });
         let mut history = user("go");
-        run_with(Agent::new(provider, "m", None, tools).with_result_filter(filter), &mut history).await;
+        run_with(
+            Agent::new(provider, "m", None, tools).with_result_filter(filter),
+            &mut history,
+        )
+        .await;
         assert_eq!(tool_answers(&history), ["[echo] ***"]);
     }
 
@@ -1836,57 +2057,118 @@ mod tests {
         let build = |model: &str| {
             let mut tools = Toolbox::new(std::path::Path::new("."));
             tools.add(Echo);
-            tools.add_when(Sleepy("big_only", None, Duration::from_millis(1)), Arc::new(|step: &vivianne_tools::StepInfo| step.model == "big"));
-            let provider = Scripted::new(vec![vec![bare_call("a", "big_only"), ChatEvent::Done], vec![ChatEvent::Text("ok".into()), ChatEvent::Done]]);
+            tools.add_when(
+                Sleepy("big_only", None, Duration::from_millis(1)),
+                Arc::new(|step: &vivianne_tools::StepInfo| step.model == "big"),
+            );
+            let provider = Scripted::new(vec![
+                vec![bare_call("a", "big_only"), ChatEvent::Done],
+                vec![ChatEvent::Text("ok".into()), ChatEvent::Done],
+            ]);
             (Agent::new(provider.clone(), model, None, tools), provider)
         };
         let (agent, provider) = build("big");
         let mut history = user("go");
         run_with(agent, &mut history).await;
         assert_eq!(tool_answers(&history), ["finished"]);
-        assert!(provider.seen.lock().unwrap()[0].tools.iter().any(|t| t.name == "big_only"));
+        assert!(
+            provider.seen.lock().unwrap()[0]
+                .tools
+                .iter()
+                .any(|t| t.name == "big_only")
+        );
 
         let (agent, provider) = build("small");
         let mut history = user("go");
         run_with(agent, &mut history).await;
-        assert!(!provider.seen.lock().unwrap()[0].tools.iter().any(|t| t.name == "big_only"), "not offered");
-        assert_eq!(tool_answers(&history), ["error: unknown tool `big_only`"], "and not callable either");
+        assert!(
+            !provider.seen.lock().unwrap()[0]
+                .tools
+                .iter()
+                .any(|t| t.name == "big_only"),
+            "not offered"
+        );
+        assert_eq!(
+            tool_answers(&history),
+            ["error: unknown tool `big_only`"],
+            "and not callable either"
+        );
     }
 
     #[tokio::test]
     async fn a_prompt_section_can_be_added_in_order_replaced_by_name_and_taken_back_out() {
-        let provider = Scripted::new(vec![vec![ChatEvent::Text("a".into()), ChatEvent::Done]; 3].into_iter().collect());
-        let agent = Agent::new(provider.clone(), "m", Some("DIRECTIVE".to_owned()), toolbox());
+        let provider = Scripted::new(
+            vec![vec![ChatEvent::Text("a".into()), ChatEvent::Done]; 3]
+                .into_iter()
+                .collect(),
+        );
+        let agent = Agent::new(
+            provider.clone(),
+            "m",
+            Some("DIRECTIVE".to_owned()),
+            toolbox(),
+        );
         agent.set_section("rules", crate::sections::order::DEFAULT, "RULES");
         agent.set_section("early", 50, "EARLY");
         agent.set_dynamic_section("clock", 700, || Some("NOW".to_owned()));
         let (tx, _rx) = unbounded_channel();
-        agent.run(&mut user("go"), &tx, Thinking::default()).await.expect("runs");
-        let sent = provider.seen.lock().unwrap()[0].system.clone().unwrap_or_default();
+        agent
+            .run(&mut user("go"), &tx, Thinking::default())
+            .await
+            .expect("runs");
+        let sent = provider.seen.lock().unwrap()[0]
+            .system
+            .clone()
+            .unwrap_or_default();
         assert_eq!(sent, "EARLY\n\nDIRECTIVE\n\nRULES\n\nNOW");
 
         agent.set_section("system", crate::sections::order::SYSTEM, "REPLACED");
         assert!(agent.remove_section("early") && agent.remove_section("clock"));
-        agent.run(&mut user("again"), &tx, Thinking::default()).await.expect("runs");
-        assert_eq!(provider.seen.lock().unwrap()[1].system.as_deref(), Some("REPLACED\n\nRULES"));
+        agent
+            .run(&mut user("again"), &tx, Thinking::default())
+            .await
+            .expect("runs");
+        assert_eq!(
+            provider.seen.lock().unwrap()[1].system.as_deref(),
+            Some("REPLACED\n\nRULES")
+        );
         assert!(agent.remove_section("system"));
-        agent.run(&mut user("third"), &tx, Thinking::default()).await.expect("runs");
-        assert_eq!(provider.seen.lock().unwrap()[2].system.as_deref(), Some("DIRECTIVE\n\nRULES"), "the built-in comes back");
+        agent
+            .run(&mut user("third"), &tx, Thinking::default())
+            .await
+            .expect("runs");
+        assert_eq!(
+            provider.seen.lock().unwrap()[2].system.as_deref(),
+            Some("DIRECTIVE\n\nRULES"),
+            "the built-in comes back"
+        );
     }
 
     #[tokio::test]
     async fn a_message_sent_during_a_run_is_added_before_the_next_model_call() {
         let mut tools = Toolbox::new(std::path::Path::new("."));
         tools.add(Echo);
-        let provider = Scripted::new(vec![vec![call("c1", "echo"), ChatEvent::Done], vec![ChatEvent::Text("done".into()), ChatEvent::Done]]);
+        let provider = Scripted::new(vec![
+            vec![call("c1", "echo"), ChatEvent::Done],
+            vec![ChatEvent::Text("done".into()), ChatEvent::Done],
+        ]);
         let agent = Agent::new(provider.clone(), "m", None, tools);
         agent.steer("also mind the tests");
         assert!(agent.has_steering());
         let mut history = user("go");
         run_with(agent, &mut history).await;
-        let typed: Vec<&str> = history.iter().filter(|m| m.is_typed()).map(|m| m.text.as_str()).collect();
+        let typed: Vec<&str> = history
+            .iter()
+            .filter(|m| m.is_typed())
+            .map(|m| m.text.as_str())
+            .collect();
         assert_eq!(typed, ["go", "also mind the tests"]);
-        assert!(history.iter().filter(|m| m.is_typed()).all(|m| m.at.is_some() || m.text == "go"));
+        assert!(
+            history
+                .iter()
+                .filter(|m| m.is_typed())
+                .all(|m| m.at.is_some() || m.text == "go")
+        );
     }
 
     #[tokio::test]
@@ -1902,20 +2184,33 @@ mod tests {
                 if let Some(agent) = self.0.get() {
                     agent.steer("one more thing");
                 }
-                ToolResult { content: "ok".into(), is_error: false, details: None }
+                ToolResult {
+                    content: "ok".into(),
+                    is_error: false,
+                    details: None,
+                }
             }
         }
-        let provider = Scripted::new(vec![vec![bare_call("a", "late"), ChatEvent::Done], vec![ChatEvent::Text("done".into()), ChatEvent::Done]]);
+        let provider = Scripted::new(vec![
+            vec![bare_call("a", "late"), ChatEvent::Done],
+            vec![ChatEvent::Text("done".into()), ChatEvent::Done],
+        ]);
         let mut tools = Toolbox::new(std::path::Path::new("."));
         tools.add(Steering(cell.clone()));
         let agent = Arc::new(Agent::new(provider.clone(), "m", None, tools));
         let _ = cell.set(agent.clone());
         let (tx, _rx) = unbounded_channel();
         let mut history = user("go");
-        agent.run(&mut history, &tx, Thinking::default()).await.expect("runs");
+        agent
+            .run(&mut history, &tx, Thinking::default())
+            .await
+            .expect("runs");
         assert_eq!(provider.calls(), 2);
         let seen = provider.seen.lock().unwrap();
-        assert!(seen[1].messages.iter().any(|m| m.text == "one more thing"), "the second call already carried it");
+        assert!(
+            seen[1].messages.iter().any(|m| m.text == "one more thing"),
+            "the second call already carried it"
+        );
     }
 
     /// Steers its agent while it is answering, as a person typing during a reply would.
@@ -1941,7 +2236,9 @@ mod tests {
 
     #[tokio::test]
     async fn jobs_start_only_so_many_runs_in_a_row_until_the_person_speaks() {
-        let replies = (0..=MAX_WAKES + 1).map(|_| vec![ChatEvent::Text("ok".into()), ChatEvent::Done]).collect();
+        let replies = (0..=MAX_WAKES + 1)
+            .map(|_| vec![ChatEvent::Text("ok".into()), ChatEvent::Done])
+            .collect();
         let agent = Agent::new(Scripted::new(replies), "m", None, toolbox());
         let mut history = Vec::new();
         for round in 0..MAX_WAKES {
@@ -1949,51 +2246,105 @@ mod tests {
             let said = agent.take_waiting().expect("under the cap");
             history.push(Message::new(Role::User, said));
             let (tx, _rx) = unbounded_channel();
-            agent.run(&mut history, &tx, Thinking::default()).await.expect("runs");
+            agent
+                .run(&mut history, &tx, Thinking::default())
+                .await
+                .expect("runs");
         }
         agent.steer("one more ended");
         assert_eq!(agent.take_waiting(), None);
         assert!(agent.has_steering(), "it waits for the person");
         history.push(Message::new(Role::User, "go on"));
         let (tx, _rx) = unbounded_channel();
-        agent.run(&mut history, &tx, Thinking::default()).await.expect("runs");
+        agent
+            .run(&mut history, &tx, Thinking::default())
+            .await
+            .expect("runs");
         agent.steer("another ended");
         assert!(agent.take_waiting().is_some());
     }
 
     #[tokio::test]
     async fn steering_that_arrives_as_the_model_finishes_gets_one_more_step() {
-        let scripted = Scripted::new(vec![vec![ChatEvent::Text("first answer".into()), ChatEvent::Done], vec![ChatEvent::Text("answer to the extra".into()), ChatEvent::Done]]);
+        let scripted = Scripted::new(vec![
+            vec![ChatEvent::Text("first answer".into()), ChatEvent::Done],
+            vec![
+                ChatEvent::Text("answer to the extra".into()),
+                ChatEvent::Done,
+            ],
+        ]);
         let cell: Arc<std::sync::OnceLock<Arc<Agent>>> = Arc::new(std::sync::OnceLock::new());
-        let provider = Arc::new(Interrupting { agent: cell.clone(), inner: scripted.clone() });
+        let provider = Arc::new(Interrupting {
+            agent: cell.clone(),
+            inner: scripted.clone(),
+        });
         let agent = Arc::new(Agent::new(provider, "m", None, toolbox()));
         let _ = cell.set(agent.clone());
         let (tx, _rx) = unbounded_channel();
         let mut history = user("go");
-        agent.run(&mut history, &tx, Thinking::default()).await.expect("runs");
-        assert_eq!(scripted.calls(), 2, "a second call answered what was said during the first");
-        assert_eq!(history.last().map(|m| m.text.as_str()), Some("answer to the extra"));
+        agent
+            .run(&mut history, &tx, Thinking::default())
+            .await
+            .expect("runs");
+        assert_eq!(
+            scripted.calls(),
+            2,
+            "a second call answered what was said during the first"
+        );
+        assert_eq!(
+            history.last().map(|m| m.text.as_str()),
+            Some("answer to the extra")
+        );
         assert!(!agent.has_steering());
     }
 
     #[tokio::test]
-    async fn the_conversation_is_saved_before_each_model_request_and_before_the_tools_of_a_step_run() {
+    async fn the_conversation_is_saved_before_each_model_request_and_before_the_tools_of_a_step_run()
+     {
         let saved: Arc<Mutex<Vec<(usize, String)>>> = Arc::new(Mutex::new(Vec::new()));
-        let provider = Scripted::new(vec![vec![call("c1", "echo"), ChatEvent::Done], vec![ChatEvent::Text("done".into()), ChatEvent::Done]]);
+        let provider = Scripted::new(vec![
+            vec![call("c1", "echo"), ChatEvent::Done],
+            vec![ChatEvent::Text("done".into()), ChatEvent::Done],
+        ]);
         let mut tools = Toolbox::new(std::path::Path::new("."));
         tools.add(Echo);
         let agent = Agent::new(provider, "m", None, tools);
         let log = saved.clone();
         agent.set_checkpoint(Some(Checkpoint::new(move |history: &[Message]| {
-            log.lock().unwrap().push((history.len(), history.last().map(|m| m.role).map_or("none", |r| if r == Role::Tool { "tool" } else if r == Role::Assistant { "assistant" } else { "user" }).to_owned()));
+            log.lock().unwrap().push((
+                history.len(),
+                history
+                    .last()
+                    .map(|m| m.role)
+                    .map_or("none", |r| {
+                        if r == Role::Tool {
+                            "tool"
+                        } else if r == Role::Assistant {
+                            "assistant"
+                        } else {
+                            "user"
+                        }
+                    })
+                    .to_owned(),
+            ));
             Ok(())
         })));
         let (tx, _rx) = unbounded_channel();
         let mut history = user("go");
-        agent.run(&mut history, &tx, Thinking::default()).await.expect("runs");
+        agent
+            .run(&mut history, &tx, Thinking::default())
+            .await
+            .expect("runs");
         let saved = saved.lock().unwrap().clone();
         // Before request 1 (the person's message); before the tool ran (the model's call is in); before request 2 (the result is in).
-        assert_eq!(saved, [(1, "user".to_owned()), (2, "assistant".to_owned()), (3, "tool".to_owned())]);
+        assert_eq!(
+            saved,
+            [
+                (1, "user".to_owned()),
+                (2, "assistant".to_owned()),
+                (3, "tool".to_owned())
+            ]
+        );
     }
 
     #[tokio::test]
@@ -2002,11 +2353,19 @@ mod tests {
         let mut tools = Toolbox::new(std::path::Path::new("."));
         tools.add(Echo);
         let agent = Agent::new(provider.clone(), "m", None, tools);
-        agent.set_checkpoint(Some(Checkpoint::new(|_: &[Message]| Err("disk full".to_owned()))));
+        agent.set_checkpoint(Some(Checkpoint::new(|_: &[Message]| {
+            Err("disk full".to_owned())
+        })));
         let (tx, _rx) = unbounded_channel();
         let mut history = user("go");
-        let error = agent.run(&mut history, &tx, Thinking::default()).await.unwrap_err();
-        assert!(matches!(&error, AgentError::Checkpoint(why) if why == "disk full"), "{error}");
+        let error = agent
+            .run(&mut history, &tx, Thinking::default())
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&error, AgentError::Checkpoint(why) if why == "disk full"),
+            "{error}"
+        );
         assert_eq!(provider.calls(), 0, "the model was never asked");
         // A save that fails only after the model answered stops the tools from running.
         let provider = Scripted::new(vec![vec![call("c1", "echo"), ChatEvent::Done]]);
@@ -2015,11 +2374,25 @@ mod tests {
         let agent = Agent::new(provider.clone(), "m", None, tools);
         let saves = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let counted = saves.clone();
-        agent.set_checkpoint(Some(Checkpoint::new(move |_: &[Message]| if counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 { Ok(()) } else { Err("gone".to_owned()) })));
+        agent.set_checkpoint(Some(Checkpoint::new(move |_: &[Message]| {
+            if counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+                Ok(())
+            } else {
+                Err("gone".to_owned())
+            }
+        })));
         let mut history = user("go");
-        assert!(agent.run(&mut history, &tx, Thinking::default()).await.is_err());
+        assert!(
+            agent
+                .run(&mut history, &tx, Thinking::default())
+                .await
+                .is_err()
+        );
         assert_eq!(provider.calls(), 1);
-        assert!(history.iter().all(|m| m.role != Role::Tool), "no tool ran, so there is no result: {history:?}");
+        assert!(
+            history.iter().all(|m| m.role != Role::Tool),
+            "no tool ran, so there is no result: {history:?}"
+        );
     }
 
     #[tokio::test]
@@ -2028,28 +2401,50 @@ mod tests {
         let agent = Agent::new(provider, "m", None, toolbox());
         let (tx, _rx) = unbounded_channel();
         let mut history = user("go");
-        agent.run(&mut history, &tx, Thinking::default()).await.expect("runs");
+        agent
+            .run(&mut history, &tx, Thinking::default())
+            .await
+            .expect("runs");
     }
 
     #[tokio::test]
-    async fn a_resumed_conversation_is_back_in_the_directory_it_had_moved_to_and_the_model_is_told() {
-        let root = std::fs::canonicalize(std::env::temp_dir()).expect("tmp").join(format!("viv-resume-cwd-{}", uuid::Uuid::new_v4().simple()));
+    async fn a_resumed_conversation_is_back_in_the_directory_it_had_moved_to_and_the_model_is_told()
+    {
+        let root = std::fs::canonicalize(std::env::temp_dir())
+            .expect("tmp")
+            .join(format!("viv-resume-cwd-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(root.join("sub")).expect("dirs");
         let toolbox = Toolbox::coding(&root);
         let provider = Scripted::new(vec![vec![ChatEvent::Text("ok".into()), ChatEvent::Done]]);
         let agent = Agent::new(provider.clone(), "m", Some("DIRECTIVE".to_owned()), toolbox);
         let mut history = vec![
             Message::new(Role::User, "go into sub"),
-            Message::assistant(String::new(), vec![ToolCall { id: "w".into(), name: "working_directory".into(), args: json!({ "path": "sub" }) }]),
+            Message::assistant(
+                String::new(),
+                vec![ToolCall {
+                    id: "w".into(),
+                    name: "working_directory".into(),
+                    args: json!({ "path": "sub" }),
+                }],
+            ),
             Message::tool_result("w", "Working directory: x".to_owned()),
             Message::assistant("done".to_owned(), Vec::new()),
             Message::new(Role::User, "now what"),
         ];
         let (tx, _rx) = unbounded_channel();
-        agent.run(&mut history, &tx, Thinking::default()).await.expect("runs");
+        agent
+            .run(&mut history, &tx, Thinking::default())
+            .await
+            .expect("runs");
         assert!(agent.tools.working_directory().moved());
-        let system = provider.seen.lock().unwrap()[0].system.clone().unwrap_or_default();
-        assert!(system.contains("Current working directory:") && system.contains("sub"), "{system}");
+        let system = provider.seen.lock().unwrap()[0]
+            .system
+            .clone()
+            .unwrap_or_default();
+        assert!(
+            system.contains("Current working directory:") && system.contains("sub"),
+            "{system}"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

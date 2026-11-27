@@ -7,6 +7,7 @@
 //! other models live in [`resilience`].
 
 mod agent;
+pub mod archive;
 pub mod attachments;
 mod attempts;
 pub mod automation;
@@ -17,30 +18,30 @@ pub mod config;
 pub mod context;
 pub mod deliverables;
 mod event;
-pub mod archive;
 pub mod export;
 pub mod export_bundle;
 pub mod formats;
 pub mod history;
 pub mod lease;
-pub mod log;
 pub mod ledger;
+pub mod log;
 pub mod orchestration;
 pub mod profiles;
+pub mod projection;
 pub mod projects;
 mod prompt;
+pub mod query;
+pub mod quotes;
+mod repeats;
 pub mod resilience;
+pub mod schedule;
 pub mod sections;
 pub mod session;
-pub mod projection;
-pub mod query;
-pub mod schedule;
-pub mod quotes;
 pub mod session_stats;
 pub mod store;
 pub mod surface;
-pub mod thread_tools;
 pub mod thread_refs;
+pub mod thread_tools;
 pub mod title;
 pub mod workspace_context;
 
