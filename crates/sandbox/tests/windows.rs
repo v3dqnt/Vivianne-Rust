@@ -59,10 +59,7 @@ async fn run(argv: Vec<String>, cwd: &Path) -> Ran {
     spec.stdout = keep();
     spec.stderr = keep();
     let mut handle = spawn::spawn(spec).expect("spawn");
-    assert!(
-        handle.wait_for_exit(Duration::from_secs(120)).await,
-        "ended"
-    );
+    assert!(handle.wait_for_exit(Duration::from_mins(2)).await, "ended");
     let code = handle.done().await.exit_code;
     let (out, err) = handle.collected();
     Ran {

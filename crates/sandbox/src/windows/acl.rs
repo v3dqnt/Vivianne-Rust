@@ -25,7 +25,7 @@ use windows_sys::Win32::System::SystemServices::{
     SYSTEM_MANDATORY_LABEL_NO_WRITE_UP,
 };
 
-use super::token::{Sid, entry, last_error, wide};
+use super::token::{Sid, entry, last_error, len32, wide};
 
 /// What the capability SID may do: write and delete, not change permissions.
 const GRANT_MASK: u32 = (FILE_GENERIC_WRITE | DELETE | FILE_DELETE_CHILD) & !STANDARD_RIGHTS_WRITE;
@@ -43,7 +43,7 @@ unsafe fn has_entry(acl: *const ACL, kind: u32, inheritance: u32, mask: u32, sid
     (0..u32::from(count)).any(|index| {
         let mut ace = null_mut();
         // SAFETY: `index` is below the ACL's count.
-        if unsafe { GetAce(acl, index, &mut ace) } == 0 {
+        if unsafe { GetAce(acl, index, &raw mut ace) } == 0 {
             return false;
         }
         // SAFETY: every ACE starts with a header.
@@ -65,7 +65,7 @@ fn low_label(low: &Sid) -> Result<Vec<u32>, String> {
     let mut buffer = vec![0_u32; 32];
     let acl = buffer.as_mut_ptr().cast::<ACL>();
     // SAFETY: `acl` points to the buffer, whose length is passed.
-    if unsafe { InitializeAcl(acl, (buffer.len() * 4) as u32, ACL_REVISION) } == 0 {
+    if unsafe { InitializeAcl(acl, len32(buffer.len() * 4), ACL_REVISION) } == 0 {
         return Err(last_error("InitializeAcl"));
     }
     // SAFETY: an initialised ACL with room, and a valid SID.
@@ -87,12 +87,12 @@ fn low_label(low: &Sid) -> Result<Vec<u32>, String> {
 /// One writer at a time per folder, across processes.
 fn locked(folder: &Path) -> Result<std::fs::File, String> {
     use sha2::{Digest as _, Sha256};
+    use std::fmt::Write as _;
     let digest = Sha256::digest(folder.to_string_lossy().to_lowercase());
-    let name: String = digest
-        .iter()
-        .take(8)
-        .map(|byte| format!("{byte:02x}"))
-        .collect();
+    let name = digest.iter().take(8).fold(String::new(), |mut name, byte| {
+        let _ = write!(name, "{byte:02x}");
+        name
+    });
     let dir = std::env::temp_dir().join("viv-acl-locks");
     let open = || -> std::io::Result<std::fs::File> {
         std::fs::create_dir_all(&dir)?;
@@ -121,9 +121,9 @@ pub(super) fn grant_write(folder: &Path, sid: &Sid) -> Result<(), String> {
             DACL_SECURITY_INFORMATION | LABEL_SECURITY_INFORMATION,
             null_mut(),
             null_mut(),
-            &mut dacl,
-            &mut sacl,
-            &mut descriptor,
+            &raw mut dacl,
+            &raw mut sacl,
+            &raw mut descriptor,
         )
     };
     if code != 0 {
@@ -166,7 +166,7 @@ pub(super) fn grant_write(folder: &Path, sid: &Sid) -> Result<(), String> {
         let label = low_label(&low)?;
         let mut merged: *mut ACL = null_mut();
         // SAFETY: two entries whose SIDs outlive the call, the old ACL from the live descriptor.
-        let code = unsafe { SetEntriesInAclW(2, entries.as_ptr(), dacl, &mut merged) };
+        let code = unsafe { SetEntriesInAclW(2, entries.as_ptr(), dacl, &raw mut merged) };
         if code == 0 {
             // SAFETY: a NUL terminated name and two valid ACLs.
             let code = unsafe {

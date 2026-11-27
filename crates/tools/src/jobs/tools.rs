@@ -26,7 +26,7 @@ pub struct JobOutput(pub Jobs);
 
 #[async_trait]
 impl Tool for JobOutput {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "job_output"
     }
 
@@ -88,7 +88,7 @@ pub struct JobList(pub Jobs);
 
 #[async_trait]
 impl Tool for JobList {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "job_list"
     }
 
@@ -113,7 +113,7 @@ pub struct JobKill(pub Jobs);
 
 #[async_trait]
 impl Tool for JobKill {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "job_kill"
     }
 

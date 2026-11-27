@@ -103,7 +103,7 @@ impl TrackedJob {
         }
     }
 
-    pub(super) fn append(&self, text: &str, options: JobAppendOptions, writer: Writer) {
+    pub(super) fn append(&self, text: &str, options: &JobAppendOptions, writer: Writer) {
         let event = {
             let mut state = lock(&self.state);
             if state.status.is_terminal() {
@@ -112,7 +112,7 @@ impl TrackedJob {
                 }
                 return;
             }
-            if !state.ring.append(text, &options, self.limits.retain_bytes) {
+            if !state.ring.append(text, options, self.limits.retain_bytes) {
                 return;
             }
             state

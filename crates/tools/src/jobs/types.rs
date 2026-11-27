@@ -323,7 +323,7 @@ impl JobHandle {
     }
 
     /// Append one chunk to the output ring. An empty chunk is dropped.
-    pub fn append(&self, text: impl AsRef<str>, options: JobAppendOptions) {
+    pub fn append(&self, text: impl AsRef<str>, options: &JobAppendOptions) {
         if let Some(job) = self.job.upgrade() {
             job.append(text.as_ref(), options, Writer::Producer);
         }
@@ -339,7 +339,9 @@ impl JobHandle {
 
 impl fmt::Debug for JobHandle {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("JobHandle").field("id", &self.id).finish()
+        f.debug_struct("JobHandle")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
     }
 }
 

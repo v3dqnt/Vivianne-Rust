@@ -166,7 +166,6 @@ fn windows_acl(
             "access is denied",
             "is denied.",
             "permission denied",
-            "viv-sandbox-run: ",
         ],
         failure_signatures: &["viv-sandbox-run: "],
     })

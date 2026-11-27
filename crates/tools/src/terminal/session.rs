@@ -133,9 +133,9 @@ fn blanked() -> HashMap<String, String> {
 impl Session {
     /// Starts `argv` in `dir`.
     pub fn start(argv: &[String], dir: &Path) -> Result<Self, String> {
-        let (program, args) = argv.split_first().ok_or("there is no shell to run")?;
+        let (program, rest) = argv.split_first().ok_or("there is no shell to run")?;
         let options = Options {
-            shell: Some(Shell::new(program.clone(), args.to_vec())),
+            shell: Some(Shell::new(program.clone(), rest.to_vec())),
             working_directory: Some(dir.to_path_buf()),
             drain_on_exit: true,
             env: blanked(),

@@ -21,7 +21,7 @@ use windows_sys::Win32::System::Threading::{
     ResumeThread, STARTF_USESTDHANDLES, STARTUPINFOW, TerminateProcess, WaitForSingleObject,
 };
 
-use super::token::{Owned, last_error};
+use super::token::{Owned, last_error, len32};
 
 /// One argument as the C runtime will read it back.
 fn quote(argument: &str, line: &mut String) {
@@ -84,7 +84,7 @@ fn kill_on_close_job() -> Result<Owned, String> {
             job.0,
             JobObjectExtendedLimitInformation,
             (&raw const limits).cast(),
-            size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            len32(size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>()),
         )
     };
     if set == 0 {
@@ -111,7 +111,7 @@ pub(super) fn run(token: &Owned, command: &[OsString]) -> Result<i32, String> {
     // SAFETY: all-zero is a valid value of these plain structures.
     let (mut startup, mut info): (STARTUPINFOW, PROCESS_INFORMATION) =
         unsafe { std::mem::zeroed() };
-    startup.cb = size_of::<STARTUPINFOW>() as u32;
+    startup.cb = len32(size_of::<STARTUPINFOW>());
     startup.dwFlags = STARTF_USESTDHANDLES;
     startup.hStdInput = inherited(STD_INPUT_HANDLE);
     startup.hStdOutput = inherited(STD_OUTPUT_HANDLE);
@@ -128,8 +128,8 @@ pub(super) fn run(token: &Owned, command: &[OsString]) -> Result<i32, String> {
             CREATE_SUSPENDED,
             null(),
             null_mut(),
-            &startup,
-            &mut info,
+            &raw const startup,
+            &raw mut info,
         )
     };
     if started == 0 {
@@ -153,7 +153,7 @@ pub(super) fn run(token: &Owned, command: &[OsString]) -> Result<i32, String> {
     }
     let mut code = 0;
     // SAFETY: the process handle is open and `code` receives the value.
-    if unsafe { GetExitCodeProcess(process.0, &mut code) } == 0 {
+    if unsafe { GetExitCodeProcess(process.0, &raw mut code) } == 0 {
         return Err(last_error("GetExitCodeProcess"));
     }
     Ok(code.cast_signed())

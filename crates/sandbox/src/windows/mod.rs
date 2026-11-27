@@ -93,9 +93,8 @@ fn parse(args: Vec<OsString>) -> Result<Request, String> {
             _ => return Err(format!("unknown argument: {}", flag.to_string_lossy())),
         }
     }
-    let mode = match mode {
-        Some(mode @ (Mode::ReadOnly | Mode::WorkspaceWrite)) => mode,
-        _ => return Err("--mode must be read-only or workspace-write".to_owned()),
+    let Some(mode @ (Mode::ReadOnly | Mode::WorkspaceWrite)) = mode else {
+        return Err("--mode must be read-only or workspace-write".to_owned());
     };
     if mode == Mode::ReadOnly && !writable.is_empty() {
         return Err("read-only takes no --writable".to_owned());

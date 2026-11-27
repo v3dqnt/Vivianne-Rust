@@ -21,6 +21,11 @@ use windows_sys::Win32::Storage::FileSystem::FILE_ALL_ACCESS;
 use windows_sys::Win32::System::SystemServices::{SE_GROUP_INTEGRITY, SE_GROUP_LOGON_ID};
 use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
+/// A length or structure size as the calls take it; one that did not fit would be refused by them.
+pub(super) fn len32(length: usize) -> u32 {
+    u32::try_from(length).unwrap_or(u32::MAX)
+}
+
 pub(super) fn wide(text: &std::ffi::OsStr) -> Vec<u16> {
     use std::os::windows::ffi::OsStrExt as _;
     text.encode_wide().chain([0]).collect()
@@ -61,7 +66,7 @@ impl Sid {
         let name = wide(text.as_ref());
         let mut parsed: PSID = null_mut();
         // SAFETY: `name` is NUL terminated and `parsed` receives a block freed below.
-        if unsafe { ConvertStringSidToSidW(name.as_ptr(), &mut parsed) } == 0 {
+        if unsafe { ConvertStringSidToSidW(name.as_ptr(), &raw mut parsed) } == 0 {
             return Err(last_error("ConvertStringSidToSidW"));
         }
         // SAFETY: the call succeeded, so `parsed` is a valid SID until it is freed.
@@ -75,7 +80,7 @@ impl Sid {
         let sid = Self::blank();
         let mut size = SECURITY_MAX_SID_SIZE;
         // SAFETY: the buffer is `size` bytes long.
-        if unsafe { CreateWellKnownSid(kind, null_mut(), sid.as_ptr(), &mut size) } == 0 {
+        if unsafe { CreateWellKnownSid(kind, null_mut(), sid.as_ptr(), &raw mut size) } == 0 {
             return Err(last_error("CreateWellKnownSid"));
         }
         Ok(sid)
@@ -127,7 +132,7 @@ pub(super) fn entry(sid: &Sid, mode: i32, rights: u32, inheritance: u32) -> EXPL
 fn token_facts(token: HANDLE, class: TOKEN_INFORMATION_CLASS) -> Result<Vec<u64>, String> {
     let mut needed = 0;
     // SAFETY: a size query: no buffer, so only `needed` is written.
-    unsafe { GetTokenInformation(token, class, null_mut(), 0, &mut needed) };
+    unsafe { GetTokenInformation(token, class, null_mut(), 0, &raw mut needed) };
     if needed == 0 {
         return Err(last_error("GetTokenInformation size"));
     }
@@ -139,7 +144,7 @@ fn token_facts(token: HANDLE, class: TOKEN_INFORMATION_CLASS) -> Result<Vec<u64>
             class,
             buffer.as_mut_ptr().cast(),
             needed,
-            &mut needed,
+            &raw mut needed,
         )
     };
     if read == 0 {
@@ -158,7 +163,7 @@ fn logon_sid(token: HANDLE) -> Result<Sid, String> {
             (*groups).GroupCount as usize,
         )
     };
-    let logon = SE_GROUP_LOGON_ID as u32;
+    let logon = SE_GROUP_LOGON_ID.cast_unsigned();
     let found = entries
         .iter()
         .find(|group| group.Attributes & logon == logon)
@@ -178,7 +183,7 @@ fn extend_default_dacl(token: HANDLE, sid: &Sid) -> Result<(), String> {
     let added = entry(sid, GRANT_ACCESS, FILE_ALL_ACCESS, 0);
     let mut merged: *mut ACL = null_mut();
     // SAFETY: one entry, a valid old ACL (in `facts`), and `merged` receives a block freed below.
-    let code = unsafe { SetEntriesInAclW(1, &added, current, &mut merged) };
+    let code = unsafe { SetEntriesInAclW(1, &raw const added, current, &raw mut merged) };
     if code != 0 {
         return Err(format!("SetEntriesInAclW failed (Win32 {code})"));
     }
@@ -191,7 +196,7 @@ fn extend_default_dacl(token: HANDLE, sid: &Sid) -> Result<(), String> {
             token,
             TokenDefaultDacl,
             (&raw const info).cast(),
-            size_of::<TOKEN_DEFAULT_DACL>() as u32,
+            len32(size_of::<TOKEN_DEFAULT_DACL>()),
         )
     };
     let failed = (set == 0).then(|| last_error("SetTokenInformation default DACL"));
@@ -206,7 +211,7 @@ pub(super) fn restricted(write: &[Sid]) -> Result<Owned, String> {
     let mut own: HANDLE = null_mut();
     let rights = TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ADJUST_DEFAULT | TOKEN_ASSIGN_PRIMARY;
     // SAFETY: the pseudo handle of this process; `own` receives a handle owned just below.
-    if unsafe { OpenProcessToken(GetCurrentProcess(), rights, &mut own) } == 0 {
+    if unsafe { OpenProcessToken(GetCurrentProcess(), rights, &raw mut own) } == 0 {
         return Err(last_error("OpenProcessToken"));
     }
     let own = Owned(own);
@@ -229,9 +234,9 @@ pub(super) fn restricted(write: &[Sid]) -> Result<Owned, String> {
             null(),
             0,
             null(),
-            restricting.len() as u32,
+            len32(restricting.len()),
             restricting.as_ptr(),
-            &mut token,
+            &raw mut token,
         )
     };
     if made == 0 {
@@ -241,10 +246,10 @@ pub(super) fn restricted(write: &[Sid]) -> Result<Owned, String> {
     let label = TOKEN_MANDATORY_LABEL {
         Label: SID_AND_ATTRIBUTES {
             Sid: low.as_ptr(),
-            Attributes: SE_GROUP_INTEGRITY as u32,
+            Attributes: SE_GROUP_INTEGRITY.cast_unsigned(),
         },
     };
-    let size = size_of::<TOKEN_MANDATORY_LABEL>() as u32 + low.byte_length();
+    let size = len32(size_of::<TOKEN_MANDATORY_LABEL>()) + low.byte_length();
     // SAFETY: `label` and the SID it points to are valid for the call.
     if unsafe {
         SetTokenInformation(

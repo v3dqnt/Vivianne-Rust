@@ -267,7 +267,8 @@ impl Agent {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .insert(call.id.clone(), tx);
-        let detail = ["command", "path"]
+        // What the person is asked to allow: what it runs, touches or types.
+        let detail = ["command", "path", "text", "signal", "sessionId", "job_id"]
             .iter()
             .find_map(|k| call.args[k].as_str())
             .unwrap_or_default();
@@ -1936,6 +1937,28 @@ mod tests {
             }
             self.inner.stream(request).await
         }
+    }
+
+    #[tokio::test]
+    async fn jobs_start_only_so_many_runs_in_a_row_until_the_person_speaks() {
+        let replies = (0..=MAX_WAKES + 1).map(|_| vec![ChatEvent::Text("ok".into()), ChatEvent::Done]).collect();
+        let agent = Agent::new(Scripted::new(replies), "m", None, toolbox());
+        let mut history = Vec::new();
+        for round in 0..MAX_WAKES {
+            agent.steer(format!("job {round} ended"));
+            let said = agent.take_waiting().expect("under the cap");
+            history.push(Message::new(Role::User, said));
+            let (tx, _rx) = unbounded_channel();
+            agent.run(&mut history, &tx, Thinking::default()).await.expect("runs");
+        }
+        agent.steer("one more ended");
+        assert_eq!(agent.take_waiting(), None);
+        assert!(agent.has_steering(), "it waits for the person");
+        history.push(Message::new(Role::User, "go on"));
+        let (tx, _rx) = unbounded_channel();
+        agent.run(&mut history, &tx, Thinking::default()).await.expect("runs");
+        agent.steer("another ended");
+        assert!(agent.take_waiting().is_some());
     }
 
     #[tokio::test]

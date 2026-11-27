@@ -127,9 +127,9 @@ async fn another_owner_cannot_see_or_touch_a_job() {
 async fn reading_moves_on_read_at_does_not_and_a_result_comes_once() {
     let registry = Registry::default();
     let mut job = start(&registry, None);
-    job.handle.append("one ", JobAppendOptions::default());
+    job.handle.append("one ", &JobAppendOptions::default());
     assert_eq!(registry.read(&job.id, None).unwrap().chunks[0].text, "one ");
-    job.handle.append("two", JobAppendOptions::default());
+    job.handle.append("two", &JobAppendOptions::default());
     assert_eq!(registry.read_at(&job.id, 0, None).unwrap().chunks.len(), 2);
     assert_eq!(registry.read(&job.id, None).unwrap().chunks[0].text, "two");
     job.end(JobOutcome {
@@ -222,7 +222,7 @@ async fn events_come_in_order_and_say_whether_someone_was_waiting() {
     job.end(JobOutcome::completed());
     waiting.await.unwrap();
     // Appends and progress after the end are dropped.
-    job.handle.append("late", JobAppendOptions::default());
+    job.handle.append("late", &JobAppendOptions::default());
     job.handle.update_progress("late");
     tokio::time::sleep(Duration::from_millis(20)).await;
     let names: Vec<&str> = seen.lock().unwrap().iter().map(|(name, _)| *name).collect();
@@ -310,7 +310,7 @@ async fn a_notice_says_how_it_ended_unless_the_model_already_knows() {
     let _subscription = jobs.on_notice(move |text| into.lock().unwrap().push(text));
 
     let mut quiet = start(jobs.registry(), None);
-    quiet.handle.append("done\n", JobAppendOptions::default());
+    quiet.handle.append("done\n", &JobAppendOptions::default());
     quiet.end(ended(JobStatus::Completed, "exit code: 0"));
     tokio::time::sleep(Duration::from_millis(30)).await;
     assert_eq!(
@@ -323,7 +323,7 @@ async fn a_notice_says_how_it_ended_unless_the_model_already_knows() {
 
     let mut long = start(jobs.registry(), None);
     long.handle
-        .append("x".repeat(3000), JobAppendOptions::default());
+        .append("x".repeat(3000), &JobAppendOptions::default());
     long.end(JobOutcome::completed());
     tokio::time::sleep(Duration::from_millis(30)).await;
     assert!(said.lock().unwrap()[1].ends_with("Read its output with job_output."));
@@ -362,7 +362,7 @@ async fn the_job_tools_report_output_status_and_the_list() {
         JobList(jobs.clone()).execute(&json!({}), "").await.content,
         format!("{} [bash] running — a job", job.id)
     );
-    job.handle.append("hello", JobAppendOptions::default());
+    job.handle.append("hello", &JobAppendOptions::default());
     job.end(ended(JobStatus::Completed, "exit code: 0"));
     let out = JobOutput(jobs.clone())
         .execute(&json!({ "job_id": job.id, "wait": true }), "")

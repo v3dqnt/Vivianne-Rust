@@ -30,6 +30,7 @@ pub(super) struct Command<'a> {
     pub start: PathBuf,
     pub mode: Mode,
     pub denial_signatures: &'static [&'static str],
+    pub failure_signatures: &'static [&'static str],
 }
 
 impl Command<'_> {
@@ -77,12 +78,16 @@ impl Command<'_> {
         }
         let mut text = format!("exit {}\n{}", exit_code.unwrap_or(-1), truncate(text));
         let errors = stderr.map(|s| s.text).unwrap_or_default();
-        if confine::denied(exit_code, &errors, self.denial_signatures) {
-            text.push_str(&format!(
-                "\n{}\n{}",
-                policy::denial_marker(self.mode),
-                policy::escalation_hint("command")
-            ));
+        let note = sandbox_note(
+            self.mode,
+            self.denial_signatures,
+            self.failure_signatures,
+            exit_code,
+            &errors,
+        );
+        if let Some(note) = note {
+            text.push('\n');
+            text.push_str(&note);
         }
         SimpleOutput {
             text,
@@ -110,6 +115,29 @@ pub(super) async fn foreground(
     let exit_code = handle.done().await.exit_code;
     let (stdout, stderr) = handle.collected();
     Ok(call.result(exit_code, stdout, stderr))
+}
+
+/// What a confined command's end says about the sandbox: its runner failed (nothing ran), or it denied something.
+fn sandbox_note(
+    mode: Mode,
+    denials: &[&str],
+    failures: &[&str],
+    exit_code: Option<i32>,
+    errors: &str,
+) -> Option<String> {
+    if confine::runner_failure(exit_code, errors, failures).is_some() {
+        return Some(format!(
+            "[sandbox: the sandbox runner itself failed under {} mode — the command did not run; this is a sandbox problem, not a command failure]",
+            mode.as_str()
+        ));
+    }
+    confine::denied(exit_code, errors, denials).then(|| {
+        format!(
+            "{}\n{}",
+            policy::denial_marker(mode),
+            policy::escalation_hint("command")
+        )
+    })
 }
 
 /// What the job and the call that started it both look at.
@@ -173,7 +201,8 @@ fn job(call: &Command<'_>, slot: &Slot, jobs: &Jobs) -> JobSpec {
     let mut spec = call.spec(spill);
     let stop = CancellationToken::new();
     spec.cancel = Some(stop.clone());
-    let (mode, signatures) = (call.mode, call.denial_signatures);
+    let (mode, signatures, failures) =
+        (call.mode, call.denial_signatures, call.failure_signatures);
     let source = |errors| {
         Box::new(Stream {
             slot: Arc::clone(slot),
@@ -204,12 +233,10 @@ fn job(call: &Command<'_>, slot: &Slot, jobs: &Jobs) -> JobSpec {
                         .and_then(|handle| handle.collected().1)
                         .map(|stream| stream.text)
                         .unwrap_or_default();
-                    if !killed && confine::denied(ended.exit_code, &errors, signatures) {
-                        detail.push_str(&format!(
-                            "; {} {}",
-                            policy::denial_marker(mode),
-                            policy::escalation_hint("command")
-                        ));
+                    let note = sandbox_note(mode, signatures, failures, ended.exit_code, &errors);
+                    if let Some(note) = note.filter(|_| !killed) {
+                        detail.push_str("; ");
+                        detail.push_str(&note.replace('\n', " "));
                     }
                     JobOutcome {
                         status: if killed {
@@ -452,5 +479,31 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
         assert!(jobs.registry().list(None).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod note_tests {
+    use super::*;
+
+    #[test]
+    fn a_failed_runner_is_not_reported_as_a_denial() {
+        let note = |errors: &str| {
+            sandbox_note(
+                Mode::ReadOnly,
+                &["is denied."],
+                &["viv-sandbox-run: "],
+                Some(127),
+                errors,
+            )
+        };
+        let broken = note("viv-sandbox-run: no token, access is denied.").expect("noted");
+        assert!(broken.contains("did not run"), "{broken}");
+        let denied = note("Access to the path is denied.").expect("noted");
+        assert_eq!(
+            denied.lines().next(),
+            Some(policy::denial_marker(Mode::ReadOnly).as_str())
+        );
+        assert_eq!(note("boom"), None);
     }
 }

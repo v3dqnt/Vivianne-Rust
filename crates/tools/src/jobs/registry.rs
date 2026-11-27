@@ -295,12 +295,12 @@ impl Registry {
 
     /// Cancels, awaits and forgets one owner's jobs.
     pub async fn dispose_owner(&self, owner: &str) {
-        let owned = lock(&self.jobs)
+        let theirs = lock(&self.jobs)
             .iter()
             .filter(|job| job.owner.as_deref() == Some(owner))
             .cloned()
             .collect();
-        self.tear_down(owned, "owner disposed").await;
+        self.tear_down(theirs, "owner disposed").await;
     }
 
     /// Cancels, awaits and forgets every job.

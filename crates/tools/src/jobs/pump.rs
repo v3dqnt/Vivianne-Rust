@@ -37,7 +37,7 @@ fn drain(job: &TrackedJob, cursors: &mut [Cursor]) {
             channel: cursor.source.channel(),
             gap_before: read.lossy,
         };
-        job.append(&read.text, options, Writer::Pump);
+        job.append(&read.text, &options, Writer::Pump);
     }
 }
 

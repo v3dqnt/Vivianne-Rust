@@ -2,6 +2,8 @@
 //!
 //! Port of `@deepseek-ai/dsh-tool-jobs/render.ts` and its notice text.
 
+use std::fmt::Write as _;
+
 use super::registry::Registry;
 use super::types::{JobChannel, JobChunk, JobView};
 
@@ -47,9 +49,10 @@ pub(crate) fn delta(chunks: &[JobChunk], lossy: bool, spill_paths: Option<&[Stri
         Some(paths) if !paths.is_empty() => paths.join(", "),
         _ => "(unavailable)".to_owned(),
     };
-    body.push_str(&format!(
+    let _ = write!(
+        body,
         "[some output was dropped from memory; full output: {paths}]"
-    ));
+    );
     body
 }
 

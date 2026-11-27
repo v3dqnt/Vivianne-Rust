@@ -273,6 +273,7 @@ impl SimpleTool for Shell {
             start,
             mode,
             denial_signatures: argv.denial_signatures,
+            failure_signatures: argv.failure_signatures,
         };
         let limit = Duration::from_secs(secs);
         let background = args["run_in_background"].as_bool() == Some(true);
@@ -293,18 +294,19 @@ impl Shell {
             ["sh", "-c", command].map(str::to_owned).to_vec()
         };
         if mode == Mode::DangerFullAccess {
-            return Ok(ShellArgv { argv: plain, denial_signatures: &[] });
+            return Ok(ShellArgv { argv: plain, denial_signatures: &[], failure_signatures: &[] });
         }
         let root = std::path::absolute(self.workspace.root()).map_err(failed)?;
         let wanted = Policy::new(mode, &root, &[]).map_err(failed)?;
         let confined = confine::confine(&plain, &wanted).map_err(failed)?;
-        Ok(ShellArgv { argv: confined.argv, denial_signatures: confined.denial_signatures })
+        Ok(ShellArgv { argv: confined.argv, denial_signatures: confined.denial_signatures, failure_signatures: confined.failure_signatures })
     }
 }
 
 struct ShellArgv {
     argv: Vec<String>,
     denial_signatures: &'static [&'static str],
+    failure_signatures: &'static [&'static str],
 }
 
 /// Keep the tail: errors and results are at the end.
