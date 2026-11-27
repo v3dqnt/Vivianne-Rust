@@ -509,6 +509,7 @@ fn start_run(
             mode: mode_of(&request.mode),
             updated_at: store::now(),
             history,
+            parent: None,
         });
         let _ = shared.events.send(ServerMessage::RunEvent {
             thread_id: thread_id.clone(),

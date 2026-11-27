@@ -28,6 +28,8 @@ similar = "2"
 sha2 = "0.10"
 # Gzip for the kept generations of a thread log (pure Rust, already in the tree through the HTTP stack).
 flate2 = "1"
+# The full-text index of saved conversations (FTS5). The same SQLite the memory crate bundles.
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [dev-dependencies]
 uuid = { version = "1", features = ["v4"] }

@@ -152,6 +152,7 @@ mod tests {
                 Message::new(Role::User, "the parser panics"),
                 Message::assistant("Fixed it.", vec![]),
             ],
+            parent: None,
         };
         let elsewhere = uuid::Uuid::new_v4().to_string();
         store::save(&thread(&id, &workspace)).expect("saves");

@@ -27,6 +27,16 @@ pub struct SavedThread {
     /// Seconds since 1970.
     pub updated_at: u64,
     pub history: Vec<Message>,
+    /// The conversation this one was branched from, if it was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<Parent>,
+}
+
+/// Where a branched conversation came from: the thread, and the turn it was cut before.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Parent {
+    pub thread: String,
+    pub turn: usize,
 }
 
 /// A thread as a list shows it.
@@ -92,6 +102,10 @@ fn fork_in(dir: &Path, id: &str, before_turn: usize) -> Result<SavedThread, Stri
         title_source: "user".to_owned(),
         updated_at: now(),
         history,
+        parent: Some(Parent {
+            thread: original.id.clone(),
+            turn: before_turn,
+        }),
         ..original
     };
     save_in(dir, &forked)?;
@@ -113,8 +127,14 @@ fn save_in(dir: &Path, thread: &SavedThread) -> Result<(), String> {
         return Err(formats::FormatError::Unsupported { version }.to_string());
     }
     // What the desktop showed is not kept.
+    // A save from a screen that does not know the thread is a branch must not forget where it came from.
+    let parent = thread
+        .parent
+        .clone()
+        .or_else(|| log::parent_of(dir, &thread.id));
     let kept = SavedThread {
         history: crate::history::without_desktop_content(&thread.history),
+        parent,
         ..thread.clone()
     };
     log::write(dir, &kept)?;
@@ -153,6 +173,50 @@ fn ids_in(dir: &Path) -> Vec<String> {
         .filter(|id| valid_id(id))
         .collect();
     ids.into_iter().collect()
+}
+
+/// Saves into `dir` (for the query module's tests).
+#[cfg(test)]
+pub(crate) fn save_to(dir: &Path, thread: &SavedThread) -> Result<(), String> {
+    save_in(dir, thread)
+}
+
+/// Deletes a thread inside `dir` (for the query module's tests).
+#[cfg(test)]
+pub(crate) fn delete_to(dir: &Path, id: &str) -> Result<(), String> {
+    delete_in(dir, id)
+}
+
+/// Branches a thread inside `dir` (for the query module's tests).
+#[cfg(test)]
+pub(crate) fn fork_to(dir: &Path, id: &str, before_turn: usize) -> Result<SavedThread, String> {
+    fork_in(dir, id, before_turn)
+}
+
+/// Every readable thread in `dir`, in id order. For the query module; one that cannot be read is left out.
+pub(crate) fn all_in(dir: &Path) -> Vec<SavedThread> {
+    ids_in(dir)
+        .into_iter()
+        .filter_map(|id| load_in(dir, &id))
+        .collect()
+}
+
+/// One thread in `dir`, with why it could not be read.
+pub(crate) fn read_thread_in(dir: &Path, id: &str) -> Result<Option<SavedThread>, String> {
+    read_in(dir, id)
+}
+
+/// The generation the thread's active log is on (1 until a history has been condensed or rewound).
+pub(crate) fn generation_in(dir: &Path, id: &str) -> u32 {
+    log::read(dir, id)
+        .ok()
+        .flatten()
+        .map_or(1, |loaded| loaded.generation)
+}
+
+/// The directory threads are kept in.
+pub(crate) fn threads_dir() -> Result<PathBuf, String> {
+    default_dir()
 }
 
 /// The generations kept for a thread (the older states of its log), oldest first.
@@ -257,6 +321,7 @@ fn checkpoint_in(dir: &Path, id: &str, workspace: &str, provider: &str, model: &
             mode,
             updated_at: now(),
             history: history.to_vec(),
+            parent: None,
         },
     };
     save_in(dir, &thread)
@@ -485,6 +550,7 @@ mod tests {
             mode: Mode::Ask,
             updated_at,
             history: vec![Message::new(Role::User, "hi")],
+            parent: None,
         }
     }
 
@@ -513,5 +579,45 @@ mod tests {
         delete_in(&dir, "a").unwrap();
         assert!(load_in(&dir, "a").is_none());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod parent_tests {
+    use super::*;
+
+    #[test]
+    fn a_branch_keeps_its_parent_through_saves_that_do_not_know_about_it() {
+        let dir = std::env::temp_dir().join(format!("viv-parent-{}", uuid::Uuid::new_v4().simple()));
+        let original = SavedThread {
+            id: "11111111-1111-1111-1111-111111111111".into(),
+            workspace: "/w".into(),
+            title: "t".into(),
+            title_source: "auto".into(),
+            provider: "p".into(),
+            model: "m".into(),
+            mode: Mode::Ask,
+            updated_at: 1,
+            history: vec![
+                Message::new(user_role(), "one"),
+                Message::assistant("a".to_owned(), Vec::new()),
+                Message::new(user_role(), "two"),
+            ],
+            parent: None,
+        };
+        save_in(&dir, &original).expect("saved");
+        let forked = fork_in(&dir, &original.id, 2).expect("forked");
+        assert_eq!(forked.parent, Some(Parent { thread: original.id.clone(), turn: 2 }));
+        // What a screen saves: the same thread, built without a parent.
+        let mut resaved = forked.clone();
+        resaved.parent = None;
+        resaved.history.push(Message::new(user_role(), "more"));
+        save_in(&dir, &resaved).expect("saved again");
+        assert_eq!(load_in(&dir, &forked.id).expect("exists").parent, forked.parent);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn user_role() -> vivianne_core::Role {
+        vivianne_core::Role::User
     }
 }

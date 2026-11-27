@@ -1075,6 +1075,7 @@ impl ChatView {
             history: history.to_vec(),
         };
         // A failed save is not worth interrupting anyone for: the next turn saves again.
+            parent: None,
         crate::backend::spawn(async move { vivianne_runtime::store::save(&thread) });
     }
 

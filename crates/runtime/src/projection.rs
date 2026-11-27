@@ -265,7 +265,7 @@ mod tests {
     #[test]
     fn a_history_that_was_rewritten_or_cut_is_folded_again_from_the_start() {
         let dir = dir();
-        project_in(&dir, "t", &history(3), registry());
+        let _ = project_in(&dir, "t", &history(3), registry());
         let mut edited = history(3);
         edited[1].text = "a different answer".to_owned();
         assert_eq!(
@@ -284,7 +284,7 @@ mod tests {
     #[test]
     fn saved_state_from_another_version_or_a_broken_file_is_discarded_not_trusted() {
         let dir = dir();
-        project_in(&dir, "t", &history(2), registry());
+        let _ = project_in(&dir, "t", &history(2), registry());
         let path = cache_path(&dir, "t");
         let bumped = std::fs::read_to_string(&path)
             .expect("cache")

@@ -6,6 +6,7 @@
 
 mod inspect;
 mod remote_cli;
+mod thread_query;
 
 use std::io::{BufRead, Write};
 
